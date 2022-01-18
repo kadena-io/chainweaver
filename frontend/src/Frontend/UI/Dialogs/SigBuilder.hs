@@ -10,20 +10,18 @@ module Frontend.UI.Dialogs.SigBuilder where
 
 import           Control.Error hiding (bool, mapMaybe)
 import           Control.Lens
-import           Control.Monad (forM, join)
+import           Control.Monad (forM)
 import qualified Data.Aeson as A
-import           Data.Decimal (Decimal, roundTo)
-import qualified Data.Set as Set
+import           Data.Decimal (Decimal)
 import           Data.Aeson.Parser.Internal (jsonEOF')
 import           Data.Attoparsec.ByteString
-import           Data.Bifunctor (first, second)
+import           Data.Bifunctor (first)
 import qualified Data.ByteString.Lazy as LB
 import           Data.Functor (void)
 import           Data.List (partition)
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Data.Text.Lazy as LT
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.IntMap as IMap
@@ -40,10 +38,8 @@ import           Pact.Types.PactValue (PactValue(..))
 import           Pact.Types.Capability
 import           Pact.Types.Names (QualifiedName(..))
 import           Pact.Types.Exp (Literal(..))
-import           Pact.Types.Util (decodeBase64UrlUnpadded, asString)
+import           Pact.Types.Util (asString)
 import           Pact.Types.Pretty
-import           Pact.Types.Info
-import qualified Pact.Types.Term                   as Pact
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom hiding (Key, Command)
@@ -64,13 +60,18 @@ import           Frontend.Wallet
 import Frontend.UI.Modal.Impl
 ------------------------------------------------------------------------------
 
+type SigBuilderWorkflow t m model key =
+  ( MonadWidget t m
+  , HasNetwork model t
+  , HasWallet model key t
+  , HasCrypto key m
+  , HasTransactionLogger m
+  , HasLogger model t
+  )
+
 sigBuilderCfg
-  :: forall t m key mConf
-   . ( MonadWidget t m
-     , HasCrypto key m
-     , HasTransactionLogger m
-     )
-  => ModalIde m key t
+  :: SigBuilderWorkflow t m model key
+  => model
   -> Event t ()
   -> m (ModalIdeCfg m key t)
 sigBuilderCfg m evt = do
@@ -78,25 +79,16 @@ sigBuilderCfg m evt = do
 
 uiSigBuilderDialog
   ::
-  ( MonadWidget t m
-  , Monoid mConf
+  ( Monoid mConf
   , SigBuilderWorkflow t m model key
   )
-  => ModalIde m key t
+  => model
   -> Event t ()
   -> m (mConf, Event t ())
 uiSigBuilderDialog model _onCloseExternal = do
   dCloses <- workflow $ txnInputDialog model Nothing
   pure (mempty, switch $ current dCloses)
 
-type SigBuilderWorkflow t m model key =
-  ( MonadWidget t m
-  , HasNetwork model t
-  , HasWallet model key t
-  , HasCrypto key m
-  , ModalIde m key t ~ model
-  , HasTransactionLogger m
-  )
 
 --------------------------------------------------------------------------------
 -- Input Flow
@@ -110,10 +102,7 @@ data SigBuilderRequest key = SigBuilderRequest
   }
 
 txnInputDialog
-  ::
-  ( MonadWidget t m
-  , SigBuilderWorkflow t m model key
-  )
+  :: SigBuilderWorkflow t m model key
   => model
   -> Maybe (SigData Text)
   -> Workflow t m (Event t ())
@@ -121,8 +110,8 @@ txnInputDialog model mInitVal = Workflow $ mdo
   onClose <- modalHeader $ text "Signature Builder"
   let cwKeys = IMap.elems <$> (model^.wallet_keys)
       selNodes = model ^. network_selectedNodes
-      networkId = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
-      keysAndNet = current $ (,) <$> cwKeys <*> networkId
+      nid = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
+      keysAndNet = current $ (,) <$> cwKeys <*> nid
   dmSigData <- modalMain $ divClass "group" $ parseInputToSigDataWidget mInitVal
   (onCancel, approve) <- modalFooter $ (,)
     <$> cancelButton def "Cancel"
@@ -139,11 +128,10 @@ data DataToBeSigned
 
 -- TODO: Make sure this makes sense
 payloadToSigData :: Payload PublicMeta Text -> Text -> SigData Text
-payloadToSigData parsedPayload payloadTxt =
-  let
+payloadToSigData parsedPayload payloadTxt = SigData cmdHash sigs $ Just payloadTxt
+  where
     cmdHash = hash $ T.encodeUtf8 payloadTxt
     sigs = map (\s -> (PublicKeyHex $ _siPubKey s, Nothing)) $ _pSigners parsedPayload
-   in SigData cmdHash sigs $ Just payloadTxt
 
 
 parseInputToSigDataWidget
@@ -177,7 +165,7 @@ parseInputToSigDataWidget mInit =
       case parseOnly jsonEOF' bytes of
         Right val -> case A.fromJSON val of
           A.Success sigData -> parseAndAttachPayload sigData
-          A.Error errStr ->  let bs' = fmap T.encodeUtf8 $ A.fromJSON val in
+          A.Error _ ->
             case A.fromJSON @(Payload PublicMeta Text) val of
               A.Success p -> parseAndAttachPayload $ payloadToSigData p $ encodeAsText $ LB.fromStrict bytes
               A.Error _ ->  case A.fromJSON @Text val of
@@ -242,10 +230,10 @@ checkAndSummarize model sbr = checkNetwork
     sigData = _sbr_sigData sbr
     backW = txnInputDialog model (Just sigData)
     nextW = approveSigDialog model sbr
-    cwPubKeys = Set.fromList $ fmap (_keyPair_publicKey . _key_pair) $ _sbr_cwKeys sbr
-    signerPubkeys = Set.fromList $ rights
-      $ fmap (parsePublicKey . _siPubKey)
-      $ _pSigners $ _sbr_payload sbr
+    -- cwPubKeys = Set.fromList $ fmap (_keyPair_publicKey . _key_pair) $ _sbr_cwKeys sbr
+    -- signerPubkeys = Set.fromList $ rights
+    --   $ fmap (parsePublicKey . _siPubKey)
+    --   $ _pSigners $ _sbr_payload sbr
     cwNetwork = _sbr_currentNetwork sbr
     payloadNetwork = mkNetworkName . view networkId
       <$> (_pNetworkId $ _sbr_payload sbr)
@@ -268,14 +256,14 @@ checkAndSummarize model sbr = checkNetwork
 --------------------------------------------------------------------------------
 approveSigDialog
   :: SigBuilderWorkflow t m model key
-  => ModalIde m key t
+  => model
   -> SigBuilderRequest key
   -> Workflow t m (Event t ())
 approveSigDialog model sbr = Workflow $ do
   let sigData = _sbr_sigData sbr
       sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
       keys = fmap _key_pair $ _sbr_cwKeys sbr
-      dNodeInfos = model^.network_selectedNodes
+      -- dNodeInfos = model^.network_selectedNodes
       sigs = _sigDataSigs sigData --[(PublicKeyHex, Maybe UserSig)]
       p = _sbr_payload sbr
   onClose <- modalHeader $ text "Approve Transaction"
@@ -339,7 +327,7 @@ showSigsWidget
   -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
 showSigsWidget p cwKeys sigs sdHash = do
   let
-    signers = p^.pSigners 
+    signers = p^.pSigners
     orderedSigs = catMaybes $ ffor signers $ \s ->
       ffor (lookup (PublicKeyHex $ _siPubKey s) sigs) $ \a-> (PublicKeyHex $ _siPubKey s, s, a)
     missingSigs = filter (\(_, _, sig) -> isNothing sig) orderedSigs
@@ -438,7 +426,7 @@ showTransactionSummary
   -> Payload PublicMeta Text
   -> m ()
 showTransactionSummary dSummary p = do
-  let pm = p ^.pMeta
+  -- let pm = p ^.pMeta
   dialogSectionHeading mempty "Impact Summary"
   divClass "group" $ dyn_ $ ffor dSummary $ \summary -> do
     let tokens = _ts_tokenTransfers summary
@@ -478,7 +466,7 @@ signatureDetails
   => SigData Text
   -> m ()
 signatureDetails sd = do
-  mkLabeledInput False "Hash"
+  void $ mkLabeledInput False "Hash"
     (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
       & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ _sigDataHash sd)
 
@@ -501,7 +489,7 @@ signatureDetails sd = do
   pure ()
   where
     uiSignatureResult txt = do
-      uiTextAreaElement $ def
+      void $ uiTextAreaElement $ def
         & textAreaElementConfig_initialValue .~ txt
         & initialAttributes <>~ fold
           [ "disabled" =: "true"
@@ -511,7 +499,7 @@ signatureDetails sd = do
 
 signAndShowSigDialog
   :: SigBuilderWorkflow t m model key
-  => ModalIde m key t
+  => model
   -> SigBuilderRequest key
   -> [KeyPair key]  -- ChainweaverKeys
   -> Workflow t m (Event t ()) -- Workflow for going back
@@ -570,19 +558,19 @@ addSigsToSigData sd signingKeys sigList = do
   --TODO: Double check hash here and fail if they dontmatch
   let -- cmd = encodeAsText $ encode payload
       -- cmdHashL = hash (T.encodeUtf8 cmd)
-      hash = unHash $ toUntypedHash $ _sigDataHash sd
+      hashToSign = unHash $ toUntypedHash $ _sigDataHash sd
       someSigs = _sigDataSigs sd
       pubKeyToTxt =  PublicKeyHex . keyToText . _keyPair_publicKey
       cwSigners =  fmap (\x -> (pubKeyToTxt x, _keyPair_privateKey x)) signingKeys
       toPactSig sig = UserSig $ keyToText sig
-  sigList <- forM someSigs $ \(pkHex, mSig) -> case mSig of
+  sigList' <- forM someSigs $ \(pkHex, mSig) -> case mSig of
     Just sig -> pure (pkHex, Just sig)
     Nothing -> case pkHex `lookup` cwSigners of
       Just (Just priv) -> do
-        sig <- cryptoSign hash priv
+        sig <- cryptoSign hashToSign priv
         pure (pkHex, Just $ toPactSig sig )
-      otherwise -> pure (pkHex, pkHex `lookup` sigList)
-  pure $ sd { _sigDataSigs = sigList }
+      _ -> pure (pkHex, pkHex `lookup` sigList)
+  pure $ sd { _sigDataSigs = sigList' }
 
 transferAndStatus
   :: (MonadWidget t m, HasLogger model t, HasTransactionLogger m)
@@ -646,11 +634,10 @@ pactRpcWidget (Exec e) = do
     A.Null -> blank
     jsonVal -> do
       dialogSectionHeading mempty "Data"
-      divClass "group" $ do
-        uiTextAreaElement $ def
+      divClass "group" $
+        void $ uiTextAreaElement $ def
           & textAreaElementConfig_initialValue .~ (T.decodeUtf8 $ LB.toStrict $ A.encode jsonVal)
           & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%"
-        pure ()
 pactRpcWidget (Continuation c) = do
   dialogSectionHeading mempty "Continuation Data"
   divClass "group" $ do
@@ -694,9 +681,9 @@ capListWidget :: MonadWidget t m => [SigCapability] -> m ()
 capListWidget [] = text "Unscoped Signer"
 capListWidget cl = do
   let
-    lines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] cl
-    txt = T.init $ T.init $ T.unlines lines
-    rows = tshow $ 2 * length lines
+    capLines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] cl
+    txt = T.init $ T.init $ T.unlines capLines
+    rows = tshow $ 2 * length capLines
   void $ uiTextAreaElement $ def
     & textAreaElementConfig_initialValue .~ txt
     & initialAttributes .~ fold

@@ -23,7 +23,6 @@ import Control.Monad.State.Strict
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Default (Default (..))
 import Data.Some (Some(..))
-import Data.String (IsString)
 import Data.Text (Text)
 import GHCJS.DOM.EventM (on)
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
@@ -308,7 +307,7 @@ codeWidget appCfg anno iv sv = do
     return $ _extendedACE_onUserChange ace
 
 networkBar
-  :: 
+  ::
   ( MonadWidget t m
   , HasCrypto key m
   , HasTransactionLogger m
