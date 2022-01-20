@@ -126,7 +126,6 @@ data DataToBeSigned
   | DTB_EmptyString
   deriving (Show, Eq)
 
--- TODO: Make sure this makes sense
 payloadToSigData :: Payload PublicMeta Text -> Text -> SigData Text
 payloadToSigData parsedPayload payloadTxt = SigData cmdHash sigs $ Just payloadTxt
   where
@@ -266,7 +265,7 @@ approveSigDialog model sbr = Workflow $ do
       -- dNodeInfos = model^.network_selectedNodes
       sigs = _sigDataSigs sigData --[(PublicKeyHex, Maybe UserSig)]
       p = _sbr_payload sbr
-  onClose <- modalHeader $ text "Approve Transaction"
+  onClose <- modalHeader $ text "Review Transaction"
   sbTabDyn <- fst <$> sigBuilderSummaryTabs never
   sigsOrKeysE <- modalMain $ do
     -- TODO: Do this in a way that isnt completely stupid
@@ -438,6 +437,10 @@ showTransactionSummary dSummary p = do
         kda = Map.lookup "coin" tokens
         tokens' = Map.delete "coin" tokens
     mkLabeledClsInput True "Tx Type" $ const $ text $ prpc $ p^.pPayload
+    case _ts_maxGas summary of
+      Nothing -> blank
+      Just price -> void $ mkLabeledClsInput True "Max Gas Cost" $
+        const $ text $ renderCompactText price <> " KDA"
     flip (maybe blank) kda $ \kdaAmount ->
       void $ mkLabeledClsInput True "Amount KDA" $ const $
         text $ showWithDecimal kdaAmount <> " KDA"
@@ -447,10 +450,6 @@ showTransactionSummary dSummary p = do
           el "p" $ text $ showWithDecimal amount <> " " <> name
     void $ mkLabeledClsInput True "Unscoped Sigs" $
       const $ text $ tshow $ _ts_numUnscoped summary
-    case _ts_maxGas summary of
-      Nothing -> blank
-      Just price -> void $ mkLabeledClsInput True "Max Gas Cost" $
-        const $ text $ renderCompactText price <> " KDA"
   where
     prpc (Exec _) = "Exec"
     prpc (Continuation _) = "Continuation"
