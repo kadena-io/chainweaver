@@ -203,28 +203,37 @@ warningDialog warningMsg backW nextW = Workflow $ do
 
 errorDialog
   :: (MonadWidget t m)
-  => Text
+  => m ()
   -> Workflow t m (Event t ())
   -> Workflow t m (Event t ())
 errorDialog errorMsg backW = Workflow $ do
   onClose <- modalHeader $ text "Error"
   void $ modalMain $ do
     el "h3" $ text "Error"
-    el "p" $ text errorMsg
+    errorMsg
   back <- modalFooter $ cancelButton def "Back"
   pure $ (onClose, backW <$ back)
+
+-- Checks a list of workflow-based functions that take a next param which allows us to chain through
+-- all errors and warnings. The difference between a "Warning" and an "Error" workflow is that the
+-- warning allows the user to select to continue even if the predicate it checks against is true,
+-- whereas an error will only continue if the predicate it checks for is false
+checkAll
+  :: a -> [(a -> a)] -> a
+checkAll nextW [] = nextW
+checkAll nextW [singleW] = singleW nextW
+checkAll nextW (x:xs) = x $ checkAll nextW xs
+
 
 checkAndSummarize
   :: SigBuilderWorkflow t m model key
   => model
   -> SigBuilderRequest key
   -> Workflow t m (Event t ())
-checkAndSummarize model sbr = checkNetwork
-  -- TODO: Add "hash-mismatch" error when Sig-Data hash and payload hash are not identical
-  -- Check the SigData_Hash and Payload AS Text
-  -- if Set.disjoint cwPubKeys signerPubkeys
-  --    then errorDialog "Chainweaver does not possess any of the keys required for signing" backW
-  --    else checkNetwork
+checkAndSummarize model sbr =
+  let errorWorkflows = [checkForHashMismatch, checkMissingSigs]
+      warningWorkflows = [checkNetwork]
+   in flip checkAll errorWorkflows $ checkAll nextW warningWorkflows
   where
     sigData = _sbr_sigData sbr
     backW = txnInputDialog model (Just sigData)
@@ -236,6 +245,20 @@ checkAndSummarize model sbr = checkNetwork
     cwNetwork = _sbr_currentNetwork sbr
     payloadNetwork = mkNetworkName . view networkId
       <$> (_pNetworkId $ _sbr_payload sbr)
+    checkForHashMismatch next = do
+      let sbrHash = _sigDataHash sigData
+          payloadTxt = _sigDataCmd sigData
+      case fmap (hash . T.encodeUtf8) payloadTxt of
+        Just payloadHash -> if sbrHash == payloadHash
+          then next
+          else flip errorDialog backW $ do
+            el "p" $ text
+              "Danger! The actual hash of the payload does not match the supplied hash"
+            el "p" $ text $ "Supplied hash: " <> tshow sbrHash
+            el "p" $ text $ "Actual hash: " <> tshow payloadHash
+        -- This case shouldn't happen but we will fail anyways
+        Nothing -> flip errorDialog backW $ text "Internal error -- Your supplied sig data does not contain a payload"
+
     networkWarning currentKnown mPayNet =
       case mPayNet of
         Nothing -> "The payload you are signing does not have an associated network"
@@ -243,12 +266,18 @@ checkAndSummarize model sbr = checkNetwork
                   <> textNetworkName p <>
                   "\" but your active chainweaver node is on: \""
                   <> textNetworkName currentKnown <> "\""
-    checkNetwork =
+    checkNetwork next =
       case (cwNetwork, payloadNetwork) of
-         (Nothing, _) -> nextW
+         (Nothing, _) -> next
          (Just x, Just y)
-           | x == y -> nextW
-         (Just x, pNet) -> warningDialog (networkWarning x pNet) backW nextW
+           | x == y -> next
+         (Just x, pNet) -> warningDialog (networkWarning x pNet) backW next
+
+    checkMissingSigs next = let sigs = fmap snd $ _sigDataSigs sigData in
+      case (length $ catMaybes sigs) == length sigs of
+        False -> next
+        True -> flip errorDialog backW $ text "Everything has been signed. There is nothing to add"
+
 
 --------------------------------------------------------------------------------
 -- Approval
