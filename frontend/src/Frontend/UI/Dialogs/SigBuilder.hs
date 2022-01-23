@@ -115,7 +115,7 @@ txnInputDialog model mInitVal = Workflow $ mdo
   dmSigData <- modalMain $ divClass "group" $ parseInputToSigDataWidget mInitVal
   (onCancel, approve) <- modalFooter $ (,)
     <$> cancelButton def "Cancel"
-    <*> confirmButton (def & uiButtonCfg_disabled .~ ( isNothing <$> dmSigData )) "Approve"
+    <*> confirmButton (def & uiButtonCfg_disabled .~ ( isNothing <$> dmSigData )) "Review"
   let approveE = fmapMaybe id $ tag (current dmSigData) approve
       sbr = attachWith (\(keys, net) (sd, pl) -> SigBuilderRequest sd pl net keys) keysAndNet approveE
   return (onCancel <> onClose, checkAndSummarize model <$> sbr)
