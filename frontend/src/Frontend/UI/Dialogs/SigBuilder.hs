@@ -238,10 +238,6 @@ checkAndSummarize model sbr =
     sigData = _sbr_sigData sbr
     backW = txnInputDialog model (Just sigData)
     nextW = approveSigDialog model sbr
-    -- cwPubKeys = Set.fromList $ fmap (_keyPair_publicKey . _key_pair) $ _sbr_cwKeys sbr
-    -- signerPubkeys = Set.fromList $ rights
-    --   $ fmap (parsePublicKey . _siPubKey)
-    --   $ _pSigners $ _sbr_payload sbr
     cwNetwork = _sbr_currentNetwork sbr
     payloadNetwork = mkNetworkName . view networkId
       <$> (_pNetworkId $ _sbr_payload sbr)
@@ -291,7 +287,6 @@ approveSigDialog model sbr = Workflow $ do
   let sigData = _sbr_sigData sbr
       sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
       keys = fmap _key_pair $ _sbr_cwKeys sbr
-      -- dNodeInfos = model^.network_selectedNodes
       sigs = _sigDataSigs sigData --[(PublicKeyHex, Maybe UserSig)]
       p = _sbr_payload sbr
   onClose <- modalHeader $ text "Review Transaction"
@@ -411,10 +406,13 @@ showSigsWidget p cwKeys sigs sdHash = do
     isUnscoped (Signer _ _ _ capList) = capList == []
     ifEmptyBlankSigner l w = if l == [] then (blank >> pure []) else w
     unOwnedSigningInput s =
-      let (Right pub) = parsePublicKey $ _siPubKey s
-       in if pub `elem` cwKeys
-        then blank >> pure Nothing
-        else fmap Just $ uiSigningInput sdHash pub
+      let mPub = hush $ parsePublicKey $ _siPubKey s
+       in case mPub of
+            Nothing -> blank >> pure Nothing
+            Just pub ->
+              if pub `elem` cwKeys
+                then blank >> pure Nothing
+                else fmap Just $ uiSigningInput sdHash pub
 
     unscopedSignerRow s = do
       divClass "signer__pubkey" $ text $ _siPubKey s
@@ -459,7 +457,6 @@ showTransactionSummary
   -> Payload PublicMeta Text
   -> m ()
 showTransactionSummary dSummary p = do
-  -- let pm = p ^.pMeta
   dialogSectionHeading mempty "Impact Summary"
   divClass "group" $ dyn_ $ ffor dSummary $ \summary -> do
     let tokens = _ts_tokenTransfers summary
@@ -588,10 +585,7 @@ addSigsToSigData
   -> [(PublicKeyHex, UserSig)]
   -> m (SigData Text)
 addSigsToSigData sd signingKeys sigList = do
-  --TODO: Double check hash here and fail if they dontmatch
-  let -- cmd = encodeAsText $ encode payload
-      -- cmdHashL = hash (T.encodeUtf8 cmd)
-      hashToSign = unHash $ toUntypedHash $ _sigDataHash sd
+  let hashToSign = unHash $ toUntypedHash $ _sigDataHash sd
       someSigs = _sigDataSigs sd
       pubKeyToTxt =  PublicKeyHex . keyToText . _keyPair_publicKey
       cwSigners =  fmap (\x -> (pubKeyToTxt x, _keyPair_privateKey x)) signingKeys
@@ -628,7 +622,6 @@ sigBuilderDetailsUI
   => Payload PublicMeta Text
   -> m ()
 sigBuilderDetailsUI p = do
-  -- let sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
   txMetaWidget (p^.pMeta) $ p^.pNetworkId
   pactRpcWidget  $ _pPayload p
   signerWidget $ p^.pSigners

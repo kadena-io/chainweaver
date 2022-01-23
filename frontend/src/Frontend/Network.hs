@@ -69,8 +69,6 @@ module Frontend.Network
   , getNetworkNameAndMeta
   , getCreationTime
   , encodeAsText
-
--- TODO
   , buildSigDataWithPayload 
     -- * Defaults
   , chainwebGasLimitMaximum
