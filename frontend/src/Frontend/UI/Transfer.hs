@@ -63,8 +63,8 @@ import           Data.Time.Clock.POSIX
 #if !defined(ghcjs_HOST_OS)
 import qualified Codec.QRCode as QR
 import qualified Codec.QRCode.JuicyPixels as QR
-import qualified Data.Yaml as Y
 #endif
+import qualified Data.YAML.Aeson as Y
 
 import           Pact.Types.SigData
 import           Kadena.SigningApi (AccountName(..))
@@ -1468,18 +1468,13 @@ transferDetails signedCmd = do
         , _tabBarCfg_type = TabBarType_Primary
         }
 
-#if !defined(ghcjs_HOST_OS)
       tabPane mempty curSelection TransferDetails_Yaml $ do
-        let preview = T.decodeUtf8 . Y.encodeWith yamlOptions <$> signedCmd
+        let preview = T.decodeUtf8 . Y.encode1Strict <$> signedCmd
         iv <- sample (current preview)
         uiTextAreaElement $ def
           & textAreaElementConfig_initialValue .~ iv
           & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
           & textAreaElementConfig_setValue .~ updated preview
-#else
-      let notAvailMsg = el "ul" $ text "This feature is not currently available in the browser"
-      tabPane mempty curSelection TransferDetails_Yaml notAvailMsg
-#endif
 
       tabPane mempty curSelection TransferDetails_Json $ do
         let preview = T.decodeUtf8 . LB.toStrict . encode . toJSON <$> signedCmd
@@ -1502,21 +1497,17 @@ transferDetails signedCmd = do
         el "br" blank
         elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
       tabPane mempty curSelection TransferDetails_FullQR $ do
-        let yamlText = T.decodeUtf8 . Y.encodeWith yamlOptions <$> signedCmd
+        let yamlText = T.decodeUtf8 . Y.encode1Strict <$> signedCmd
             qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> yamlText
             img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) <$> qrImage
         elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
 #else
+      let notAvailMsg = el "ul" $ text "This feature is not currently available in the browser"
       tabPane mempty curSelection TransferDetails_HashQR notAvailMsg
       tabPane mempty curSelection TransferDetails_FullQR notAvailMsg
 #endif
 
       pure ()
-
-#if !defined(ghcjs_HOST_OS)
-yamlOptions :: Y.EncodeOptions
-yamlOptions = Y.setFormat (Y.setWidth Nothing Y.defaultFormatOptions) Y.defaultEncodeOptions
-#endif
 
 uiSigningInput
   :: ( MonadWidget t m
