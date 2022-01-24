@@ -134,6 +134,11 @@ in with obelisk;
           ver = "0.2.0.0";
           sha256 = "1cfn74j6dr4279bil9k0n1wff074sdlz6g1haqyyy38wm5mdd7mr";
         } {});
+        direct-sqlite = dontCheck (self.callHackageDirect {
+          pkg = "direct-sqlite";
+          ver = "2.3.26";
+          sha256 = "1kdkisj534nv5r0m3gmxy2iqgsn6y1dd881x77a87ynkx1glxfva";
+        } {});
 
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
