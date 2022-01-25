@@ -94,7 +94,7 @@ let
           };
           initExtra = ''
             export WEBKIT_DISABLE_COMPOSITING_MODE=1;
-            export NIX_SSL_CERT_FILE = "${nixosExe}/bin/ca-certificates-patched.crt";
+            export NIX_SSL_CERT_FILE="${nixosExe}/bin/ca-certificates-patched.crt";
           '';
         };
         # TODO: Why can't I use more declarative nix:
