@@ -64,7 +64,7 @@ frontend = Frontend
       _ <- newHead $ \r -> base <> renderBackendRoute backendEncoder r
       pure ()
 
-  , _frontend_body = prerender_ loaderMarkup $ do
+  , _frontend_body = prerender_ loaderMarkupSpecial $ do
     liftIO $ hSetBuffering stderr LineBuffering
     liftIO $ hSetBuffering stdout LineBuffering
     (fileOpened, triggerOpen) <- openFileDialog
@@ -115,6 +115,13 @@ openFileDialog = do
             HTMLInput.setFiles (_inputElement_raw input) Nothing
             HTMLElement.click $ _inputElement_raw input
       pure (fmapMaybe id mContents, open)
+
+loaderMarkupSpecial :: DomBuilder t m => m ()
+loaderMarkupSpecial = divClass "spinner" $ do
+  let styleStr = "margin-left: auto; margin-right:auto; display: block;"
+      loadingStyle = "text-align: center; padding: 20px;"
+  elAttr "img" ("src" =: static @"capy.gif" <> "style" =: styleStr) blank
+  elAttr "h3" ("style" =: loadingStyle) $ text "Loading"
 
 loaderMarkup :: DomBuilder t m => m ()
 loaderMarkup = divClass "spinner" $ do
