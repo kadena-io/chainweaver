@@ -322,15 +322,18 @@ networkBar m sign = do
   signingPopupCfg <- sigBuilderCfg m sign
   networkCfg <- divClass "main-header main-header__network-bar" $ do
   -- Present the dropdown box for selecting one of the configured networks.
-  networkCfg <- divClass "page__network-bar-select" $ do
-    selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
-    pure $ mempty & networkCfg_selectNetwork .~ selectEv
-  divClass "page__network-bar-token" $ do
-    divClass "page__network-bar-token-text" $ do
-      text "Current Token:   "
-      dynText $ ffor (m ^. wallet_fungible) $ \case
-        "coin" -> "KDA"
-        t -> renderCompactText t
+    netCfg <- divClass "page__network-bar-select" $ do
+      selectEv <- uiNetworkSelectTopBar "select_type_special"
+        (m ^. network_selectedNetwork)
+        (m ^. network_networks)
+      pure $ mempty & networkCfg_selectNetwork .~ selectEv
+    divClass "page__network-bar-token" $ do
+      divClass "page__network-bar-token-text" $ do
+        text "Current Token:   "
+        dynText $ ffor (m ^. wallet_fungible) $ \case
+          "coin" -> "KDA"
+          t -> renderCompactText t
+    pure netCfg
   pure $ networkCfg <> signingPopupCfg
 
 

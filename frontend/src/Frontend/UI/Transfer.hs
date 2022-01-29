@@ -421,8 +421,10 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
     let eWrapper (Just f, Just t) = do
           let fks = fromMaybe mempty f
           let tks = fromMaybe mempty t
+          modHashMap <- sample $ current $ model ^. wallet_moduleData
           (conf, closes) <- fmap splitDynPure $ workflow $
-            checkContractHashOnBothChains model netInfo ti ty fks tks
+            -- checkSendingAccountExists model netInfo ti ty fks tks
+            checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap
           mConf <- flatten =<< tagOnPostBuild conf
           let close = switch $ current closes
           pure (mConf, close)
@@ -566,11 +568,12 @@ checkContractHashOnBothChains
   -> TransferType
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
+  -> Map ChainId (Maybe Text)
   -> Workflow t m (mConf, Event t ())
-checkContractHashOnBothChains model netInfo ti ty fks tks = Workflow $ do
-  modHashMap <- sample $ current $ model ^. wallet_moduleData
+checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap = do
   let toChain = _ca_chain $ _ti_toAccount ti
       fromChain = _ca_chain $ _ti_fromAccount ti
+      --TODO: Just pass this val in as arg instead of passing around the whole map
       hashPair = (,) <$> Map.lookup fromChain modHashMap <*> Map.lookup toChain modHashMap
   case hashPair of
     -- This case implies likely occurs during throttling, so we will continue and allow it
@@ -581,11 +584,11 @@ checkContractHashOnBothChains model netInfo ti ty fks tks = Workflow $ do
     Just (Just a, Just b) | a /= b -> errMsgMatchModHashes a b (toChain, fromChain)
     otherwise -> checkSendingAccountExists model netInfo ti ty fks tks
   where
-    errNonexistentModule = do
+    errNonexistentModule = Workflow $ do
       cancel <- fatalTransferError $
         text "Transfer cannot be completed: This token does not exist on both the source and destination chains"
       return ((mempty, cancel), never)
-    errMsgMatchModHashes a b (fromChain, toChain) = do
+    errMsgMatchModHashes a b (fromChain, toChain) = Workflow $ do
       cancel <- fatalTransferError $ do
         el "div" $ text $ "Cross chain transfer requires matching module hashes for token: " <>
           (renderCompactText $ _ti_fungible ti)
