@@ -89,7 +89,6 @@ library
     , servant-jsaddle
     , split
     , string-qq
-    , system-locale
     , template-haskell
     , text
     , th-extras
