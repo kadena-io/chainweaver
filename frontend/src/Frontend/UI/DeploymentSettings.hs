@@ -21,6 +21,8 @@
 module Frontend.UI.DeploymentSettings
   ( -- * Settings
     DeploymentSettingsConfig (..)
+  , PayloadDeploymentConfig (..)
+  , ContCfg (..)
   , DeploymentSettingsResult (..)
 
     -- * Errors
@@ -114,6 +116,17 @@ import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (preventUpAndDownArrow, preventScrollWheel, dialogSectionHeading)
 import Frontend.Wallet
 
+data PayloadDeploymentConfig t =
+    Payload_ExecCfg (Dynamic t Text)
+  | Payload_ContCfg  ContCfg
+
+data ContCfg = ContCfg
+  { _contCfg_pactId :: Text
+  , _contCfg_rollback :: Bool
+  , _contCfg_step :: Int
+  , _contCfg_proof :: Maybe Text
+  }
+
 -- | Config for the deployment settings widget.
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   { _deploymentSettingsConfig_userTab     :: Maybe (Text, m a)
@@ -131,8 +144,8 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
   , _deploymentSettingsConfig_data        :: Maybe Aeson.Object
     -- ^ Data selection. If 'Nothing', uses the users setting (and allows them
     -- to alter it). Otherwise, it remains fixed.
-  , _deploymentSettingsConfig_code :: Dynamic t Text
-    -- ^ Code that is being deployed
+  , _deploymentSettingsConfig_payload :: PayloadDeploymentConfig t
+    
   , _deploymentSettingsConfig_nonce :: Maybe Text
     -- ^ Nonce. 'Nothing' will autogenerate a nonce based on the current time.
   , _deploymentSettingsConfig_ttl :: Maybe TTLSeconds
@@ -386,7 +399,8 @@ uiDeploymentSettings
   -> DeploymentSettingsConfig t m model a
   -> m (mConf, Event t (DeploymentSettingsResult key), Maybe a)
 uiDeploymentSettings m settings = mdo
-    let code = _deploymentSettingsConfig_code settings
+    --TODO: FIX patternmatch
+    let (Payload_ExecCfg code) = _deploymentSettingsConfig_payload settings
     (curSelection, done, _) <- buildDeployTabs mUserTabName (_deploymentSettingsConfig_includePreviewTab settings) controls
     (conf, result, ma) <- elClass "div" "modal__main transaction_details" $ do
 

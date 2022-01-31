@@ -376,7 +376,7 @@ uiDeployConfirmation code model = fullDeployFlow def model $ do
   (settingsCfg, result, _) <- uiDeploymentSettings model $ DeploymentSettingsConfig
     { _deploymentSettingsConfig_chainId = fmap value . userChainIdSelect . getChainsFromHomogenousNetwork
     , _deploymentSettingsConfig_userTab = Nothing
-    , _deploymentSettingsConfig_code = pure code
+    , _deploymentSettingsConfig_payload = Payload_ExecCfg $ pure code
     , _deploymentSettingsConfig_sender = \_ _ _ -> uiAccountAny
     , _deploymentSettingsConfig_data = Nothing
     , _deploymentSettingsConfig_ttl = Nothing

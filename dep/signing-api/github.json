@@ -1,8 +1,8 @@
 {
   "owner": "kadena-io",
   "repo": "signing-api",
-  "branch": "master",
+  "branch": "jam/cont-signing",
   "private": false,
-  "rev": "bf0f4dda9b02bfb107d36ab0edf2333b0568d4aa",
-  "sha256": "104yamzy1sdnkjsjkcqqlz5jm0y03vhq4nqqvbwfcmywav3r66jv"
+  "rev": "3496b0876cb7da33b67cf38b9c188dfa64b4693b",
+  "sha256": "0qzf4i3q6w5kp9lahmy7zvk1l3dy3ayhj95qhi2x2ppijg7w0mf5"
 }
