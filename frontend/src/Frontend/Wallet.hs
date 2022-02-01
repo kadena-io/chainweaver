@@ -74,6 +74,7 @@ import Pact.Types.PactError
 import Reflex
 import Reflex.Dom.Core ((=:))
 
+import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Text as Text
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
@@ -128,6 +129,7 @@ data Wallet key t = Wallet
     -- ^ Accounts added and removed by the user
   , _wallet_fungible :: Dynamic t ModuleName
   , _wallet_moduleData :: Dynamic t ModuleData
+  , _wallet_tokenList :: Dynamic t (NonEmpty ModuleName)
   }
   deriving Generic
 
@@ -317,6 +319,7 @@ makeWallet mChangePassword model conf = do
     , _wallet_accounts = accounts
     , _wallet_fungible = dFungible
     , _wallet_moduleData = dModuleData
+    , _wallet_tokenList = constDyn $ "coin" :| [ "free.fungible-crosschain-test"]
     }
   where
     addStarterKey m = if IntMap.null m then Just (addNewKey m) else Nothing

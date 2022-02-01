@@ -45,8 +45,26 @@ inputToken
 inputToken model _ = Workflow $ do
   close <- modalHeader $ text "Switch Token"
   dmFung <- modalMain $ do
+    tokenList <- sample $ current $ model ^. wallet_tokenList
     currentFung <- sample $ current $ model ^. wallet_fungible
-    divClass "group" $ fmap snd $ uiTokenInput False currentFung
+
+--     uiNodeInput cfg = do
+--       ie <- uiInputElement cfg
+--       pure (ie, parseNodeRefFull . T.strip <$> _inputElement_input ie)
+
+--     showNodePopover =
+--       pure . fmap (either PopoverState_Error (const PopoverState_Disabled)) . snd
+
+--     elClass "li" "table__row table__row_type_primary" $ do
+--       divClass "table__row-counter" blank
+--       (nodeInput, _) <- divClass "table__cell table__cell_size_flex" $
+--         uiInputWithPopover uiNodeInput (_inputElement_raw . fst) showNodePopover $ def
+--           & inputElementConfig_initialValue .~ maybe "" renderNodeRef initVal
+--           & initialAttributes .~ mconcat
+--             [ "class" =: "input_width_full"
+--             , "placeholder" =: "Add node"
+--             ]
+    divClass "group" $ fmap snd $ uiTokenInput False Nothing
   done <- modalFooter $ do
     confirmButton def "Done"
   let 

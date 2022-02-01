@@ -24,7 +24,6 @@ module Frontend.UI.Wallet
   , uiAvailableKeys
   , uiWalletRefreshButton
   , uiSwitchTokenButton
-  , uiResetTokenButton
   , uiWatchRequestButton
   , uiGenerateKeyButton
     -- ** Filters for keys
@@ -112,21 +111,6 @@ uiWalletRefreshButton
 uiWalletRefreshButton = do
   eRefresh <- uiButton headerBtnCfg (text "Refresh")
   pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
-
-uiResetTokenButton
-  :: ( MonadWidget t m
-     , Monoid mConf
-     , Flattenable (ModalCfg mConf t) t
-     , HasWalletCfg mConf key t
-     , HasWallet model key t
-     )
-  => model -> m mConf
-uiResetTokenButton model = do
-  let
-    isDisabled = (== "coin") <$> model ^. wallet_fungible
-    resetButtonCfg = headerBtnCfg {_uiButtonCfg_disabled = isDisabled }
-  switch <- uiButtonDyn resetButtonCfg (text "Reset to KDA")
-  pure $ mempty & walletCfg_fungibleModule .~ ("coin" <$ switch)
 
 uiSwitchTokenButton
   :: ( MonadWidget t m

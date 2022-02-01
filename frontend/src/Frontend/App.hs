@@ -23,6 +23,7 @@ import Control.Monad.State.Strict
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Default (Default (..))
 import Data.Some (Some(..))
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text (Text)
 import GHCJS.DOM.EventM (on)
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
@@ -56,6 +57,7 @@ import Frontend.OAuth
 import Frontend.Network
 import Frontend.Repl
 import Frontend.Storage
+import Frontend.UI.FormWidget
 import qualified Frontend.VersionedStore as Store
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.AddVanityAccount (uiAddAccountButton)
@@ -119,13 +121,12 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
               _ -> Nothing
         netCfg <- networkBar ideL sigPopup
         (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
-          resetToken <- uiResetTokenButton ideL
           switchToken <- uiSwitchTokenButton ideL
           refreshCfg <- uiWalletRefreshButton
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
           xferVisible <- uiTransferButton
-          pure $ (xferVisible, resetToken <> switchToken <> watchCfg <> addCfg <> refreshCfg)
+          pure $ (xferVisible, switchToken <> watchCfg <> addCfg <> refreshCfg)
         divClass "wallet-scroll-wrapper" $ do
           transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
           accountsCfg <- uiAccountsTable ideL startOpen
@@ -320,21 +321,23 @@ networkBar
   -> m (ModalIdeCfg m key t)
 networkBar m sign = do
   signingPopupCfg <- sigBuilderCfg m sign
-  networkCfg <- divClass "main-header main-header__network-bar" $ do
+  barCfg <- divClass "main-header main-header__network-bar" $ do
   -- Present the dropdown box for selecting one of the configured networks.
     netCfg <- divClass "page__network-bar-select" $ do
       selectEv <- uiNetworkSelectTopBar "select_type_special"
         (m ^. network_selectedNetwork)
         (m ^. network_networks)
       pure $ mempty & networkCfg_selectNetwork .~ selectEv
-    divClass "page__network-bar-token" $ do
+    tokenCfg <- divClass "page__network-bar-token" $ do
       divClass "page__network-bar-token-text" $ do
-        text "Current Token:   "
-        dynText $ ffor (m ^. wallet_fungible) $ \case
-          "coin" -> "KDA"
-          t -> renderCompactText t
-    pure netCfg
-  pure $ networkCfg <> signingPopupCfg
+        text "Current Token:       "
+        initToken <- sample $ current $ m ^. wallet_fungible
+        let cfg = mkCfg initToken
+              & primFormWidgetConfig_initialAttributes <>~ ("class" =: "select select_type_special")
+        newToken <- uiTokenDropdown m cfg $ m^.wallet_tokenList
+        pure $ mempty & walletCfg_fungibleModule .~ updated newToken
+    pure $ netCfg <> tokenCfg
+  pure $ barCfg <> signingPopupCfg
 
 
 controlBar

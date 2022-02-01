@@ -43,6 +43,7 @@ module Frontend.UI.Widgets
   , uiAccountAny
   , uiAccountDropdown
   , uiAccountDropdown'
+  , uiTokenDropdown
   , uiKeyPairDropdown
   , uiRequestKeyInput
   , uiTokenInput
@@ -111,6 +112,7 @@ module Frontend.UI.Widgets
   ) where
 
 
+import qualified Data.List.NonEmpty as NE
 ------------------------------------------------------------------------------
 import           Control.Applicative
 import           Control.Arrow (first, (&&&))
@@ -1234,6 +1236,20 @@ uiAccountDropdown
   -> m (Dynamic t (Maybe (AccountName, Account)))
 uiAccountDropdown uCfg allowAccount mkPlaceholder m = uiAccountDropdown' uCfg allowAccount mkPlaceholder m Nothing
 
+uiTokenDropdown
+  :: forall t m key model
+   . ( HasWallet model key t
+     , DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m
+     )
+  => model
+  -> PrimFormWidgetConfig t ModuleName
+  -> Dynamic t (NE.NonEmpty ModuleName)
+  -> m (Dynamic t ModuleName)
+uiTokenDropdown m cfg tokenList = fmap value $ dropdownFormWidget tokenMap cfg
+  where
+    tokenMap = ffor tokenList $ \ne ->
+      Map.fromList $ fmap (\a -> (a, renderCompactText a)) $ NE.toList ne
+
 uiKeyPairDropdown
   :: forall t m key model
    . ( HasWallet model key t
@@ -1265,6 +1281,7 @@ data PopoverState
   = PopoverState_Error Text
   | PopoverState_Warning Text
   | PopoverState_Disabled
+  | PopoverState_Loading
   deriving (Eq, Show)
 
 uiInputWithPopover
@@ -1290,6 +1307,7 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
     popoverBlurCls = \case
       PopoverState_Error _ -> Just "popover__error-state"
       PopoverState_Warning _ -> Just "popover__warning-state"
+      PopoverState_Loading -> Just "popover__loading-state"
       PopoverState_Disabled -> Nothing
 
     popoverDiv :: Map Text Text -> m ()
@@ -1305,6 +1323,7 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
       PopoverState_Error m -> popoverAttrs "popover__error" m
       PopoverState_Warning m -> popoverAttrs "popover__warning" m
       PopoverState_Disabled -> popoverHiddenAttrs
+      PopoverState_Loading -> popoverHiddenAttrs
 
     pushClass :: JS.IsElement e => Text -> e -> JSM ()
     pushClass cls = JS.getClassList >=> flip JS.add [cls]
@@ -1315,6 +1334,8 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
     onShift f e (popoverBlurCls -> Just cls) = liftJSM $ f cls e
     onShift _ _ _ = pure ()
 
+    popoverLoader cls =
+      elAttr "img" ("class" =: ("fa fa-warning popover__icon " <> cls) <> "src" =: static @"img/two-arrows-small.gif") blank
     popoverIcon cls =
       elClass "i" ("fa fa-warning popover__icon " <> cls) blank
 
@@ -1325,6 +1346,7 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
 
   _ <- dyn_ $ ffor dPopState $ \case
     PopoverState_Disabled -> blank
+    PopoverState_Loading -> popoverLoader "popover__icon-loading"
     PopoverState_Error _ -> popoverIcon "popover__icon-error"
     PopoverState_Warning _ -> popoverIcon "popover__icon-warning"
 
@@ -1360,23 +1382,39 @@ uiTokenInput
   :: ( MonadWidget t m
      )
   => Bool
-  -> ModuleName
+  -> Maybe ModuleName
   -> m ( Event t (Either Text ModuleName)
        , Dynamic t (Either Text ModuleName)
        )
-uiTokenInput inlineLabel initFung = do
+uiTokenInput inlineLabel mInitFung = do
   let
     mkMsg True (Left _) = PopoverState_Error "Invalid Token Name"
-    mkMsg _    _ = PopoverState_Disabled
+    mkMsg _  _ = PopoverState_Disabled
 
     parseModuleNameText = BiF.first T.pack . parseModuleName
 
-    showPopover (ie, _) = pure $ _inputElement_input ie <&> \t ->
-      mkMsg (not $ T.null t) (parseModuleNameText $ T.strip t)
+    -- showPopover :: _
+    showPopover (ie, _) = do
+      e <- debounce 0.75 $ updated $ _inputElement_value ie
+      let (e1, loadingE) = fanEither $ e <&> \t ->
+                             if T.null t then Left PopoverState_Disabled else
+                             case parseModuleNameText $ T.strip t of
+                               Left _ -> Left $ PopoverState_Error "Invalid Token Name"
+                               Right _ -> Right $ T.strip t
+      pb <- getPostBuild
+      foo <- fmap (PopoverState_Error "Invalid Module" <$) $ delay 5.0 loadingE
+      let loadingDone = foo <$ pb
+      -- loadingDone <- performEvent $ ffor loadingE $ \t -> do
+      --   pb <- getPostBuild
+      --   res <- delay 5.0 pb
+      --   pure $ PopoverState_Error "Invalid Module" <$ res
+      res <- switchHold never loadingDone
+      return $ leftmost [ e1, PopoverState_Loading <$ loadingE, res]
+
 
     uiTokenInputElem cfg = do
       inp <- uiInputElement $ cfg
-        & inputElementConfig_initialValue .~ (renderCompactText initFung)
+        & inputElementConfig_initialValue .~ (maybe "" renderCompactText mInitFung)
       pure (inp, _inputElement_raw inp)
 
   (inputE, _) <- mkLabeledInput inlineLabel "Token Name" (uiInputWithPopover uiTokenInputElem snd showPopover) def
