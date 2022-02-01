@@ -63,6 +63,10 @@
   min-height: 0;
 }
 
+.input_type_textarea.labeled-input__input.labeled-input__sig-builder {
+  min-height: 350px;
+}
+
 .input_type_textarea.labeled-input__input.labeled-input__tx-builder {
   // Allow the "rows" attr to resize the box appropriately
   height: auto;

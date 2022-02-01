@@ -18,7 +18,7 @@ module Frontend.UI.Widgets
   -- ** Single Purpose Widgets
   , uiGasPriceInputField
   , uiDetailsCopyButton
-
+  , uiTxSigner
   , uiTxBuilder
   , uiDisplayTxBuilderWithCopy
     -- * Values for _deploymentSettingsConfig_chainId:
@@ -129,8 +129,10 @@ import qualified Data.IntMap as IntMap
 import           Data.Proxy                  (Proxy(..))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
+import qualified Data.Text.Encoding          as T
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Builder as LTB
+import qualified Data.YAML.Aeson as Y
 import           GHC.Word
 import           Data.Decimal                (Decimal)
 import qualified Data.Decimal                as D
@@ -145,6 +147,7 @@ import           System.Random
 import           Text.Read                   (readMaybe)
 ------------------------------------------------------------------------------
 import Pact.Types.ChainId (ChainId (..))
+import Pact.Types.SigData
 import Pact.Types.Runtime (GasPrice (..))
 import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.Command (RequestKey)
@@ -864,6 +867,21 @@ uiDetailsCopyButton txt = do
         & uiButtonCfg_class .~ constDyn "button_type_confirm"
         & uiButtonCfg_title .~ constDyn (Just "Copy")
   divClass "details__copy-btn-wrapper" $ copyButtonLight cfg False txt
+
+uiTxSigner
+  :: DomBuilder t m
+  => Maybe (SigData Text)
+  -> CssClass
+  -> TextAreaElementConfig r t (DomBuilderSpace m)
+  -> m (TextAreaElement r (DomBuilderSpace m) t)
+uiTxSigner mSigData cls cfg = do
+  let sigDataText = maybe "" (T.decodeUtf8 . Y.encode1Strict) mSigData
+  uiTextAreaElement $ cfg
+    & textAreaElementConfig_initialValue .~ sigDataText
+    & initialAttributes <>~ fold
+      [
+        "class" =: " labeled-input__input labeled-input__sig-builder"
+      ]
 
 uiTxBuilder
   :: DomBuilder t m

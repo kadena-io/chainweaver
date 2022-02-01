@@ -52,6 +52,8 @@ library
     , here
 --    , http-client
 --    , http-client-tls
+    , HsYAML
+    , HsYAML-aeson
     , http-types
     , jsaddle
     , kadena-signing-api
@@ -87,7 +89,6 @@ library
     , servant-jsaddle
     , split
     , string-qq
-    , system-locale
     , template-haskell
     , text
     , th-extras
@@ -112,7 +113,6 @@ library
   if !impl(ghcjs)
     build-depends:
         qrcode-juicypixels
-      , yaml
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
@@ -168,6 +168,7 @@ library
                  , Frontend.UI.Dialogs.Send
                  , Frontend.UI.Dialogs.Send.ManualTxBuilder
                  , Frontend.UI.Dialogs.Signing
+                 , Frontend.UI.Dialogs.SigBuilder
                  , Frontend.UI.Dialogs.AccountDetails
                  , Frontend.UI.Dialogs.KeyDetails
                  , Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset

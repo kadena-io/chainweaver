@@ -47,6 +47,7 @@ in with obelisk;
           obelisk-oauth-common = hackGet ./dep/obelisk-oauth + /common;
           obelisk-oauth-frontend = hackGet ./dep/obelisk-oauth + /frontend;
           obelisk-oauth-backend = hackGet ./dep/obelisk-oauth + /backend;
+          HsYAML-aeson = hackGet ./dep/HsYAML-aeson;
 
           # Needed for obelisk-oauth currently (ghcjs support mostly):
           entropy = hackGet ./dep/entropy;
@@ -134,6 +135,11 @@ in with obelisk;
           pkg = "pact-time";
           ver = "0.2.0.0";
           sha256 = "1cfn74j6dr4279bil9k0n1wff074sdlz6g1haqyyy38wm5mdd7mr";
+        } {});
+        direct-sqlite = dontCheck (self.callHackageDirect {
+          pkg = "direct-sqlite";
+          ver = "2.3.26";
+          sha256 = "1kdkisj534nv5r0m3gmxy2iqgsn6y1dd881x77a87ynkx1glxfva";
         } {});
 
       };

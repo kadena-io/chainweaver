@@ -5,6 +5,7 @@
 *********************************************************************************/
 
 @import '../include/defs';
+@import '../common.blocks/_group';
 
 .modal {
   display: none;
@@ -383,7 +384,6 @@ button.button.button_type_tertiary.logout-confirm-modal__button {
   text-align: right;
 }
 
-
 $index-width: 20%;
 $accordion-width: 10%;
 $signer-width: 60%;
@@ -424,4 +424,13 @@ $signer-width: 60%;
 
 .payload__tx-index {
   width: $index-width;
+
+.group__signer {
+  @extend .group;
+  margin-top: 15px;
+}
+
+.signer__row {
+  display: flex;
+  margin-top: 10px;
 }
