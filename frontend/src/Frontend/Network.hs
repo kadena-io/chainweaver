@@ -70,7 +70,6 @@ module Frontend.Network
   , getNetworkNameAndMeta
   , getCreationTime
   , encodeAsText
-  , buildSigDataWithPayload
     -- * Defaults
   , chainwebGasLimitMaximum
   , defaultTransactionGasLimit
@@ -1107,63 +1106,6 @@ buildCmdWithPayload payload signingKeys = do
     , _cmdSigs = sigs
     , _cmdHash = cmdHashL
     }
-
-buildSigDataWithPayload
-  :: ( MonadIO m
-     , MonadJSM m
-     , HasCrypto key m
-     )
-  => Payload PublicMeta Text
-  -> [KeyPair key]
-  -- ^ Keys which we are signing with
-  -> m (Either String (SigData Text))
-buildSigDataWithPayload payload signingKeys = do
-  let cmd = encodeAsText $ encode payload
-      cmdHashL = hash (T.encodeUtf8 cmd)
-      pkt2pk = fromPactPublicKey . Pact.PublicKey . T.encodeUtf8
-      keySets = Map.fromList $ fmap (_keyPair_publicKey &&& id) signingKeys
-      signingKeysets = ffor (payload^.pSigners) $ \signer ->
-        let pk = pkt2pk $ signer^.siPubKey
-        in (signer, pk `Map.lookup` keySets)
-  sigs <- buildSigsPreserveOrder cmdHashL signingKeysets
-  pure $ BiF.second (\sd' -> sd' { _sigDataSigs = sigs }) $
-    unsignedCommandToSigData $ Command
-      { _cmdPayload = cmd
-      , _cmdSigs = []
-      , _cmdHash = cmdHashL
-      }
-
--- |Copied from Pact.Types.SigData in anticipation of the function `commandToSigData` being
---  changed and silently breaking any use of it that relies on the fact that it ignores the
---  _cmdSig field
-unsignedCommandToSigData :: Command Text -> Either String (SigData Text)
-unsignedCommandToSigData c = do
-  let ep = traverse parsePact =<< (eitherDecodeStrict' $ T.encodeUtf8 $ _cmdPayload c)
-  case ep :: Either String (Payload Value ParsedCode) of
-    Left e -> Left $ "Error decoding payload: " <> e
-    Right p -> do
-      let sigs = map (\s -> (PublicKeyHex $ _siPubKey s, Nothing)) $ _pSigners p
-      Right $ SigData (_cmdHash c) sigs (Just $ _cmdPayload c)
-
--- |Only accepts a list of signer/keypair tuples so that the ordering of sigs has the same ordering
--- as signers, which is required by pact
-buildSigsPreserveOrder
-  :: ( MonadJSM m
-     , HasCrypto key m
-     )
-  => TypedHash h
-  -> [(Signer, Maybe (KeyPair key))]
-  -> m [(PublicKeyHex, Maybe UserSig)]
-buildSigsPreserveOrder cmdHashL signingPairs =
-  forM signingPairs $ \(signer, mkp)-> case mkp of
-    Just (KeyPair _ (Just privKey)) -> do
-      sig <- cryptoSign (unHash . toUntypedHash $ cmdHashL) privKey
-      pure (toPubKeyHex signer, Just $ toPactSig sig )
-    _ -> pure (toPubKeyHex signer, Nothing)
-  where
-    toPactSig :: Signature -> UserSig
-    toPactSig sig = UserSig $ keyToText sig
-    toPubKeyHex = PublicKeyHex . _siPubKey
 
 buildSigsWithPactKey
   :: ( MonadJSM m
