@@ -94,6 +94,18 @@ uiSigBuilderDialog model _onCloseExternal = do
 -- Input Flow
 --------------------------------------------------------------------------------
 
+data PayloadSigningRequest = PayloadSigningRequest
+  { _psr_sigData        :: SigData Text
+  , _psr_payload        :: Payload PublicMeta Text
+  }
+
+data SigningRequestWalletState key = SigningRequestWalletState
+  { _srws_currentNetwork :: Maybe NetworkName
+  , _srws_cwKeys         :: [ Key key ]
+  }
+
+--TODO: As we build out quicksign we will eventually get rid of this and replace it with the two
+--structures above
 data SigBuilderRequest key = SigBuilderRequest
   { _sbr_sigData        :: SigData Text
   , _sbr_payload        :: Payload PublicMeta Text
@@ -101,6 +113,16 @@ data SigBuilderRequest key = SigBuilderRequest
   , _sbr_cwKeys         :: [ Key key ]
   }
 
+fetchKeysAndNet
+  :: (Reflex t, HasNetwork model t, HasWallet model key t)
+  => model
+  -> Behavior t (SigningRequestWalletState key)
+fetchKeysAndNet model =
+  let cwKeys = IMap.elems <$> (model^.wallet_keys)
+      selNodes = model ^. network_selectedNodes
+      nid = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
+   in current $ SigningRequestWalletState <$> nid <*> cwKeys
+   
 txnInputDialog
   :: SigBuilderWorkflow t m model key
   => model
@@ -108,17 +130,15 @@ txnInputDialog
   -> Workflow t m (Event t ())
 txnInputDialog model mInitVal = Workflow $ mdo
   onClose <- modalHeader $ text "Signature Builder"
-  let cwKeys = IMap.elems <$> (model^.wallet_keys)
-      selNodes = model ^. network_selectedNodes
-      nid = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
-      keysAndNet = current $ (,) <$> cwKeys <*> nid
+  let keysAndNet = fetchKeysAndNet model
   dmSigData <- modalMain $ divClass "group" $ parseInputToSigDataWidget mInitVal
   (onCancel, approve) <- modalFooter $ (,)
     <$> cancelButton def "Cancel"
     <*> confirmButton (def & uiButtonCfg_disabled .~ ( isNothing <$> dmSigData )) "Review"
-  let approveE = fmapMaybe id $ tag (current dmSigData) approve
-      sbr = attachWith (\(keys, net) (sd, pl) -> SigBuilderRequest sd pl net keys) keysAndNet approveE
-  return (onCancel <> onClose, checkAndSummarize model <$> sbr)
+  let approveE = fmap (\(a, b) -> [PayloadSigningRequest a b]) $ fmapMaybe id $ tag (current dmSigData) approve
+      -- sbr = attachWith (\(keys, net) (sd, pl) -> SigBuilderRequest sd pl net keys) keysAndNet approveE
+      sbr = attach keysAndNet approveE
+  return (onCancel <> onClose, uncurry (checkAndSummarize model) <$> sbr)
 
 data DataToBeSigned
   = DTB_SigData (SigData T.Text, Payload PublicMeta Text)
@@ -224,23 +244,30 @@ checkAll nextW [] = nextW
 checkAll nextW [singleW] = singleW nextW
 checkAll nextW (x:xs) = x $ checkAll nextW xs
 
+-- data PayloadSigningRequest = PayloadSigningRequest
+--   { _psr_sigData        :: SigData Text
+--   , _psr_payload        :: Payload PublicMeta Text
+--   }
+
+-- data SigningRequestWalletState key = SigningRequestWalletState
 
 checkAndSummarize
   :: SigBuilderWorkflow t m model key
   => model
-  -> SigBuilderRequest key
+  -> SigningRequestWalletState key
+  -> [PayloadSigningRequest]
   -> Workflow t m (Event t ())
-checkAndSummarize model sbr =
+checkAndSummarize model srws (psr:rest) =
   let errorWorkflows = [checkForHashMismatch, checkMissingSigs]
       warningWorkflows = [checkNetwork]
    in flip checkAll errorWorkflows $ checkAll nextW warningWorkflows
   where
-    sigData = _sbr_sigData sbr
+    sigData = _psr_sigData psr
     backW = txnInputDialog model (Just sigData)
-    nextW = approveSigDialog model sbr
-    cwNetwork = _sbr_currentNetwork sbr
+    nextW = approveSigDialog model srws psr
+    cwNetwork = _srws_currentNetwork srws
     payloadNetwork = mkNetworkName . view networkId
-      <$> (_pNetworkId $ _sbr_payload sbr)
+      <$> (_pNetworkId $ _psr_payload psr)
     checkForHashMismatch next = do
       let sbrHash = _sigDataHash sigData
           payloadTxt = _sigDataCmd sigData
@@ -281,14 +308,16 @@ checkAndSummarize model sbr =
 approveSigDialog
   :: SigBuilderWorkflow t m model key
   => model
-  -> SigBuilderRequest key
+  -- -> SigBuilderRequest key
+  -> SigningRequestWalletState key
+  -> PayloadSigningRequest
   -> Workflow t m (Event t ())
-approveSigDialog model sbr = Workflow $ do
-  let sigData = _sbr_sigData sbr
-      sdHash = toUntypedHash $ _sigDataHash $ _sbr_sigData sbr
-      keys = fmap _key_pair $ _sbr_cwKeys sbr
+approveSigDialog model srws psr = Workflow $ do
+  let sigData = _psr_sigData psr
+      sdHash = toUntypedHash $ _sigDataHash sigData
+      keys = fmap _key_pair $ _srws_cwKeys srws
       sigs = _sigDataSigs sigData --[(PublicKeyHex, Maybe UserSig)]
-      p = _sbr_payload sbr
+      p = _psr_payload psr
   onClose <- modalHeader $ text "Review Transaction"
   sbTabDyn <- fst <$> sigBuilderSummaryTabs never
   sigsOrKeysE <- modalMain $ do
@@ -306,9 +335,10 @@ approveSigDialog model sbr = Workflow $ do
     <$> cancelButton def "Back"
     <*> confirmButton def "Sign"
   let sigsOnSubmit = mapMaybe (\(a, mb) -> fmap (a,) mb) <$> current sigsOrKeys <@ sign
+  let sbr = SigBuilderRequest sigData p (_srws_currentNetwork srws) (_srws_cwKeys srws)
   let workflowEvent = leftmost
         [ txnInputDialog model (Just sigData) <$ back
-        , signAndShowSigDialog model sbr keys (approveSigDialog model sbr) <$> sigsOnSubmit
+        , signAndShowSigDialog model sbr keys (approveSigDialog model srws psr) <$> sigsOnSubmit
         ]
   return (onClose, workflowEvent)
 
