@@ -16,7 +16,7 @@
 -- License     :  BSD-style (see the file LICENSE)
 --
 
-module Frontend.ReplGhcjs where
+module Frontend.App where
 
 import Control.Lens
 import Control.Monad.Reader (ask)
@@ -24,7 +24,6 @@ import Control.Monad.State.Strict
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Default (Default (..))
 import Data.Some (Some(..))
-import Data.String (IsString)
 import Data.Text (Text)
 import GHCJS.DOM.EventM (on)
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
@@ -60,6 +59,7 @@ import Frontend.Storage
 import qualified Frontend.VersionedStore as Store
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.AddVanityAccount (uiAddAccountButton)
+import Frontend.UI.Dialogs.SigBuilder
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
 import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
@@ -97,12 +97,11 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
   ideL <- makeIde fileFFI appCfg cfg
   FRPHandler signingReq signingResp <- _appCfg_signingHandler appCfg
   FRPHandler quickSignReq quickSignResp <- _appCfg_quickSignHandler appCfg
-  walletSidebar sidebarExtra
+  sigPopup <- walletSidebar sidebarExtra
   updates <- divClass "page" $ do
     let mkPageContent c = divClass (c <> " page__content visible")
-
         underNetworkBar lbl sub = do
-          netCfg <- networkBar ideL
+          netCfg <- networkBar ideL sigPopup
           subBarCfg <- controlBar lbl sub
           pure $ netCfg <> subBarCfg
     -- This route overriding is awkward, but it gets around having to alter the
@@ -111,7 +110,14 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     route <- askRoute
     routedCfg <- subRoute $ lift . flip runRoutedT route . \case
       FrontendRoute_Accounts -> mkPageContent "accounts" $ mdo
-        netCfg <- networkBar ideL
+        query <- askRoute
+        let
+          startOpen :: Dynamic t (Maybe AccountName)
+          startOpen =
+            ffor query $ \case
+              (FrontendRoute_Accounts :/ q) -> fmap AccountName $ join $ Map.lookup "open" q
+              _ -> Nothing
+        netCfg <- networkBar ideL sigPopup
         (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
           refreshCfg <- uiWalletRefreshButton
           watchCfg <- uiWatchRequestButton ideL
@@ -120,7 +126,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
         divClass "wallet-scroll-wrapper" $ do
           transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
-          accountsCfg <- uiAccountsTable ideL
+          accountsCfg <- uiAccountsTable ideL startOpen
           pure $ netCfg <> barCfg <> accountsCfg <> transferCfg
       FrontendRoute_Keys -> mkPageContent "keys" $ do
         walletBarCfg <- underNetworkBar "Keys" uiGenerateKeyButton
@@ -210,7 +216,7 @@ walletSidebar
      , Prerender js t m
      )
   => m ()
-  -> m ()
+  -> m (Event t ())
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
   divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
 
@@ -220,13 +226,15 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
     let sidebarLink r@(r' :/ _) label = routeLink r $ do
           let selected = demuxed route (Some r')
           void $ uiSidebarIcon selected (routeIcon r) label
-    sidebarLink (FrontendRoute_Accounts :/ ()) "Accounts"
+    sidebarLink (FrontendRoute_Accounts :/ mempty) "Accounts"
     sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
+    signEvt <- uiSidebarIcon (constDyn False) (static @"img/menu/signature.svg") "SigBuilder"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
     sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
     sidebarLink (FrontendRoute_Settings :/ ()) "Settings"
     sidebarExtra
+    pure signEvt
 
 -- | Get the routes to the icon assets for each route
 routeIcon :: R FrontendRoute -> Text
@@ -313,14 +321,22 @@ codeWidget appCfg anno iv sv = do
     return $ _extendedACE_onUserChange ace
 
 networkBar
-  :: MonadWidget t m
+  ::
+  ( MonadWidget t m
+  , HasCrypto key m
+  , HasTransactionLogger m
+  )
   => ModalIde m key t
+  -> Event t ()
   -> m (ModalIdeCfg m key t)
-networkBar m = divClass "main-header main-header__network-bar" $ do
+networkBar m sign = do
+  signingPopupCfg <- sigBuilderCfg m sign
+  networkCfg <- divClass "main-header main-header__network-bar" $ do
   -- Present the dropdown box for selecting one of the configured networks.
-  divClass "page__network-bar-select" $ do
-    selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
-    pure $ mempty & networkCfg_selectNetwork .~ selectEv
+    divClass "page__network-bar-select" $ do
+      selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
+      pure $ mempty & networkCfg_selectNetwork .~ selectEv
+  pure $ networkCfg <> signingPopupCfg
 
 
 controlBar

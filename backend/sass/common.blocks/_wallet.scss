@@ -84,13 +84,13 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  background-color: $body-background;
   color: $tertiary-color;
   padding: 0 10px;
   font-size: 0.8em;
   margin-right: $medium-margin;
   line-height: 22px;
   height: 26px;
+  background-color: $white-hover;
 
   text-overflow: ellipsis;
   overflow: hidden;
@@ -110,8 +110,13 @@
   }
 }
 
-.button.wallet__table-button-key:hover {
-  background-color: $black-hover;
+.wallet__table-button-with-background {
+  @extend .wallet__table-button;
+  background-color: $body-background;
+}
+
+.button.wallet__table-copy-account-key:hover {
+  // background-color: $white-hover;
 }
 
 .wallet__table-button--hamburger {

@@ -7,6 +7,8 @@ module Frontend.Log
   , LogLevel (..)
   , formatLogMessage
   , defaultLogger
+  , errorLevelLogger
+  , defaultLogger
   , logOn
   , putLog
   , fmtLogTH
@@ -50,6 +52,10 @@ instance Reflex t => Monoid (LogCfg t) where
 
 formatLogMessage :: LogLevel -> Text -> LogStr
 formatLogMessage lvl = defaultLogStr defaultLoc "Chainweaver" lvl . toLogStr
+
+errorLevelLogger :: MonadIO m => LogLevel -> LogStr -> m ()
+errorLevelLogger LevelError = liftIO . hPut stdout . fromLogStr
+errorLevelLogger _ = const $ liftIO $ pure ()
 
 defaultLogger :: MonadIO m => LogLevel -> LogStr -> m ()
 defaultLogger _ = liftIO . hPut stdout . fromLogStr

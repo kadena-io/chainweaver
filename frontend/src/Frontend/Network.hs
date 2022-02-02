@@ -126,9 +126,10 @@ import qualified Pact.Types.Term                   as Pact
 import           Pact.Types.ChainId                (NetworkId (..))
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
-import           Pact.Types.RPC
 import           Pact.Types.PactValue
+import           Pact.Types.RPC
 import           Pact.Types.SigData
+import qualified Pact.Types.Term                   as Pact
 import qualified Servant.Client.JSaddle            as S
 import qualified Servant.Client.Internal.JSaddleXhrClient as S
 
@@ -141,6 +142,7 @@ import           Common.Network
 import           Common.Wallet
 import           Frontend.Crypto.Class
 import           Frontend.Crypto.Ed25519
+import           Frontend.Crypto.Signature
 import           Frontend.Foundation
 import           Frontend.Messages
 import           Frontend.Network.NodeInfo
@@ -368,7 +370,7 @@ getSelectedNetworkInfos networkL = do
     pure $ rights errNets
 
 defaultTransactionGasPrice :: GasPrice
-defaultTransactionGasPrice = GasPrice $ ParsedDecimal $ Decimal 12 1
+defaultTransactionGasPrice = GasPrice $ ParsedDecimal $ Decimal 6 1
 
 -- | This is the minimum precision allowed by the Pact language, as defined in the coin contract:
 -- https://github.com/kadena-io/chainweb-node/commit/ee8a0db079869b39e23be1ef6737f0a7795eff87#diff-6c59a5fb9f1b0b8b470cb50e8bd643ebR54
@@ -1027,31 +1029,9 @@ buildCmdWithSigs signingFn mNonce networkName meta signingKeys extraKeys code da
     , _cmdHash = cmdHashL
     }
 
--- | Build a single cmd as expected in the `cmds` array of the /send payload.
---
--- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
-buildCmdWithPayload
-  :: ( MonadIO m
-     , MonadJSM m
-     , HasCrypto key m
-     )
-  => Payload PublicMeta Text
-  -> [KeyPair key]
-  -- ^ Keys which we are signing with
-  -> m (Command Text)
-buildCmdWithPayload payload signingKeys = do
-  let cmd = encodeAsText $ encode payload
-  let cmdHashL = hash (T.encodeUtf8 cmd)
-  sigs <- buildSigs Nothing cmdHashL signingKeys
-  pure $ Command
-    { _cmdPayload = cmd
-    , _cmdSigs = sigs
-    , _cmdHash = cmdHashL
-    }
-
 buildSigDataWithPayload
-  :: ( MonadIO m
-     , MonadJSM m
+  :: (
+       MonadJSM m
      , HasCrypto key m
      )
   => Payload PublicMeta Text
@@ -1102,9 +1082,30 @@ buildSigsPreserveOrder cmdHashL signingPairs =
       pure (toPubKeyHex signer, Just $ toPactSig sig )
     _ -> pure (toPubKeyHex signer, Nothing)
   where
-    toPactSig :: Signature -> UserSig
     toPactSig sig = UserSig $ keyToText sig
     toPubKeyHex = PublicKeyHex . _siPubKey
+
+-- | Build a single cmd as expected in the `cmds` array of the /send payload.
+--
+-- As specified <https://pact-language.readthedocs.io/en/latest/pact-reference.html#send here>.
+buildCmdWithPayload
+  :: ( MonadIO m
+     , MonadJSM m
+     , HasCrypto key m
+     )
+  => Payload PublicMeta Text
+  -> [KeyPair key]
+  -- ^ Keys which we are signing with
+  -> m (Command Text)
+buildCmdWithPayload payload signingKeys = do
+  let cmd = encodeAsText $ encode payload
+  let cmdHashL = hash (T.encodeUtf8 cmd)
+  sigs <- buildSigs Nothing cmdHashL signingKeys
+  pure $ Command
+    { _cmdPayload = cmd
+    , _cmdSigs = sigs
+    , _cmdHash = cmdHashL
+    }
 
 buildSigsWithPactKey
   :: ( MonadJSM m

@@ -16,17 +16,15 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Desktop.Frontend (desktopFrontend, bipWallet, bipCryptoGenPair, runFileStorageT) where
+module Desktop.Frontend (bipWallet, bipCryptoGenPair, runFileStorageT) where
 
 import Control.Concurrent (MVar)
 import Control.Exception (catch)
-import Control.Lens ((?~))
 import Control.Monad ((<=<), guard, void, when)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
 import Control.Monad.IO.Class
-import Data.Bool (bool)
-import Data.Bifunctor (first)
+import Data.Bifunctor (first, second)
 import Data.Dependent.Sum
 import Data.Functor.Compose
 import Data.Functor.Identity
@@ -59,21 +57,20 @@ import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Log (defaultLogger)
 import Frontend.Wallet (genZeroKeyPrefix, _unPublicKeyPrefix)
 import Frontend.Storage
-import Frontend.UI.Button
-import Frontend.UI.Widgets
+import Frontend.UI.Modal.Impl (showModalBrutal)
+import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
 import Obelisk.Configs
-import Obelisk.Generated.Static
 import Obelisk.Frontend
 import Obelisk.Route
 import Obelisk.Route.Frontend
-import qualified Frontend
-import qualified Frontend.ReplGhcjs
+import qualified Frontend (newHead, openFileDialog)
+import qualified Frontend.App
 import Frontend.VersionedStore (StoreFrontend(..))
 import Frontend.Storage (runBrowserStorageT)
-
-import Frontend.UI.Modal.Impl (showModalBrutal)
-import Frontend.UI.Dialogs.LogoutConfirmation (uiIdeLogoutConfirmation)
-
+import Frontend.Crypto.Password
+import Frontend.Setup.Common
+import Frontend.Setup.Password
+import Frontend.Setup.Widgets
 import Desktop.Setup
 import Desktop.ImportExport
 import Desktop.Storage.File
@@ -81,53 +78,55 @@ import Desktop.WalletApi
 
 import Pact.Server.ApiClient (WalletEvent (..), commandLogFilename, _transactionLogger_walletEvent, _transactionLogger_rotateLogFile)
 
--- | This is for development
--- > ob run --import desktop:Desktop
-desktopFrontend :: Frontend (R FrontendRoute)
-desktopFrontend = Frontend
-  { _frontend_head = do
-      let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
-            checkEncoder backendRouteEncoder
-      base <- getConfigRoute
-      void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
-  , _frontend_body = prerender_ blank $ do
-      logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
-      liftIO $ putStrLn $ "Logging to: " <> logDir
-      (signingHandler, quickSignHandler) <- walletServer
-        (pure ()) -- Can't foreground or background things
-        (pure ())
-      mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
-        (fileOpened, triggerOpen) <- Frontend.openFileDialog
-        let fileFFI = FileFFI
-              { _fileFFI_externalFileOpened = fileOpened
-              , _fileFFI_openFileDialog = liftJSM . triggerOpen
-              , _fileFFI_deliverFile = deliverFile
-              }
-        bipWallet fileFFI (_mvarHandler_readRequest signingHandler) (_mvarHandler_readRequest quickSignHandler) $ \enabledSettings -> AppCfg
-          { _appCfg_gistEnabled = False
-          , _appCfg_loadEditor = loadEditorFromLocalStorage
-          , _appCfg_editorReadOnly = False
-          , _appCfg_signingHandler = mkFRPHandler signingHandler
-          , _appCfg_quickSignHandler = mkFRPHandler quickSignHandler
-          , _appCfg_enabledSettings = enabledSettings
-          , _appCfg_logMessage = defaultLogger
-          }
-  }
+--TODO: Can we remove this now that we no longer use a custom version of obelisk that supports
+-- `ob run --import desktop:Desktop` workflow?
 
--- This is the deliver file that is only used for development (i.e jsaddle web version)
--- so it is hacky and just writes to the current directory. We could likely make a
--- thing with a data uri and then click on it with JS, but this is probably OK enough
--- for dev.
-deliverFile
-  :: (MonadIO (Performable m), PerformEvent t m)
-  => Event t (FilePath, Text)
-  -> m (Event t (Either Text FilePath))
-deliverFile eInput = performEvent . ffor eInput $ \(fName, fContent) -> liftIO $ do
-  dirName <- getCurrentDirectory
-  catch
-    ((T.writeFile (dirName </> fName) fContent) *> (pure . Right $ dirName </> fName))
-    $ \(e :: IOError) ->
-      pure . Left . T.pack $ "Error '" <> show e <> "' exporting file: " <> show fName <> " to  " <> dirName
+-- -- | This is for development
+-- -- > ob run --import desktop:Desktop
+-- desktopFrontend :: Frontend (R FrontendRoute)
+-- desktopFrontend = Frontend
+--   { _frontend_head = do
+--       let backendEncoder = either (error "frontend: Failed to check backendRouteEncoder") id $
+--             checkEncoder backendRouteEncoder
+--       base <- getConfigRoute
+--       void $ Frontend.newHead $ \r -> base <> renderBackendRoute backendEncoder r
+--   , _frontend_body = prerender_ blank $ do
+--       logDir <- (<> "/" <> commandLogFilename) <$> liftIO getTemporaryDirectory
+--       liftIO $ putStrLn $ "Logging to: " <> logDir
+--       signingHandler <- walletServer
+--         (pure ()) -- Can't foreground or background things
+--         (pure ())
+--       mapRoutedT (flip runTransactionLoggerT (logTransactionFile logDir) . runBrowserStorageT) $ do
+--         (fileOpened, triggerOpen) <- Frontend.openFileDialog
+--         let fileFFI = FileFFI
+--               { _fileFFI_externalFileOpened = fileOpened
+--               , _fileFFI_openFileDialog = liftJSM . triggerOpen
+--               , _fileFFI_deliverFile = deliverFile
+--               }
+--         bipWallet fileFFI (_mvarHandler_readRequest signingHandler) $ \enabledSettings -> AppCfg
+--           { _appCfg_gistEnabled = False
+--           , _appCfg_loadEditor = loadEditorFromLocalStorage
+--           , _appCfg_editorReadOnly = False
+--           , _appCfg_signingHandler = mkFRPHandler signingHandler
+--           , _appCfg_enabledSettings = enabledSettings
+--           , _appCfg_logMessage = defaultLogger
+--           }
+--   }
+
+-- -- This is the deliver file that is only used for development (i.e jsaddle web version)
+-- -- so it is hacky and just writes to the current directory. We could likely make a
+-- -- thing with a data uri and then click on it with JS, but this is probably OK enough
+-- -- for dev.
+-- deliverFile
+--   :: (MonadIO (Performable m), PerformEvent t m)
+--   => Event t (FilePath, Text)
+--   -> m (Event t (Either Text FilePath))
+-- deliverFile eInput = performEvent . ffor eInput $ \(fName, fContent) -> liftIO $ do
+--   dirName <- getCurrentDirectory
+--   catch
+--     ((T.writeFile (dirName </> fName) fContent) *> (pure . Right $ dirName </> fName))
+--     $ \(e :: IOError) ->
+--       pure . Left . T.pack $ "Error '" <> show e <> "' exporting file: " <> show fName <> " to  " <> dirName
 
 data LockScreen a where
   LockScreen_Restore :: LockScreen Crypto.XPrv -- ^ Root key
@@ -189,7 +188,7 @@ bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
       LockScreen_RunSetup :=> _ -> runSetup0 Nothing WalletExists_No
       -- Wallet exists but the lock screen is active
       LockScreen_Locked :=> Compose root -> do
-        (restore, mLogin) <- lockScreen signingReq quickSignReq $ fmap runIdentity $ current root
+        (restore, mLogin) <- lockScreenWidget signingReq quickSignReq $ fmap runIdentity $ current root
         pure $ leftmost
           [ (LockScreen_Restore ==>) . runIdentity <$> current root <@ restore
           , (LockScreen_Unlocked ==>) <$> attach (runIdentity <$> current root) mLogin
@@ -204,12 +203,19 @@ bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
 
           (updates, trigger) <- newTriggerEvent
 
-          let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
-          Frontend.ReplGhcjs.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
+          let
+            frontendFileFFI = liftFileFFI (lift . lift) fileFFI
+            changePasswordDesktopAction i newRoot (Password newPass) = do
+              let (newPrv, pub) = bipCryptoGenPair newRoot newPass i
+              pure $ Key $ KeyPair
+                { _keyPair_publicKey = pub
+                , _keyPair_privateKey = Just newPrv
+                }
+          Frontend.App.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
-                let doChange (Identity (oldRoot, _)) (oldPass, newPass, repeatPass)
-                      | passwordRoundTripTest oldRoot oldPass = case checkPassword newPass repeatPass of
+                let doChange (Identity (oldRoot, _)) (Password oldPass, Password newPass, Password repeatPass)
+                      | passwordRoundTripTest oldRoot (Password oldPass) = case checkPassword (Password newPass) (Password repeatPass) of
                         Left e -> pure $ Left e
                         Right _ -> do
                           -- Change password for root key
@@ -221,12 +227,7 @@ bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
                 in performEvent . attachWith doChange (current details)
               -- When updating the keys here, we just always regenerate the key from
               -- the new root
-              , _changePassword_updateKeys = ffor updates $ \(newRoot, newPass) i _ ->
-                let (newPrv, pub) = bipCryptoGenPair newRoot newPass i
-                in Key $ KeyPair
-                  { _keyPair_publicKey = pub
-                  , _keyPair_privateKey = Just newPrv
-                  }
+              , _changePassword_updateKeys = ((second Password) <$> updates, changePasswordDesktopAction)
               }
             , _enabledSettings_exportWallet = Just $ ExportWallet
               { _exportWallet_requestExport = \ePw -> do
@@ -283,42 +284,12 @@ _watchInactivity checkInterval timeout = do
   let checkTime la ti = guard $ addUTCTime timeout la <= _tickInfo_lastUTC ti
   pure $ attachWithMaybe checkTime lastActivity check
 
-mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, PostBuild t n, DomBuilder t n, MonadIO (Performable n)) => m (Event t (), n ())
-mkSidebarLogoutLink = do
-  (logout, triggerLogout) <- newTriggerEvent
-  pure $ (,) logout $ do
-    clk <- uiSidebarIcon (pure False) (static @"img/menu/logout.svg") "Logout"
-    performEvent_ $ liftIO . triggerLogout <$> clk
-
-lockScreen
+lockScreenWidget
   :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadFix m, MonadHold t m)
   => MVar SigningRequest -> MVar QuickSignRequest -> Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
-lockScreen signingReq quickSignReq xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ do
-  splashLogo
-
-  el "div" $ mdo
-    dValid <- holdDyn True $ leftmost
-      [ isJust <$> isValid
-      , True <$ _inputElement_input pass
-      ]
-
-    let unlock = void $ confirmButton (def & uiButtonCfg_type ?~ "submit") "Unlock"
-        cfg = def & elementConfig_initialAttributes .~ ("class" =: setupClass "splash-terms-buttons")
-    (eSubmit, pass) <- uiForm cfg unlock $ do
-      elDynClass "div"
-        (("lock-screen__invalid-password" <>) . bool " lock-screen__invalid-password--invalid" "" <$> dValid)
-        (text "Invalid Password")
-      uiPassword (setupClass "password-wrapper") (setupClass "password") "Password"
-
-    restore <- setupDiv "button-horizontal-group" $ do
-      elAttr "a" ( "class" =: "button button_type_secondary setup__help" <>
-                   "href" =: "https://www.kadena.io/chainweaver" <>
-                   "target" =: "_blank"
-                 ) $ do
-        elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
-        text "Help"
-      uiButton btnCfgSecondary $ text "Restore"
-
+lockScreenWidget signingReq quickSignReq xprv =
+  setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ mdo
+    (restore, pass, eSubmit) <- lockScreen $ (fmap . fmap)  Password isValid
     sreq <- tryReadMVarTriggerEvent signingReq
     qsreq <- tryReadMVarTriggerEvent  quickSignReq
     let req = leftmost [() <$ sreq, () <$ qsreq]
@@ -326,8 +297,7 @@ lockScreen signingReq quickSignReq xprv = setupDiv "fullscreen" $ divClass "wrap
       let line = divClass (setupClass "signing-request") . text
       line "You have an incoming signing request."
       line "Unlock your wallet to view and sign the transaction."
-
-    let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x p)) ((,) <$> current (value pass) <*> xprv) eSubmit
+    let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x (Password p))) ((,) <$> current pass <*> xprv) eSubmit
     pure (restore, fmapMaybe id isValid)
 
 deriveGEq ''LockScreen
