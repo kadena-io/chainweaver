@@ -96,13 +96,6 @@ in with obelisk;
           ];
         });
       };
-      linux-overlay = self: super: {
-        gi-gtk-hs = self.callHackageDirect {
-          pkg = "gi-gtk-hs";
-          ver =  "0.3.7.0";
-          sha256 = "0h5959ayjvipj54z0f350bz23fic90xw9z06xw4wcvxvwkrsi2br";
-        } { };
-      };
       guard-ghcjs-overlay = self: super:
         let hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
         in lib.genAttrs hsNames (name: null);
@@ -143,7 +136,6 @@ in with obelisk;
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       mac-overlay
-      linux-overlay
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
       (optionalExtension (super.ghc.isGhcjs or false) ghcjs-overlay)
