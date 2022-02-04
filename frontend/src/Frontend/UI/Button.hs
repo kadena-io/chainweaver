@@ -190,12 +190,12 @@ uiButtonWithOnClick action cfg body = do
 -- | Button for "going back" action.
 backButton :: StaticButtonConstraints t m => m (Event t ())
 backButton = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
-  uiButton def $ btnIcon (static @"img/left_arrow.svg") "Go back" blank
+  uiButton def $ btnIcon $(static "img/left_arrow.svg") "Go back" blank
 
 -- | Button for "going home" action.
 homeButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
 homeButton cls = -- uiIcon "fas fa-chevron-left" $ def & iconConfig_size .~ Just IconLG
-  uiButton (def & uiButtonCfg_class .~ cls) $ btnIcon (static @"img/double_left_arrow.svg") "Go back" blank
+  uiButton (def & uiButtonCfg_class .~ cls) $ btnIcon $(static "img/double_left_arrow.svg") "Go back" blank
 
 data ButtonShade
   = ButtonShade_Light
@@ -243,8 +243,8 @@ copyButton' label cfg shade showStatus t = mdo
   copy <- copyToClipboard $ tag t onClick
   onClick <- uiButtonDyn cfg' $ do
     case shade of
-      ButtonShade_Dark -> imgWithAlt (static @"img/copy-dark.svg") label blank
-      ButtonShade_Light -> imgWithAlt (static @"img/copy-light.svg") label blank
+      ButtonShade_Dark -> imgWithAlt $(static "img/copy-dark.svg") label blank
+      ButtonShade_Light -> imgWithAlt $(static "img/copy-light.svg") label blank
     dynText $ ffor (cfg ^. uiButtonCfg_title) fold
     when showStatus $ elDynClass "i" ("fa copy-status " <> status) blank
   pure ()
@@ -274,7 +274,7 @@ addButton uCfg =
   let
     cfg = uCfg & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny")
   in
-    uiButton cfg $ imgWithAltCls "button__icon" (static @"img/plus.svg") "Add" blank
+    uiButton cfg $ imgWithAltCls "button__icon" $(static "img/plus.svg") "Add" blank
 
 deleteButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 deleteButton uCfg =
@@ -282,11 +282,11 @@ deleteButton uCfg =
     cfg = uCfg
       & uiButtonCfg_class %~ (<> "button_type_secondary" <> "button_size_tiny" <> "button_border_none")
   in
-    uiButton cfg $ imgWithAltCls "button__icon" (static @"img/bin.svg") "Delete" blank
+    uiButton cfg $ imgWithAltCls "button__icon" $(static "img/bin.svg") "Delete" blank
 
 deleteButtonNaked :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 deleteButtonNaked cfg =
-  uiButton cfg $ imgWithAltCls "button__icon" (static @"img/bin.svg") "Delete" blank
+  uiButton cfg $ imgWithAltCls "button__icon" $(static "img/bin.svg") "Delete" blank
 
 cogButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 cogButton uCfg =
@@ -309,18 +309,18 @@ signoutButton uCfg =
 openButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
 openButton cls =
   uiButton (def & uiButtonCfg_class .~ "button_type_secondary" <> cls) $
-    btnTextIcon (static @"img/open.svg") "Open" blank >> text "Open"
+    btnTextIcon $(static "img/open.svg") "Open" blank >> text "Open"
 
 -- | Button that loads something into the Editor.
 viewButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
 viewButton cls =
   uiButton (def & uiButtonCfg_class .~ cls <> "button_type_secondary") $
-    btnTextIcon (static @"img/view.svg") "View" blank >> text "View"
+    btnTextIcon $(static "img/view.svg") "View" blank >> text "View"
 
 callButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
 callButton cls =
   uiButton (def & uiButtonCfg_class .~ "button_type_secondary" <> cls) $
-    btnTextIcon (static @"img/call.svg") "Call" blank >> text "Call"
+    btnTextIcon $(static "img/call.svg") "Call" blank >> text "Call"
 
 -- | Button that triggers a refresh/reload of something.
 refreshButton :: StaticButtonConstraints t m => CssClass -> m (Event t ())
@@ -339,13 +339,13 @@ cancelButton cfg msg =
 receiveButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 receiveButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
-    imgWithAltCls "button__text-icon" (static @"img/receive.svg") "Receive" blank
+    imgWithAltCls "button__text-icon" $(static "img/receive.svg") "Receive" blank
     elClass "span" "button__text button__text-exclusive" $ text "Receive"
 
 transferToButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 transferToButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
-    imgWithAltCls "button__text-icon" (static @"img/transfer-to.svg") "Transfer to" blank
+    imgWithAltCls "button__text-icon" $(static "img/transfer-to.svg") "Transfer to" blank
     elClass "span" "button__text button__text-exclusive" $ text "Transfer to"
 
 addKAccountButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
@@ -361,25 +361,25 @@ detailsButton cfg =
 detailsIconButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 detailsIconButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
-    imgWithAltCls "button__text-icon button__text-icon-exclusive" (static @"img/ellipsis.svg") "Details" blank
+    imgWithAltCls "button__text-icon button__text-icon-exclusive" $(static "img/ellipsis.svg") "Details" blank
     elClass "span" "button__text button__text-exclusive" $ text "Details"
 
 sendButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 sendButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
-    imgWithAltCls "button__text-icon" (static @"img/send.svg") "Send" blank
+    imgWithAltCls "button__text-icon" $(static "img/send.svg") "Send" blank
     elClass "span" "button__text button__text-exclusive" $ text "Send"
 
 completeCrossChainButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 completeCrossChainButton cfg =
   uiButton (cfg & uiButtonCfg_class <>~ "button_type_secondary" <> "button_type_secondary") $ do
-    imgWithAltCls "button__text-icon" (static @"img/shuffle.svg") "Complete crosschain" blank
+    imgWithAltCls "button__text-icon" $(static "img/shuffle.svg") "Complete crosschain" blank
     elClass "span" "button__text button__text-exclusive crosschain-button" $ text "Complete Crosschain"
 
 accordionButton :: StaticButtonConstraints t m => UiButtonCfg -> m (Event t ())
 accordionButton cfg =
   uiButton (cfg & uiButtonCfg_class .~ "accordion__toggle-button button_type_secondary") $
-    imgWithAlt (static @"img/arrow-down.svg") "Expand" blank
+    imgWithAlt $(static "img/arrow-down.svg") "Expand" blank
 
 -- | Create HTML element attributes from config.
 toBtnAttrs :: UiButtonCfg -> Map Text Text

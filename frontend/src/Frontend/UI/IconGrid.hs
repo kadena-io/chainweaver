@@ -44,7 +44,7 @@ iconGridCell' config hasLaunch = do
 
   evt <- uiButton (def & uiButtonCfg_class <>~ "button_type_tertiary" <> "icon-grid__cell-header") $ do
     when hasLaunch $
-      elAttr "img" ("src" =: (static @"img/launch.svg") <> "class" =: "icon-grid__cell-launch") blank
+      elAttr "img" ("src" =: $(static "img/launch.svg") <> "class" =: "icon-grid__cell-launch") blank
     elClass "span" "icon-grid__cell-title" $ text (_iconGridCellConfig_title config)
 
   traverse_ (elClass "div" "icon-grid__cell-desc" . text) (_iconGridCellConfig_desc config)
