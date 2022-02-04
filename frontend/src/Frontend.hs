@@ -126,7 +126,7 @@ loaderMarkup = divClass "spinner" $ do
 newHead :: (Prerender js t m, DomBuilder t m) => (R BackendRoute -> Text) -> m (Event t ())
 newHead routeText = do
   el "title" $ text "(BETA) Kadena Chainweaver: Wallet & IDE"
-  elAttr "link" ("rel" =: "icon" <> "type" =: "image/png" <> "href" =: static @"img/favicon/favicon-96x96.png") blank
+  elAttr "link" ("rel" =: "icon" <> "type" =: "image/png" <> "href" =: $(static "img/favicon/favicon-96x96.png")) blank
   meta ("name" =: "description" <> "content" =: "Write, test, and deploy safe smart contracts using Pact, Kadena's programming language")
   meta ("name" =: "keywords" <> "content" =: "kadena, pact, pact testnet, pact language, pact programming language, smart contracts, safe smart contracts, smart contract language, blockchain, learn blockchain programming, chainweb")
   meta ("charset" =: "utf-8")
@@ -137,15 +137,15 @@ newHead routeText = do
 
   ss "https://fonts.googleapis.com/css?family=Roboto"
   ss "https://fonts.googleapis.com/css?family=Work+Sans"
-  ss (static @"css/font-awesome.min.css")
-  ss (static @"css/ace-theme-chainweaver.css")
+  ss $(static "css/font-awesome.min.css")
+  ss $(static "css/ace-theme-chainweaver.css")
   js "/static/js/ace/ace.js"
   prerender_ blank $ js "/static/js/ace/mode-pact.js"
   -- Allows importing private keys
-  js (static @"js/nacl-fast.min-v1.0.0.js")
+  js $(static "js/nacl-fast.min-v1.0.0.js")
   -- Allows for BIP39-based key generation and encrypted storage of private keys
-  js (static @"js/kadena-crypto.js")
-  (bowser, _) <- js' (static @"js/bowser.min.js")
+  js $(static "js/kadena-crypto.js")
+  (bowser, _) <- js' $(static "js/bowser.min.js")
   pure $ domEvent Load bowser
   where
     js :: forall t n. DomBuilder t n => Text -> n ()
@@ -158,10 +158,10 @@ newHead routeText = do
     -- Allows the use of `static` in CSS and sharing parameters with desktop apps
     haskellCss = T.unlines
       [ "body { min-width: " <> tshow w <> "px; " <> "min-height: " <> tshow h <> "px; }"
-      , alertImg ".icon_type_error"                $ static @"img/error.svg"
-      , alertImg ".icon_type_warning"              $ static @"img/warning.svg"
-      , alertImg "div.ace_gutter-cell.ace_error"   $ static @"img/error.svg"
-      , alertImg "div.ace_gutter-cell.ace_warning" $ static @"img/warning.svg"
+      , alertImg ".icon_type_error"                $ $(static "img/error.svg")
+      , alertImg ".icon_type_warning"              $ $(static "img/warning.svg")
+      , alertImg "div.ace_gutter-cell.ace_error"   $ $(static "img/error.svg")
+      , alertImg "div.ace_gutter-cell.ace_warning" $ $(static "img/warning.svg")
       ]
       where
         bgImg src = "background-image: url(" <> src <> "); background-position: left center"

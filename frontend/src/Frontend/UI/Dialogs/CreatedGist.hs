@@ -7,6 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 
 -- | Confirmation dialog for creating a GIST allowing setting of name and description.
@@ -59,7 +60,7 @@ uiCreatedGist gistRef _onClose = do
     modalMain $ do
         divClass "segment modal__filler" $ do
           divClass "modal__filler-horizontal-center-box" $
-            imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "Github logo" blank
+            imgWithAltCls "modal__filler-img" $(static "img/Octocat.jpg") "Github logo" blank
 
           dialogSectionHeading mempty "Find your link below:"
           divClass "group" $ do

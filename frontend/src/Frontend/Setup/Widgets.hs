@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -47,7 +48,7 @@ continueForm = setupForm "continue-button" "Continue"
 -- | Wallet logo
 kadenaWalletLogo :: DomBuilder t m => m ()
 kadenaWalletLogo = divClass "logo" $ do
-  elAttr "img" ("src" =: static @"img/kadena_blue_logo.png" <> "class" =: setupClass "kadena-logo") blank
+  elAttr "img" ("src" =: $(static "img/kadena_blue_logo.png") <> "class" =: setupClass "kadena-logo") blank
   elClass "div" "chainweaver" $ text "Chainweaver"
 #ifdef  ghcjs_HOST_OS
   elClass "div" "by-kadena" $ text "by Kadena (BETA)"

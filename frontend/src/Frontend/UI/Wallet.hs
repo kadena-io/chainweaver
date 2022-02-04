@@ -149,7 +149,7 @@ uiAccountsTable model dStartOpen = do
     Just accs | not (Map.null accs) -> Just accs
     _ -> Nothing
   flatten <=< dyn $ ffor mAccounts $ \case
-    Nothing -> uiEmptyState (static @"img/menu/wallet.svg") "No Accounts Found" $ do
+    Nothing -> uiEmptyState $(static "img/menu/wallet.svg") "No Accounts Found" $ do
       el "p" $ do
         text "Create new Accounts or interact with existing Accounts by selecting the "
         el "strong" $ text "+ Add Account"
@@ -422,7 +422,7 @@ uiAvailableKeys model = do
     [] -> Nothing
     xs -> Just $ Map.fromAscList xs
   flatten <=< dyn $ ffor mKeyMap $ \case
-    Nothing -> uiEmptyState (static @"img/menu/keys.svg") "No Keys Found" $ do
+    Nothing -> uiEmptyState $(static "img/menu/keys.svg") "No Keys Found" $ do
       el "p" $ text "The first step towards transacting on the Kadena blockchain is to generate a key pair."
       el "p" $ do
         text "Begin by selecting the "

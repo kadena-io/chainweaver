@@ -137,7 +137,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
           rec
             let collapseAttrs = ffor open $ \o -> Map.fromList
                   [ ("class", "main__pane-collapse-button" <> if o then "" else " collapsed")
-                  , ("src", static @"img/double_left_arrow.svg")
+                  , ("src", $(static "img/double_left_arrow.svg"))
                   , ("title", if o then "Collapse" else "Open")
                   ]
             (e, _) <- elDynAttr' "img" collapseAttrs blank
@@ -204,7 +204,7 @@ walletSidebar
   => m ()
   -> m (Event t ())
 walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
-  divClass "sidebar__logo" $ elAttr "img" ("src" =: static @"img/logo.png") blank
+  divClass "sidebar__logo" $ elAttr "img" ("src" =: $(static "img/logo.png")) blank
 
   elAttr "div" ("class" =: "sidebar__content") $ do
     route <- demux . fmap (\(r :/ _) -> Some r) <$> askRoute
@@ -214,7 +214,7 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
           void $ uiSidebarIcon selected (routeIcon r) label
     sidebarLink (FrontendRoute_Accounts :/ mempty) "Accounts"
     sidebarLink (FrontendRoute_Keys :/ ()) "Keys"
-    signEvt <- uiSidebarIcon (constDyn False) (static @"img/menu/signature.svg") "SigBuilder"
+    signEvt <- uiSidebarIcon (constDyn False) $(static "img/menu/signature.svg") "SigBuilder"
     sidebarLink (FrontendRoute_Contracts :/ Nothing) "Contracts"
     elAttr "div" ("style" =: "flex-grow: 1") blank
     sidebarLink (FrontendRoute_Resources :/ ()) "Resources"
@@ -225,11 +225,11 @@ walletSidebar sidebarExtra = elAttr "div" ("class" =: "sidebar") $ do
 -- | Get the routes to the icon assets for each route
 routeIcon :: R FrontendRoute -> Text
 routeIcon = \case
-  FrontendRoute_Contracts :/ _ -> static @"img/menu/contracts.svg"
-  FrontendRoute_Accounts :/ _ -> static @"img/menu/wallet.svg"
-  FrontendRoute_Keys :/ _ -> static @"img/menu/keys.svg"
-  FrontendRoute_Resources :/ _ -> static @"img/menu/resources.svg"
-  FrontendRoute_Settings :/ _ -> static @"img/menu/settings.svg"
+  FrontendRoute_Contracts :/ _ -> $(static "img/menu/contracts.svg")
+  FrontendRoute_Accounts :/ _ -> $(static "img/menu/wallet.svg")
+  FrontendRoute_Keys :/ _ -> $(static "img/menu/keys.svg")
+  FrontendRoute_Resources :/ _ -> $(static "img/menu/resources.svg")
+  FrontendRoute_Settings :/ _ -> $(static "img/menu/settings.svg")
 
 -- | Code editing (left hand side currently)
 codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> Dynamic t CssClass -> Ide a key t -> m (IdeCfg a key t)
@@ -413,7 +413,7 @@ controlBarRight fileFFI appCfg m = do
               & uiButtonCfg_title .~ Just "Create gist on GitHub"
               {- & uiButtonCfg_class %~ (<> "main-header__text-icon-button") -}
           ) $ do
-        {- btnTextIcon (static @"img/github-gist-dark.svg") "Make Gist" blank -}
+        {- btnTextIcon $(static "img/github-gist-dark.svg") "Make Gist" blank -}
         text "Make Gist"
 
     openFileBtn = do
@@ -425,11 +425,11 @@ resourcesWidget
   :: (DomBuilder t m)
   => m ()
 resourcesWidget = elClass "div" "icon-grid" $ do
-  resourceCell "Support" (static @"img/resources/support.svg") "https://www.kadena.io/chainweaver"
+  resourceCell "Support" $(static "img/resources/support.svg") "https://www.kadena.io/chainweaver"
     "Explore Help Resources to learn about Chainweaver, solve problems and get in touch"
-  resourceCell "Documentation" (static @"img/resources/documentation.svg") "https://github.com/kadena-io/chainweaver"
+  resourceCell "Documentation" $(static "img/resources/documentation.svg") "https://github.com/kadena-io/chainweaver"
     "Complete technical resources for Chainweaver"
-  resourceCell "Tutorials" (static @"img/resources/tutorials.svg") "https://pactlang.org/"
+  resourceCell "Tutorials" $(static "img/resources/tutorials.svg") "https://pactlang.org/"
     "Read or watch tutorials for writing smart contracts using the Pact language"
   where
     resourceCell title iconUrl href desc = iconGridLaunchLink href $ IconGridCellConfig

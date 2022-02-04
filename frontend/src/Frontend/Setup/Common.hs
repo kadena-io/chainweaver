@@ -103,7 +103,7 @@ lockScreen isValid = do
                    "href" =: "https://www.kadena.io/chainweaver" <>
                    "target" =: "_blank"
                  ) $ do
-        elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
+        elAttr "img" ("src" =: $(static "img/launch_dark.svg") <> "class" =: "button__text-icon") blank
         text "Help"
       uiButton btnCfgSecondary $ text "Restore"
     pure (restore, value pass, eSubmit)
@@ -163,7 +163,7 @@ data WalletExists
 splashLogo :: DomBuilder t m => m ()
 splashLogo = do
   elAttr "div"
-    (  "style" =: ("background-image: url(" <> (static @"img/Wallet_Graphic_1.png") <> ");")
+    (  "style" =: ("background-image: url(" <> $(static "img/Wallet_Graphic_1.png") <> ");")
     <> "class" =: setupClass "splash-bg"
     ) kadenaWalletLogo
 
@@ -247,12 +247,12 @@ passphraseWidget dWords dStage exposeEmpty = do
 walletSplashWithIcon :: DomBuilder t m => m () -> m ()
 walletSplashWithIcon w = do
   elAttr "div" (
-    "style" =: ("background-image: url(" <> (static @"img/Wallet_Graphic_1.png") <> ");")
+    "style" =: ("background-image: url(" <> $(static "img/Wallet_Graphic_1.png") <> ");")
     <> "class" =: (setupClass "splash-bg " <> setupClass "done-splash-bg")
     ) $ do
       w
       elAttr "img" (
-        "src" =: static @"img/Wallet_Icon_Highlighted_Blue.svg" <>
+        "src" =: $(static "img/Wallet_Icon_Highlighted_Blue.svg") <>
         "class" =: setupClass "wallet-blue-icon"
         ) blank
 
@@ -287,7 +287,7 @@ createNewWallet backWF eBack = selfWF
   where
     selfWF = Workflow $  do
       ePb <- getPostBuild
-      elAttr "img" ("src" =: static @"img/Wallet_Graphic_2.png" <> "class" =: setupClass "password-bg") blank
+      elAttr "img" ("src" =: $(static "img/Wallet_Graphic_2.png") <> "class" =: setupClass "password-bg") blank
 
       el "h1" $ text "Set a password"
       setupDiv "new-wallet-password-text" $ do
@@ -474,6 +474,6 @@ mkSidebarLogoutLink :: (TriggerEvent t m, PerformEvent t n, PostBuild t n, DomBu
 mkSidebarLogoutLink = do
   (logout, triggerLogout) <- newTriggerEvent
   pure $ (,) logout $ do
-    clk <- uiSidebarIcon (pure False) (static @"img/menu/logout.svg") "Logout"
+    clk <- uiSidebarIcon (pure False) $(static "img/menu/logout.svg") "Logout"
     performEvent_ $ liftIO . triggerLogout <$> clk
 

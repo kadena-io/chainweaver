@@ -7,6 +7,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -192,7 +193,7 @@ uiKeyset
 uiKeyset w (n, ks) = do
     aCfg <- divClass "keyset__header" $ mdo
       elAttr "h4" ("class" =: "keyset__header-text heading_type_h4") $ do
-        elClass "span" "keyset__icon" $ imgWithAlt (static @"img/keys.svg") "Keyset" blank
+        elClass "span" "keyset__icon" $ imgWithAlt $(static "img/keys.svg") "Keyset" blank
         text n
 
       onNewPred <- tagOnPostBuild . fmap (fromMaybe "") $ ks ^. keyset_pred
