@@ -112,39 +112,8 @@ in with obelisk;
         unliftio = haskellLib.dontCheck super.unliftio;
       };
       common-overlay = self: super: {
+        gi-gtk-hs = self.callHackage "gi-gtk-hs" "0.3.8.1" {};
         brittany = haskellLib.dontCheck super.brittany;
-        haskell-gi-base =
-          haskellLib.addPkgconfigDepend
-            (haskellLib.dontCheck (self.callHackage "haskell-gi-base" "0.24.5" {}))
-            pkgs.gobject-introspection;
-        haskell-gi =
-            (haskellLib.dontCheck (self.callHackage "haskell-gi" "0.24.7" {}));
-        gi-cairo =
-          haskellLib.addPkgconfigDepends
-            (haskellLib.dontCheck (self.callHackage "gi-cairo" "1.0.24" {}))
-            [pkgs.cairo pkgs.gobject-introspection];
-        gi-glib =
-          haskellLib.addPkgconfigDepends
-            (haskellLib.dontCheck (self.callHackage "gi-glib" "2.0.24" {}))
-            [pkgs.gobject-introspection];
-        gi-gobject =
-          haskellLib.addPkgconfigDepends
-            (haskellLib.dontCheck (self.callHackage "gi-gobject" "2.0.24" {}))
-            [pkgs.gobject-introspection];
-        gi-atk =
-          haskellLib.addPkgconfigDepends
-            (haskellLib.dontCheck (self.callHackage "gi-atk" "2.0.22" {}))
-            [pkgs.gobject-introspection];
-        gi-pango =
-          haskellLib.addPkgconfigDepends
-            (haskellLib.dontCheck (self.callHackage "gi-pango" "1.0.23" {}))
-            [pkgs.gobject-introspection pkgs.harfbuzz];
-        gi-harfbuzz =
-          haskellLib.addBuildDepends
-            (haskellLib.addPkgconfigDepends
-              (haskellLib.dontCheck (self.callHackage "gi-harfbuzz" "0.0.3" {}))
-              [pkgs.gobject-introspection pkgs.harfbuzz])
-             [pkgs.harfbuzz-gobject];
         jsaddle-warp = haskellLib.dontCheck super.jsaddle-warp; # webdriver fails to build
         reflex-dom-contrib = haskellLib.doJailbreak (haskellLib.dontCheck super.reflex-dom-contrib); # webdriver fails to build
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build

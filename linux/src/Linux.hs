@@ -148,7 +148,7 @@ saveFileDialog fileName handleSelectDir = do
     Nothing
 
   Gtk.fileChooserSetCreateFolders chooser True
-  _ <- Gtk.fileChooserSetCurrentName chooser fileName
+  _ <- Gtk.fileChooserSetCurrentName chooser $ T.pack fileName
 
   res <- Gtk.nativeDialogRun chooser
   void $ case toEnum (fromIntegral res) of
