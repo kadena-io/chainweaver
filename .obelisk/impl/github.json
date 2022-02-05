@@ -1,8 +1,8 @@
 {
   "owner": "obsidiansystems",
   "repo": "obelisk",
-  "branch": "release/0.9.4.0",
+  "branch": "aa/closure-compiler-crash",
   "private": false,
-  "rev": "f0acb10c066a29d0ef14cd27ddcd43783b42b330",
-  "sha256": "0mb3v8scn3gkcj6gidp1bnxa7c1ljbgbl90rqw2g4lfsxvhc2xkg"
+  "rev": "d090d08c2e18ba99dbb538cf394e27bb2bf4be6e",
+  "sha256": "0inisvngi409dmbbczxycf005g6czkqackvh0hl5irywbnllgwk9"
 }
