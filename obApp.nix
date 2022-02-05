@@ -113,7 +113,8 @@ in with obelisk;
       };
       common-overlay = self: super: {
         brittany = haskellLib.dontCheck super.brittany;
-        haskell-gi-base = haskellLib.dontCheck (self.callHackage "haskell-gi-base" "0.24.5" {});
+        haskell-gi-base = (haskellLib.dontCheck (self.callHackage "haskell-gi-base" "0.24.5" {})).overrideAttrs
+          (args: args // { libraryPkgconfigDepends = [ pkgs.glib pkgs.gobject-introspection ]; });
         jsaddle-warp = haskellLib.dontCheck super.jsaddle-warp; # webdriver fails to build
         reflex-dom-contrib = haskellLib.doJailbreak (haskellLib.dontCheck super.reflex-dom-contrib); # webdriver fails to build
         reflex-dom-core = haskellLib.dontCheck super.reflex-dom-core; # webdriver fails to build
