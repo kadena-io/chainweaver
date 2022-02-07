@@ -101,7 +101,7 @@ data PayloadSigningRequest = PayloadSigningRequest
 
 data SigningRequestWalletState key = SigningRequestWalletState
   { _srws_currentNetwork :: Maybe NetworkName
-  , _srws_cwKeys         :: [ Key key ]
+  , _srws_cwKeys         :: [ KeyPair key ]
   }
 
 --TODO: As we build out quicksign we will eventually get rid of this and replace it with the two
@@ -110,7 +110,7 @@ data SigBuilderRequest key = SigBuilderRequest
   { _sbr_sigData        :: SigData Text
   , _sbr_payload        :: Payload PublicMeta Text
   , _sbr_currentNetwork :: Maybe NetworkName
-  , _sbr_cwKeys         :: [ Key key ]
+  , _sbr_cwKeys         :: [ KeyPair key ]
   }
 
 fetchKeysAndNet
@@ -118,7 +118,7 @@ fetchKeysAndNet
   => model
   -> Behavior t (SigningRequestWalletState key)
 fetchKeysAndNet model =
-  let cwKeys = IMap.elems <$> (model^.wallet_keys)
+  let cwKeys = fmap _key_pair . IMap.elems <$> (model^.wallet_keys)
       selNodes = model ^. network_selectedNodes
       nid = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
    in current $ SigningRequestWalletState <$> nid <*> cwKeys
@@ -315,11 +315,11 @@ approveSigDialog
 approveSigDialog model srws psr = Workflow $ do
   let sigData = _psr_sigData psr
       sdHash = toUntypedHash $ _sigDataHash sigData
-      keys = fmap _key_pair $ _srws_cwKeys srws
+      keys = _srws_cwKeys srws
       sigs = _sigDataSigs sigData --[(PublicKeyHex, Maybe UserSig)]
       p = _psr_payload psr
   onClose <- modalHeader $ text "Review Transaction"
-  sbTabDyn <- fst <$> sigBuilderSummaryTabs never
+  sbTabDyn <- fst <$> sigBuilderTabs never
   sigsOrKeysE <- modalMain $ do
     -- TODO: Do this in a way that isnt completely stupid
     -- The Summary tab produces a list of all external sigs -- when we switch tabs, we clear this
@@ -335,7 +335,7 @@ approveSigDialog model srws psr = Workflow $ do
     <$> cancelButton def "Back"
     <*> confirmButton def "Sign"
   let sigsOnSubmit = mapMaybe (\(a, mb) -> fmap (a,) mb) <$> current sigsOrKeys <@ sign
-  let sbr = SigBuilderRequest sigData p (_srws_currentNetwork srws) (_srws_cwKeys srws)
+  let sbr = SigBuilderRequest sigData p (_srws_currentNetwork srws) keys
   let workflowEvent = leftmost
         [ txnInputDialog model (Just sigData) <$ back
         , signAndShowSigDialog model sbr keys (approveSigDialog model srws psr) <$> sigsOnSubmit
@@ -346,11 +346,11 @@ approveSigDialog model srws psr = Workflow $ do
 data SigBuilderTab = SigBuilderTab_Summary | SigBuilderTab_Details
   deriving (Show, Eq)
 
-sigBuilderSummaryTabs
+sigBuilderTabs
   :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
   => Event t SigBuilderTab
   -> m (Dynamic t SigBuilderTab, Event t ())
-sigBuilderSummaryTabs tabEv = do
+sigBuilderTabs tabEv = do
   let f t0 g = case g t0 of
         Nothing -> (Just t0, Just ())
         Just t  -> (Just t, Nothing)
@@ -391,10 +391,7 @@ showSigsWidget p cwKeys sigs sdHash = do
     (cwSigners, externalSigners) = first (fmap (view _2)) $ partition isCWSigner missingSigs
     externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigners
 
-  void $ mkLabeledInput False "Hash"
-    (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
-      & inputElementConfig_initialValue .~ hashToText sdHash
-
+  hashWidget sdHash
   rec showTransactionSummary (signersToSummary <$> dSigners) p
       dUnscoped <- ifEmptyBlankSigner unscoped $ do
         dialogSectionHeading mempty "Unscoped Signers"
@@ -526,10 +523,7 @@ signatureDetails
   => SigData Text
   -> m ()
 signatureDetails sd = do
-  void $ mkLabeledInput False "Hash"
-    (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
-      & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ _sigDataHash sd)
-
+  hashWidget $ toUntypedHash $ _sigDataHash sd
   divClass "tabset" $ mdo
     curSelection <- holdDyn SigDetails_Yaml onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
@@ -565,7 +559,7 @@ signAndShowSigDialog
   -> Workflow t m (Event t ()) -- Workflow for going back
   -> [(PublicKeyHex, UserSig)] -- User-supplied Sigs
   -> Workflow t m (Event t ())
-signAndShowSigDialog model sbr keys backW sigsOrPrivate = Workflow $ mdo
+signAndShowSigDialog model sbr keys backW externalKeySigs = Workflow $ mdo
   onClose <- modalHeader $ text "Sig Data"
   -- This allows a "loading" page to render before we attempt to do the really computationally
   -- expensive sigs
@@ -573,7 +567,7 @@ signAndShowSigDialog model sbr keys backW sigsOrPrivate = Workflow $ mdo
   -- TODO: Can we forkIO the sig process and display something after they are done?
   dmCmd <- widgetHold (modalMain $ text "Loading Signatures ..." >> pure Nothing) $ ffor pb $ \_ ->
     modalMain $ do
-      sd <- addSigsToSigData (_sbr_sigData sbr) keys sigsOrPrivate
+      sd <- addSigsToSigData (_sbr_sigData sbr) keys externalKeySigs
       signatureDetails sd
       if Nothing `elem` (snd <$> _sigDataSigs sd)
         then pure Nothing
@@ -612,7 +606,7 @@ addSigsToSigData
   => SigData Text
   -> [KeyPair key]
   -- ^ Keys which we are signing with
-  -> [(PublicKeyHex, UserSig)]
+  -> [(PublicKeyHex, UserSig)] -- External signatures collected
   -> m (SigData Text)
 addSigsToSigData sd signingKeys sigList = do
   let hashToSign = unHash $ toUntypedHash $ _sigDataHash sd
@@ -756,3 +750,8 @@ networkWidget p =
       dialogSectionHeading mempty "Network"
       divClass "group" $ text $ n ^. networkId
 
+hashWidget :: MonadWidget t m => Hash -> m ()
+hashWidget hash =
+  void $ mkLabeledInput False "Hash"
+    (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
+      & inputElementConfig_initialValue .~ hashToText hash

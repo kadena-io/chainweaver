@@ -401,25 +401,24 @@ $signer-width: 60%;
   width: $index-width;
 }
 
-.payload__signer-header {
-  width: $signer-width;
-}
-
-
 .payload__row {
   margin-top: $normal-margin;
   margin-bottom: $normal-margin;
   display: flex;
+  align-items: center;
+  padding-bottom: 10px;
 }
 
 .payload__accordion {
   width: $accordion-width;
 }
 
-.payload__signer {
+.payload__txid {
   width: $signer-width;
   overflow: hidden;
+  height: 100%;
   text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .payload__tx-index {
@@ -435,3 +434,4 @@ $signer-width: 60%;
   display: flex;
   margin-top: 10px;
 }
+

@@ -43,6 +43,7 @@ import           Pact.Types.PactValue
 import           Pact.Types.Pretty
 import           Pact.Types.RPC
 import           Pact.Types.Runtime             (GasLimit (..), GasPrice (..))
+import           Pact.Types.SigData
 import qualified Pact.Types.Term                as Pact (PublicKey (..))
 import           Reflex
 import           Reflex.Dom                     hiding (Value)
@@ -159,7 +160,7 @@ uiQuickSign ideL writeSigningResponse qsr _onCloseExternal = do
         flip PayloadSigningRequest p $ payloadToSigData p txt
   case partitionEithers $ fmap toPsrOrErr $ _quickSignRequest_commands qsr of
     ([], payloads) -> do
-      quickSignModal ideL writeSigningResponse payloads
+      (mempty, ) <$> quickSignModal ideL writeSigningResponse payloads
     (es, _) -> do
       pb <- getPostBuild
       let res = Left $ "QuickSign request contained invalid commands:\n" <> T.unlines (map T.pack es)
@@ -179,121 +180,158 @@ uiQuickSign ideL writeSigningResponse qsr _onCloseExternal = do
 quickSignModal
   :: forall key t m mConf model
   . ( MonadWidget t m
-    , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
-    , HasCrypto key m
     , HasWallet model key t
-    , HasTransactionLogger m
     , HasNetwork model t
-    , HasTransactionLogger m
-    , HasLogger model t
     )
   => model
   -> (Event t (Either Text QuickSignResponse) -> m (Event t ()))
   -> [PayloadSigningRequest]
-  -> m (mConf, Event t ())
-quickSignModal ideL writeSigningResponse payloads = do
+  -> m (Event t ())
+quickSignModal ideL writeSigningResponse payloadRequests = do
   keysAndNet <- sample $ fetchKeysAndNet ideL
-  eCloses <- fmap (switch . current) $ workflow $
-    checkAndSummarize ideL keysAndNet payloads
-
-  --TODO: Mempty needs to be hooked up to quicksign response
-  pure (mempty, eCloses)
-
-  -- key handling
-  -- cwKeysets :: Map PublicKey (KeyPair key) <- sample $ current $
-  --   fmap getKeyPairsFromStore $ ideL^.wallet.wallet_keys
-
-  -- -- Modal events/ui
-  -- onClose <- modalHeader $ text "Quick Signing Request"
-  -- modalMain $ do
-  --   qsTabDyn <- fst <$> quickSignTabs never
-  --   dyn_ $ ffor qsTabDyn $ \case
-  --     QuickSignTab_Summary -> summarizeTransactions payloads $ Map.keys cwKeysets
-  --     QuickSignTab_AllTransactions -> quickSignTransactionDetails payloads
-  --   pure ()
-  -- -- TODO: Add a failure mode based on initial parse (reject multi-network, possible others)
-  -- (reject, sign) <- modalFooter $ (,)
-  --   <$> cancelButton def "Reject"
-  --   <*> confirmButton def "Sign Transaction"
-
-  -- QuickSignResponse processing
-  -- let prepareDataForSignatures :: [(Payload PublicMeta Text, [(PublicKey, KeyPair key)])]
-  --     prepareDataForSignatures = fmap (id &&& (keysRequiredForPayload cwKeysets)) payloads
-  -- quickSignRes <- performEvent $ ffor sign $ \_-> do
-  --   userSigs <- forM prepareDataForSignatures $ \(payload, keyPairList) ->
-  --     buildSigDataWithPayload payload $ snd <$> keyPairList
-  --   -- TODO - more helpful error msg
-  --   pure $ bimap (const "Error signing command") QuickSignResponse $ sequence userSigs
-  -- let noResponseEv = ffor (leftmost [reject, onClose]) $ const $ Left "QuickSign response rejected"
-  -- finished <- writeSigningResponse $ leftmost [ noResponseEv, quickSignRes ]
-  -- -- TODO: BUG: Left/Failure on out of focus (but not when "X" is pushed)
-  -- pure (mempty, finished)
-  --  where
-  --    getKeyPairsFromStore keyStore =
-  --      let keysets = IMap.elems keyStore
-  --          toIndexablePair = (_keyPair_publicKey &&& id) . _key_pair
-  --      in Map.fromList $ fmap toIndexablePair keysets
+  onClose <- modalHeader $ text "QuickSign Request"
+  modalMain $ do
+    qsTabDyn <- fst <$> sigBuilderTabs never
+    dyn_ $ ffor qsTabDyn $ \case
+      SigBuilderTab_Summary ->
+        summarizeTransactions payloadRequests keysAndNet
+      SigBuilderTab_Details ->
+        quickSignTransactionDetails payloadRequests
+    pure ()
+  (reject, sign) <- modalFooter $ (,)
+    <$> cancelButton def "Reject"
+    <*> confirmButton def "Sign All"
+  let toSign = fmap _psr_sigData payloadRequests
+      noResponseEv = ffor (leftmost [reject, onClose]) $
+        const $ Left "QuickSign response rejected"
+  quickSignRes <- performEvent $ ffor sign $ const $ fmap QuickSignResponse $
+      forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
+  writeSigningResponse $ leftmost [ noResponseEv, Right <$> quickSignRes ]
 
 -- |Summary view for quicksign ui
--- summarizeTransactions
---   :: MonadWidget t m
---   => [Payload PublicMeta Text]
---   -> [ PublicKey ]
---   -> m ()
--- summarizeTransactions payloads cwKeys = do
---   let summary = generateQuickSignSummary payloads cwKeys
---   let amount = _quickSignSummary_totalKDA summary
---       maxGasCost = _quickSignSummary_gasSubTotal summary
---   divClass "amount" $ text $ "Amount: " <> tshow amount <> " KDA"
---   divClass "gas" $ text $ "Max Gas Cost: " <> tshow maxGasCost <> " KDA"
---   divClass "chain" $ case Set.elems (_quickSignSummary_chainsSigned summary) of
---     [chain] -> text $ "Chain: " <>  tshow  chain
---     chains  -> text $ "Transactions conducted on chains: " <> tshow chains
---   divClass "caps" $ do
---     el "div" $ text $ "Extra Caps: " <> "Not currently supported"
---   divClass "rejected-txns" $ do
---     text $ "Number of requests that cannot be signed for: " <> tshow (length payloads - _quickSignSummary_requestsCanSign summary)
---   pure ()
+summarizeTransactions
+  :: MonadWidget t m
+  => [PayloadSigningRequest ]
+  -> SigningRequestWalletState  key
+  -> m ()
+summarizeTransactions payloadReqs walletState = do
+  let cwKeyset = Set.fromList $
+        fmap (PublicKeyHex . keyToText . _keyPair_publicKey) $ _srws_cwKeys walletState
+      signerMap = accumulateCWSigners payloadReqs cwKeyset
+  -- impactSummary payloadReqs walletState
+  dialogSectionHeading mempty "Chainweaver Signers"
+  mapM_ signerSection $ Map.toList signerMap
+  pure ()
+  where
+    --TODO: Rip out common part with sigbuilder section
+    signerSection (pkh, capList) =
+      divClass "group__signer" $ do
+        visible <- divClass "signer__row" $ do
+          let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
+          rec
+            clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
+            visible' <- toggle True clk
+          divClass "signer__pubkey" $ text $ unPublicKeyHex pkh
+          pure visible'
+        elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ do
+          capListWidgetWithHash capList
 
--- -- | Details page for quicksign transactions
--- quickSignTransactionDetails :: MonadWidget t m => [ Payload PublicMeta Text ] -> m ()
--- quickSignTransactionDetails payloads = do
---   dialogSectionHeading mempty "Signing Requests"
---   divClass "group payload__header" $ do
---     divClass "payload__accordion-header" $ text ""
---     divClass "payload__index-header" $ text "Request Number"
---     divClass "payload__signer-header" $ text "Signer"
---   mapM_ txRow $ zip payloads [1..]
+-- impactSummary
+--   :: MonadWidget t m
+--   => [PayloadSigningRequest ]
+--   -> SigningRequestWalletState  key
+--   -> m ()
+-- impactSummary payloadReqs walletState = do
+
+
+capListWidgetWithHash
+  :: MonadWidget t m
+  => [(Text, [SigCapability])]
+  -> m ()
+--TODO: This case should never return
+capListWidgetWithHash [] = text "Unscoped Signer"
+capListWidgetWithHash cl = do
+  forM_ cl $ \(hash, txCapList) -> do
+    let capLines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] txCapList
+        txt = if txCapList == [] then "Unscoped Signer" else T.init $ T.init $ T.unlines capLines
+        --TODO: This is pretty lazy -- clean it up before final version
+        rows = tshow $ 2 * length capLines
+    dialogSubSectionHeading mempty $ "Tx ID: " <> hash
+    _ <- uiTextAreaElement $ def
+      & textAreaElementConfig_initialValue .~ txt
+      & initialAttributes .~ fold
+        [ "disabled" =: "true"
+        , "rows" =: rows
+        , "style" =: "color: black; width: 100%; height: auto;"
+        ]
+    pure ()
+
+accumulateCWSigners
+  :: [PayloadSigningRequest]
+  -> Set PublicKeyHex
+  -> Map PublicKeyHex [(Text, [SigCapability])]
+accumulateCWSigners payloads cwKeyset = foldr go mempty $
+  (renderCompactText . _sigDataHash . _psr_sigData &&& _pSigners . _psr_payload)
+    <$> payloads
+  where
+    f hash signer accum =
+      let pkh = PublicKeyHex $ _siPubKey signer
+       in if Set.notMember pkh cwKeyset then accum
+          else Map.insertWith (<>)
+                 pkh [(hash, _siCapList signer)] accum
+    go (hash, signers) signerMap = foldr (f hash) signerMap signers
+
+
+
+-- | Details page for quicksign transactions
+quickSignTransactionDetails
+  :: MonadWidget t m
+  => [PayloadSigningRequest]
+  -> m ()
+quickSignTransactionDetails payloadReqs = do
+  let p1:pRest = fmap (_sigDataHash . _psr_sigData &&& _psr_payload) payloadReqs
+  dialogSectionHeading mempty "QuickSign Payloads"
+  sequence_ $ (txRow p1 True):(ffor pRest $ \p -> txRow p False)
+  where
+    txRow (txId, p) startExpanded = do
+      visible <- divClass "group payload__row" $ do
+        let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
+        rec
+          clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
+          visible' <- toggle startExpanded clk
+        divClass "payload__txid" $ text $ "Tx ID: " <> tshow txId
+        pure visible'
+      elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ sigBuilderDetailsUI p
+
+-- showTransactionSummary
+--   :: MonadWidget t m
+--   => Dynamic t (TransactionSummary)
+--   -> Payload PublicMeta Text
+--   -> m ()
+-- showTransactionSummary dSummary p = do
+--   dialogSectionHeading mempty "Impact Summary"
+--   divClass "group" $ dyn_ $ ffor dSummary $ \summary -> do
+--     let tokens = _ts_tokenTransfers summary
+--         kda = Map.lookup "coin" tokens
+--         tokens' = Map.delete "coin" tokens
+--     mkLabeledClsInput True "Tx Type" $ const $ text $ prpc $ p^.pPayload
+--     case _ts_maxGas summary of
+--       Nothing -> blank
+--       Just price -> void $ mkLabeledClsInput True "Max Gas Cost" $
+--         const $ text $ renderCompactText price <> " KDA"
+--     flip (maybe blank) kda $ \kdaAmount ->
+--       void $ mkLabeledClsInput True "Amount KDA" $ const $
+--         text $ showWithDecimal kdaAmount <> " KDA"
+--     if tokens' == mempty then blank else
+--       void $ mkLabeledClsInput True "Amount (Tokens)" $ const $ el "div" $
+--         forM_ (Map.toList tokens') $ \(name, amount) ->
+--           el "p" $ text $ showWithDecimal amount <> " " <> name
+--     void $ mkLabeledClsInput True "Unscoped Sigs" $
+--       const $ text $ tshow $ _ts_numUnscoped summary
 --   where
---     txRow (p, i) = do
---       divClass "group" $ do
---         visible <- divClass "payload__row" $ do
---           let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
---           rec
---             clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
---             visible' <- toggle False clk
---           divClass "payload__tx-index" $ text $ tshow i <> "."
---           divClass "payload__signer" $ text $ tshow $ _siPubKey $ head $ _pSigners p
---           pure visible'
---         elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ singleTransactionDetails p
-
--- singleTransactionDetails
---   :: MonadWidget t m
---   => Payload PublicMeta Text
---   -> m ()
--- singleTransactionDetails p = do
---   networkWidget p
---   txMetaWidget $ _pMeta p
---   pactRpcWidget (_pPayload p)
---   signersWidget (_pSigners p)
---    where
---      networkWidget p' = case _pNetworkId p' of
---        Nothing -> blank
---        Just n -> do
---          dialogSectionHeading mempty "Network"
---          divClass "group" $ text $ _networkId n
-
+--     prpc (Exec _) = "Exec"
+--     prpc (Continuation _) = "Continuation"
 ----------------------------------------------------------------------------
 -- | TODO:
 --   - Taking out network, which should just fail on an initial parse
@@ -387,101 +425,3 @@ quickSignModal ideL writeSigningResponse payloads = do
 -- parseCoinTransferCap :: [SigCapability] -> Maybe FungibleTransferCap
 -- parseCoinTransferCap caps = parseFungibleTransferCap caps $
 --   ModuleName "coin" Nothing -- -$ Just $ NamespaceName "coin"
-
----------------------------------------------------------------------------------
---pactRpcWidget
---  :: MonadWidget t m
---  => PactRPC Text
---  -> m ()
---pactRpcWidget (Exec e) = do
---  dialogSectionHeading mempty "Code"
---  divClass "group" $ do
---    el "code" $ text $ _pmCode e
-
---  case _pmData e of
---    Null -> blank
---    _ -> do
---      dialogSectionHeading mempty "Data"
---      divClass "group" $ do
---        uiTextAreaElement $ def
---          & textAreaElementConfig_initialValue .~ (decodeUtf8 $ BSL.toStrict $ encode $ _pmData e)
---          & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%"
---        pure ()
---pactRpcWidget (Continuation c) = do
---  dialogSectionHeading mempty "Continuation Data"
---  divClass "group" $ do
---    mkLabeledClsInput True "Pact ID" $ \_ -> text $ tshow $ _cmPactId c
---    mkLabeledClsInput True "Step" $ \_ -> text $ tshow $ _cmStep c
---    mkLabeledClsInput True "Rollback" $ \_ -> text $ tshow $ _cmRollback c
---    mkLabeledClsInput True "Data" $ \_ -> text $ tshow $ _cmData c
---    mkLabeledClsInput True "Proof" $ \_ -> text $ tshow $ _cmProof c
-
---txMetaWidget
---  :: MonadWidget t m
---  => PublicMeta
---  -> m ()
---txMetaWidget pm = do
---  dialogSectionHeading mempty "Transaction Metadata"
---  _ <- divClass "group segment" $ do
---    mkLabeledClsInput True "Chain" $ \_ -> text (renderCompactText $ _pmChainId pm)
---    mkLabeledClsInput True "Gas Payer" $ \_ -> text (_pmSender pm)
---    --mkLabeledClsInput True "Gas Price" $ \_ -> text (renderCompactText $ _pmGasPrice pm)
---    --mkLabeledClsInput True "Gas Limit" $ \_ -> text (renderCompactText $ _pmGasLimit pm)
---    let totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
---    mkLabeledClsInput True "Max Gas Cost" $ \_ -> text $ renderCompactText totalGas <> " KDA"
---  pure ()
-
---signersWidget
---  :: MonadWidget t m
---  => [Signer]
---  -> m ()
---signersWidget ss = do
---  dialogSectionHeading mempty "Signers"
---  divClass "group segment" $ do
---    mapM_ signerWidget ss
-
---signerWidget
---  :: MonadWidget t m
---  => Signer
---  -> m ()
---signerWidget s = do
---  el "div" $ do
---    maybe blank (text . (<> ":") . tshow) $ _siScheme s
---    text $ _siPubKey s
---    maybe blank (text . (":" <>) . tshow) $ _siAddress s
---  elAttr "ul" ("style" =: "margin-block-start: 0; margin-block-end: 0;") $
---    mapM_ (elAttr "li" ("style" =: "list-style-type: none;") . text . renderCompactText) $ _siCapList s
---  pure ()
-
---data QuickSignTab
---  = QuickSignTab_Summary
---  | QuickSignTab_AllTransactions
---  deriving (Eq, Ord, Show, Enum, Bounded)
-
---displayQuickSignTab :: DomBuilder t m => QuickSignTab -> m ()
---displayQuickSignTab = text . \case
---  QuickSignTab_Summary         -> "Summary"
---  QuickSignTab_AllTransactions -> "Advanced"
-
---quickSignTabs
---  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
---  => Event t QuickSignTab
---  -> m (Dynamic t QuickSignTab, Event t ())
---quickSignTabs tabEv = do
---  let f t0 g = case g t0 of
---        Nothing -> (Just t0, Just ())
---        Just t  -> (Just t, Nothing)
---  rec
---    (curSelection, done) <- mapAccumMaybeDyn f QuickSignTab_Summary $ leftmost
---      [ const . Just <$> onTabClick
---      , const . Just <$> tabEv
---      ]
---    (TabBar onTabClick) <- makeTabBar $ TabBarCfg
---      { _tabBarCfg_tabs = [QuickSignTab_Summary, QuickSignTab_AllTransactions]
---      -- { _tabBarCfg_tabs = [QuickSignTab_AllTransactions, QuickSignTab_Summary]
---      , _tabBarCfg_mkLabel = \_ -> displayQuickSignTab
---      , _tabBarCfg_selectedTab = Just <$> curSelection
---      , _tabBarCfg_classes = mempty
---      , _tabBarCfg_type = TabBarType_Secondary
---      }
---  pure (curSelection, done)
