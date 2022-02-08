@@ -389,9 +389,11 @@ $accordion-width: 10%;
 $signer-width: 60%;
 
 .payload__header {
-  margin-top: $normal-margin;
-  margin-bottom: $normal-margin;
   display: flex;
+  border-color: grey;
+  border-style: solid;
+  border-width: 1px;
+  align-items: center;
 }
 .payload__accordion-header {
   width: $accordion-width;
@@ -402,15 +404,28 @@ $signer-width: 60%;
 }
 
 .payload__row {
-  margin-top: $normal-margin;
-  margin-bottom: $normal-margin;
-  display: flex;
-  align-items: center;
-  padding-bottom: 10px;
+  padding-bottom: 20px;
 }
 
 .payload__accordion {
   width: $accordion-width;
+}
+
+.payload__info {
+  margin-left: 3%;
+  margin-right: 3%;
+  padding-top: 25px;
+  padding-bottom: 25px;
+}
+
+.payload__background-wrapper {
+  background-color: #e2e2e2;
+  margin-top: 15px;
+}
+
+.qs-wrapper {
+  background-color: #cbcbcb;
+  overflow: auto;
 }
 
 .payload__txid {
@@ -425,13 +440,16 @@ $signer-width: 60%;
   width: $index-width;
 }
 
-.group__signer {
-  @extend .group;
+.signer__capList {
   margin-top: 15px;
 }
 
-.signer__row {
+.signer__header {
   display: flex;
-  margin-top: 10px;
+  margin-top: 15px;
+  border-color: grey;
+  border-style: solid;
+  border-width: 1px;
+  align-items: center;
 }
 

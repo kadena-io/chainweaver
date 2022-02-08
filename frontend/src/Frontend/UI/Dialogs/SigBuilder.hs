@@ -122,7 +122,7 @@ fetchKeysAndNet model =
       selNodes = model ^. network_selectedNodes
       nid = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
    in current $ SigningRequestWalletState <$> nid <*> cwKeys
-   
+
 txnInputDialog
   :: SigBuilderWorkflow t m model key
   => model
@@ -328,7 +328,7 @@ approveSigDialog model srws psr = Workflow $ do
       SigBuilderTab_Summary ->
         updated . sequence <$>
           showSigsWidget p (_keyPair_publicKey <$> keys) sigs sdHash
-      SigBuilderTab_Details ->  sigBuilderDetailsUI p >>  ([] <$) <$> getPostBuild
+      SigBuilderTab_Details ->  sigBuilderDetailsUI p "" Nothing >>  ([] <$) <$> getPostBuild
     switchHoldPromptly never eeSigList
   sigsOrKeys <- holdDyn [] sigsOrKeysE
   (back, sign) <- modalFooter $ (,)
@@ -446,17 +446,21 @@ showSigsWidget p cwKeys sigs sdHash = do
       unOwnedSigningInput s
 
     scopedSignerRow signer = do
-      divClass "group__signer" $ do
-        visible <- divClass "signer__row" $ do
-          let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
-          rec
-            clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
-            visible' <- toggle True clk
-          divClass "signer__pubkey" $ text $ _siPubKey signer
-          pure visible'
-        elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ do
-          capListWidget $ _siCapList signer
-        unOwnedSigningInput signer
+      signerSection (PublicKeyHex $ _siPubKey signer) $
+        capListWidget $ _siCapList signer
+      unOwnedSigningInput signer
+
+signerSection :: MonadWidget t m => PublicKeyHex -> m () -> m ()
+signerSection pkh capListWidget =do
+    visible <- divClass "group signer__header" $ do
+      let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
+      rec
+        clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
+        visible' <- toggle False clk
+      divClass "signer__pubkey" $ text $ unPublicKeyHex pkh
+      pure visible'
+    elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) ("class" =: "group signer__capList") )$ 
+      capListWidget
 
 parseFungibleTransferCap :: SigCapability -> Maybe (Text, Decimal)
 parseFungibleTransferCap cap = transferCap cap
@@ -644,22 +648,24 @@ transferAndStatus model (sender, cid) cmd nodeInfos = Workflow $ do
 sigBuilderDetailsUI
   :: MonadWidget t m
   => Payload PublicMeta Text
+  -> Text
+  -> Maybe Text
   -> m ()
-sigBuilderDetailsUI p = do
-  txMetaWidget (p^.pMeta) $ p^.pNetworkId
-  pactRpcWidget  $ _pPayload p
-  signerWidget $ p^.pSigners
+sigBuilderDetailsUI p wrapperCls mCls = divClass wrapperCls $ do
+  txMetaWidget (p^.pMeta) (p^.pNetworkId) mCls
+  pactRpcWidget  (_pPayload p) mCls
+  signerWidget (p^.pSigners) mCls
   pure ()
-
 
 txMetaWidget
   :: MonadWidget t m
   => PublicMeta
   -> Maybe NetworkId
+  -> Maybe Text
   -> m ()
-txMetaWidget pm mNet = do
+txMetaWidget pm mNet mCls = do
   dialogSectionHeading mempty "Transaction Metadata"
-  _ <- divClass "group segment" $ do
+  _ <- divClass (maybe "group segment" ("group segment " <>) mCls) $ do
     case mNet of
       Nothing -> blank
       Just n ->
@@ -675,22 +681,23 @@ txMetaWidget pm mNet = do
 pactRpcWidget
   :: MonadWidget t m
   => PactRPC Text
+  -> Maybe Text
   -> m ()
-pactRpcWidget (Exec e) = do
+pactRpcWidget (Exec e) mCls = do
   dialogSectionHeading mempty "Code"
-  divClass "group" $ do
+  divClass (maybe "group" ("group " <>) mCls) $ do
     el "code" $ text $ tshow $ pretty $ _pmCode e
   case _pmData e of
     A.Null -> blank
     jsonVal -> do
       dialogSectionHeading mempty "Data"
-      divClass "group" $
+      divClass (maybe "group" ("group " <>) mCls) $
         void $ uiTextAreaElement $ def
           & textAreaElementConfig_initialValue .~ (T.decodeUtf8 $ LB.toStrict $ A.encode jsonVal)
           & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%"
-pactRpcWidget (Continuation c) = do
+pactRpcWidget (Continuation c) mCls = do
   dialogSectionHeading mempty "Continuation Data"
-  divClass "group" $ do
+  divClass (maybe "group" ("group " <>) mCls) $ do
     mkLabeledClsInput True "Pact ID" $ \_ -> text $ renderCompactText $ _cmPactId c
     mkLabeledClsInput True "Step" $ \_ -> text $ tshow $ _cmStep c
     mkLabeledClsInput True "Rollback" $ \_ -> text $ tshow $ _cmRollback c
@@ -719,11 +726,12 @@ pactRpcWidget (Continuation c) = do
 signerWidget
   :: (MonadWidget t m)
   => [Signer]
+  -> Maybe Text
   -> m ()
-signerWidget signers = do
+signerWidget signers mCls= do
   dialogSectionHeading mempty "Signers"
   forM_ signers $ \s ->
-    divClass "group segment" $ do
+    divClass (maybe "group segment" ("group segment " <>) mCls) $ do
       mkLabeledClsInput True "Key:" $ \_ -> text (renderCompactText $ s ^.siPubKey)
       mkLabeledClsInput True "Caps:" $ \_ -> capListWidget $ s^.siCapList
 

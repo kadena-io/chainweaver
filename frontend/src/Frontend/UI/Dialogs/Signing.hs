@@ -211,22 +211,11 @@ summarizeTransactions payloadReqs walletState = do
         fmap (PublicKeyHex . keyToText . _keyPair_publicKey) $ _srws_cwKeys walletState
       signerMap = accumulateCWSigners payloadReqs cwKeyset
   impactSummary payloadReqs $ Set.fromList $ Map.keys signerMap
-  dialogSectionHeading mempty "Chainweaver Signers"
-  mapM_ signerSection $ Map.toList signerMap
+  dialogSectionHeading mempty "My Signers"
+  mapM_ signerCapsWidget $ Map.toList signerMap
   pure ()
   where
-    --TODO: Rip out common part with sigbuilder section
-    signerSection (pkh, capList) =
-      divClass "group__signer" $ do
-        visible <- divClass "signer__row" $ do
-          let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
-          rec
-            clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
-            visible' <- toggle False clk
-          divClass "signer__pubkey" $ text $ unPublicKeyHex pkh
-          pure visible'
-        elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ do
-          capListWidgetWithHash capList
+    signerCapsWidget (pkh, capList) = signerSection pkh $ capListWidgetWithHash capList
 
 capListWidgetWithHash
   :: MonadWidget t m
@@ -254,18 +243,16 @@ accumulateCWSigners
   :: [PayloadSigningRequest]
   -> Set PublicKeyHex
   -> Map PublicKeyHex [(Text, [SigCapability])]
-accumulateCWSigners payloads cwKeyset = foldr go mempty $
-  (renderCompactText . _sigDataHash . _psr_sigData &&& _pSigners . _psr_payload)
-    <$> payloads
+accumulateCWSigners payloads cwKeyset = foldr 
+  (\(hash, signers) signerMap -> foldr (go hash) signerMap signers) mempty $
+    (renderCompactText . _sigDataHash . _psr_sigData &&& _pSigners . _psr_payload)
+      <$> payloads
   where
-    f hash signer accum =
-      let pkh = PublicKeyHex $ _siPubKey signer
-       in if Set.notMember pkh cwKeyset then accum
-          else Map.insertWith (<>)
-                 pkh [(hash, _siCapList signer)] accum
-    go (hash, signers) signerMap = foldr (f hash) signerMap signers
-
-
+    go hash signer accum = let pkh = PublicKeyHex $ _siPubKey signer in
+       if Set.notMember pkh cwKeyset 
+         then accum
+         else Map.insertWith (<>) pkh [(hash, _siCapList signer)] accum
+    
 
 -- | Details page for quicksign transactions
 quickSignTransactionDetails
@@ -273,19 +260,21 @@ quickSignTransactionDetails
   => [PayloadSigningRequest]
   -> m ()
 quickSignTransactionDetails payloadReqs = do
-  let p1:pRest = fmap (_sigDataHash . _psr_sigData &&& _psr_payload) payloadReqs
-  dialogSectionHeading mempty "QuickSign Payloads"
-  sequence_ $ (txRow p1 True):(ffor pRest $ \p -> txRow p False)
+  let payloads = fmap (_sigDataHash . _psr_sigData &&& _psr_payload) payloadReqs
+  dialogSectionHeading mempty $ "QuickSign Payloads ( " <> (tshow $ length payloadReqs) <> " total )"
+  sequence_ $ ffor payloads $ \p -> txRow p False
   where
-    txRow (txId, p) startExpanded = do
-      visible <- divClass "group payload__row" $ do
+    txRow (txId, p) startExpanded = divClass "payload__row" $ do
+      visible <- divClass "group payload__header" $ do
         let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
         rec
           clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
           visible' <- toggle startExpanded clk
         divClass "payload__txid" $ text $ "Tx ID: " <> tshow txId
         pure visible'
-      elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ sigBuilderDetailsUI p
+      let defAttrMap = "class" =: "payload__background-wrapper"
+      elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty <> defAttrMap) defAttrMap)$
+        sigBuilderDetailsUI p "payload__info" $ Just "qs-wrapper"
 
 data QuickSignSummary = QuickSignSummary
   { _qss_numSigs       :: Int
@@ -317,10 +306,10 @@ impactSummary payloadReqs signerSet = do
         kda = Map.lookup "coin" tokens
         tokens' = Map.delete "coin" tokens
     flip (maybe blank) kda $ \kdaAmount ->
-      void $ mkLabeledClsInput True "Amount KDA" $ const $
+      void $ mkLabeledClsInput True "Spending" $ const $
         text $ showWithDecimal kdaAmount <> " KDA"
     if tokens' == mempty then blank else
-      void $ mkLabeledClsInput True "Amount (Tokens)" $ const $ el "div" $
+      void $ mkLabeledClsInput True "Spending (Tokens)" $ const $ el "div" $
         forM_ (Map.toList tokens') $ \(name, amount) ->
           el "p" $ text $ showWithDecimal amount <> " " <> name
     case _qss_gasSubTotal signingImpact of
