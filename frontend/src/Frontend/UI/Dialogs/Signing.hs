@@ -21,7 +21,7 @@ module Frontend.UI.Dialogs.Signing
 
 import           Control.Arrow                  ((&&&))
 import           Control.Lens
-import           Control.Monad                  ((<=<))
+import           Control.Monad                  ((<=<), void)
 import           Data.Aeson
 import qualified Data.ByteString.Lazy           as BSL
 import           Data.Either
@@ -45,6 +45,7 @@ import           Pact.Types.RPC
 import           Pact.Types.Runtime             (GasLimit (..), GasPrice (..))
 import           Pact.Types.SigData
 import qualified Pact.Types.Term                as Pact (PublicKey (..))
+import           Pact.Types.Util                (asString)
 import           Reflex
 import           Reflex.Dom                     hiding (Value)
 
@@ -167,16 +168,6 @@ uiQuickSign ideL writeSigningResponse qsr _onCloseExternal = do
       finished <- writeSigningResponse (res <$ pb)
       pure (mempty, finished)
 
--- -- |Matches ownedKeys against signers required by pact cmd; indexes them by public key
--- keysRequiredForPayload :: Map PublicKey (KeyPair key) -> Payload PublicMeta a -> [(PublicKey, KeyPair key)]
--- keysRequiredForPayload ownedKeys p = foldr foldRequiredKeys [] (p^.pSigners)
---   where
---     foldRequiredKeys payloadKey acc = let key = signerPublicKey payloadKey in
---       maybe acc (\kp -> (key, kp):acc) $ Map.lookup key ownedKeys
-
--- signerPublicKey :: Signer -> PublicKey
--- signerPublicKey = fromPactPublicKey . Pact.PublicKey . T.encodeUtf8 . view siPubKey
-
 quickSignModal
   :: forall key t m mConf model
   . ( MonadWidget t m
@@ -219,7 +210,7 @@ summarizeTransactions payloadReqs walletState = do
   let cwKeyset = Set.fromList $
         fmap (PublicKeyHex . keyToText . _keyPair_publicKey) $ _srws_cwKeys walletState
       signerMap = accumulateCWSigners payloadReqs cwKeyset
-  -- impactSummary payloadReqs walletState
+  impactSummary payloadReqs $ Set.fromList $ Map.keys signerMap
   dialogSectionHeading mempty "Chainweaver Signers"
   mapM_ signerSection $ Map.toList signerMap
   pure ()
@@ -231,19 +222,11 @@ summarizeTransactions payloadReqs walletState = do
           let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
           rec
             clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
-            visible' <- toggle True clk
+            visible' <- toggle False clk
           divClass "signer__pubkey" $ text $ unPublicKeyHex pkh
           pure visible'
         elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ do
           capListWidgetWithHash capList
-
--- impactSummary
---   :: MonadWidget t m
---   => [PayloadSigningRequest ]
---   -> SigningRequestWalletState  key
---   -> m ()
--- impactSummary payloadReqs walletState = do
-
 
 capListWidgetWithHash
   :: MonadWidget t m
@@ -304,124 +287,74 @@ quickSignTransactionDetails payloadReqs = do
         pure visible'
       elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ sigBuilderDetailsUI p
 
--- showTransactionSummary
---   :: MonadWidget t m
---   => Dynamic t (TransactionSummary)
---   -> Payload PublicMeta Text
---   -> m ()
--- showTransactionSummary dSummary p = do
---   dialogSectionHeading mempty "Impact Summary"
---   divClass "group" $ dyn_ $ ffor dSummary $ \summary -> do
---     let tokens = _ts_tokenTransfers summary
---         kda = Map.lookup "coin" tokens
---         tokens' = Map.delete "coin" tokens
---     mkLabeledClsInput True "Tx Type" $ const $ text $ prpc $ p^.pPayload
---     case _ts_maxGas summary of
---       Nothing -> blank
---       Just price -> void $ mkLabeledClsInput True "Max Gas Cost" $
---         const $ text $ renderCompactText price <> " KDA"
---     flip (maybe blank) kda $ \kdaAmount ->
---       void $ mkLabeledClsInput True "Amount KDA" $ const $
---         text $ showWithDecimal kdaAmount <> " KDA"
---     if tokens' == mempty then blank else
---       void $ mkLabeledClsInput True "Amount (Tokens)" $ const $ el "div" $
---         forM_ (Map.toList tokens') $ \(name, amount) ->
---           el "p" $ text $ showWithDecimal amount <> " " <> name
---     void $ mkLabeledClsInput True "Unscoped Sigs" $
---       const $ text $ tshow $ _ts_numUnscoped summary
---   where
---     prpc (Exec _) = "Exec"
---     prpc (Continuation _) = "Continuation"
-----------------------------------------------------------------------------
--- | TODO:
---   - Taking out network, which should just fail on an initial parse
---   - Making certain factors Dynamics so that the user can add sigs/priv keys and update the
---     summary
---   - Deriving requests_ignored instead of making it a first-class field
---
---data QuickSignSummary = QuickSignSummary
---  { _quickSignSummary_activeOwnedKeys :: Set Pact.PublicKey -- Keys CW can automatically sign with
---  , _quickSignSummary_unOwnedKeys     :: Set Pact.PublicKey  -- Keys that aren't controlled by cw, but can still be signed with
---  , _quickSignSummary_totalKDA        :: Decimal
---  , _quickSignSummary_gasSubTotal     :: Decimal
---  , _quickSignSummary_chainsSigned    :: Set ChainId
---  , _quickSignSummary_requestsCanSign :: Int
---  , _quickSignSummary_network         :: [ NetworkId ]
---  } deriving (Show, Eq)
+data QuickSignSummary = QuickSignSummary
+  { _qss_numSigs       :: Int
+  , _qss_unscoped      :: Int
+  , _qss_gasSubTotal   :: GasPrice
+  , _qss_chainsSigned  :: Set ChainId
+  , _qss_tokens        :: Map Text Decimal
+  } deriving (Show, Eq)
 
-----TODO: Is a semigroup with (+) on decimals appropriate?
---instance Semigroup QuickSignSummary where
---  (<>) a b =
---    QuickSignSummary
---    { _quickSignSummary_activeOwnedKeys = _quickSignSummary_activeOwnedKeys a <> _quickSignSummary_activeOwnedKeys b
---    , _quickSignSummary_unOwnedKeys = _quickSignSummary_unOwnedKeys a <> _quickSignSummary_unOwnedKeys b
---    , _quickSignSummary_totalKDA = _quickSignSummary_totalKDA  a + _quickSignSummary_totalKDA  b
---    , _quickSignSummary_gasSubTotal = _quickSignSummary_gasSubTotal  a + _quickSignSummary_gasSubTotal b
---    , _quickSignSummary_chainsSigned = _quickSignSummary_chainsSigned a <> _quickSignSummary_chainsSigned b
---    , _quickSignSummary_requestsCanSign = _quickSignSummary_requestsCanSign a + _quickSignSummary_requestsCanSign b
---    , _quickSignSummary_network = _quickSignSummary_network a <> _quickSignSummary_network b
---    }
---instance Monoid QuickSignSummary where
---  mappend = (<>)
---  mempty = def
+instance Default QuickSignSummary where
+  def = QuickSignSummary
+    { _qss_numSigs = 0
+    , _qss_unscoped = 0
+    , _qss_gasSubTotal = 0
+    , _qss_chainsSigned = mempty
+    , _qss_tokens = mempty
+    }
 
---instance Default QuickSignSummary where
---  def = QuickSignSummary mempty mempty 0 0 mempty 0 [ NetworkId ""]
-
----- | Folds over the all payloads and produces a summary of the "important" data
---generateQuickSignSummary :: [Payload PublicMeta Text] -> [PublicKey] -> QuickSignSummary
---generateQuickSignSummary payloads controlledKeys = fold $ join $ ffor payloads $ \p ->
---  let
---    signers = catMaybes $ ffor (p^.pSigners) $ \s ->
---      case Set.member (signerPublicKey s) pubKeySet of
---        True  -> Just (pactPubKeyFromSigner s, s^.siCapList)
---        False -> Nothing
---  in ffor signers $ \(pk, capList) ->
---    let coinCap = parseCoinTransferCap capList
---        coinCapAmount = fromMaybe 0 $ fmap _fungibleTransferCap_amount coinCap
---        networkId' = fromMaybe (NetworkId "Unknown Netork") $ p^.pNetworkId
---        chain = p^.pMeta.pmChainId
---        GasLimit lim = p^.pMeta.pmGasLimit
---        GasPrice (ParsedDecimal price) = p^.pMeta.pmGasPrice
---        maxGasCost = fromIntegral lim * price
---    in QuickSignSummary
---      { _quickSignSummary_activeOwnedKeys = Set.singleton pk
---      , _quickSignSummary_unOwnedKeys = mempty
---      , _quickSignSummary_totalKDA = coinCapAmount
---      , _quickSignSummary_gasSubTotal = maxGasCost
---      , _quickSignSummary_chainsSigned = Set.singleton chain
---      , _quickSignSummary_requestsCanSign = 1
---      , _quickSignSummary_network = [networkId']
---      }
---  where
---    pubKeySet = Set.fromList controlledKeys
---    pactPubKeyFromSigner = Pact.PublicKey . T.encodeUtf8 . view siPubKey
-
----------------------------------------------------------------------------------
-
--- data FungibleTransferCap = FungibleTransferCap
---   { _fungibleTransferCap_amount   :: Decimal
---   , _fungibleTransferCap_sender   :: Text
---   , _fungibleTransferCap_receiver :: Text
---   , _fungibleTransferCap_name     :: Text
---   } deriving (Show, Eq)
-
--- -- | Extracts information from a fungible token's TRANSFER cap
--- parseFungibleTransferCap :: [SigCapability] -> ModuleName -> Maybe FungibleTransferCap
--- parseFungibleTransferCap caps _modName = foldl' (\acc cap -> acc <|> transferCap cap) Nothing caps
---   where
---     isFungible (QualifiedName _capModName capName _) =
---       -- modName == capModName &&
---       capName == "TRANSFER"
---     transferCap (SigCapability modName
---       [(PLiteral (LString sender))
---       ,(PLiteral (LString receiver))
---       ,(PLiteral (LDecimal amount))])
---         | isFungible modName = Just $ FungibleTransferCap amount sender receiver "coin"
---         | otherwise = Nothing
---     transferCap _ = Nothing
-
--- -- | Parses `coin.coin.TRANSFER` cap
--- parseCoinTransferCap :: [SigCapability] -> Maybe FungibleTransferCap
--- parseCoinTransferCap caps = parseFungibleTransferCap caps $
---   ModuleName "coin" Nothing -- -$ Just $ NamespaceName "coin"
+impactSummary
+  :: MonadWidget t m
+  => [PayloadSigningRequest]
+  -> Set PublicKeyHex
+  -> m ()
+impactSummary payloadReqs signerSet = do
+  let signingImpact = foldr scrapePayload def $ _psr_payload <$> payloadReqs
+  dialogSectionHeading mempty "Impact Summary"
+  divClass "group" $ do
+    let tokens = _qss_tokens signingImpact
+        kda = Map.lookup "coin" tokens
+        tokens' = Map.delete "coin" tokens
+    flip (maybe blank) kda $ \kdaAmount ->
+      void $ mkLabeledClsInput True "Amount KDA" $ const $
+        text $ showWithDecimal kdaAmount <> " KDA"
+    if tokens' == mempty then blank else
+      void $ mkLabeledClsInput True "Amount (Tokens)" $ const $ el "div" $
+        forM_ (Map.toList tokens') $ \(name, amount) ->
+          el "p" $ text $ showWithDecimal amount <> " " <> name
+    case _qss_gasSubTotal signingImpact of
+      0 -> blank
+      price -> void $ mkLabeledClsInput True "Max Gas Cost" $
+        const $ text $ renderCompactText price <> " KDA"
+    void $ mkLabeledClsInput True "Number of Signatures" $
+      const $ text $ tshow $ _qss_numSigs signingImpact
+    void $ mkLabeledClsInput True "Via Chains" $ const $
+      text $ T.intercalate ", " $ fmap renderCompactText $ Set.toList $ _qss_chainsSigned signingImpact
+    let unscoped = _qss_unscoped signingImpact
+    if unscoped == 0 then blank else
+      void $ mkLabeledClsInput True "Unscoped Signers" $
+        const $ text $ tshow unscoped
+  where
+    isSigning = flip Set.member signerSet . PublicKeyHex . _siPubKey
+    scrapePayload :: Payload PublicMeta Text -> QuickSignSummary -> QuickSignSummary
+    scrapePayload p qss =
+      let signers = filter isSigning $ p^.pSigners
+          tokenMap = _qss_tokens qss
+          (tokenMap', unscoped, potentiallyPaysGas) =
+            foldr scrapeSigner (tokenMap, 0, False) signers
+          totalSigs = length signers + _qss_numSigs qss
+          totalUnscoped = unscoped + _qss_unscoped qss
+          chains = Set.insert (p^.pMeta.pmChainId) $ _qss_chainsSigned qss
+          gasCost = if potentiallyPaysGas then (fromIntegral (_pmGasLimit pm) * _pmGasPrice pm) else 0
+          pm = p ^. pMeta
+          totalGasCost = gasCost + _qss_gasSubTotal qss
+      in QuickSignSummary totalSigs totalUnscoped totalGasCost chains tokenMap'
+    scrapeSigner signer (tokenMap, unscoped, paysGas) =
+      let capList = signer^.siCapList
+          tokenTransfers = mapMaybe parseFungibleTransferCap capList
+          tokenMap' = foldr (\(k, v) m -> Map.insertWith (+) k v m) tokenMap tokenTransfers
+          signerHasGasCap = isJust $ find (\cap -> asString (_scName cap) == "coin.GAS") capList
+          isUnscoped = capList == []
+          potentiallyPaysGas = isUnscoped || signerHasGasCap
+       in (tokenMap', if isUnscoped then unscoped + 1 else unscoped, paysGas || potentiallyPaysGas)
