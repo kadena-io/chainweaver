@@ -1,7 +1,6 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
 , withHoogle ? false
-, kpkgs ? import ./dep/kpkgs { inherit system; }
 , obelisk
 }:
 let

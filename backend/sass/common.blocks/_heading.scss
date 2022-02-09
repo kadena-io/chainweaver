@@ -31,16 +31,19 @@
   margin-bottom: 1em;
 }
 
+
 .heading_type_h3 {
   font-family: WorkSans-SemiBold;
   font-size: 14px;
   color: #2d2d2f;
 }
 
-
 .heading_type_h4 {
-  font-size: $secondary-font-size;
+  // font-size: $secondary-font-size;
+  font-size: 13px;
   font-family: 'WorkSans-Medium';
+  font-weight: 500;
+  margin-bottom: 1em;
 }
 
 // Some detail/type of the heading.
