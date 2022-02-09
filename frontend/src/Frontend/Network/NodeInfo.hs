@@ -58,6 +58,7 @@ import qualified Data.Aeson                  as Aeson
 import qualified Data.Aeson.Lens             as AL
 import           Data.Char                   (isDigit)
 import           Data.Default
+import           Data.Either                 (lefts, rights)
 import           Data.List                   (sortOn)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
@@ -119,26 +120,23 @@ nodeVersion ni = case _nodeInfo_type ni of
 -- | Retrive the `NodeInfo` for a given host by quering its API.
 discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m, HasJSContext m) => NodeRef -> m (Either Text NodeInfo)
 discoverNode (NodeRef auth) = do
-    httpsReqs <- async $ discoverChainwebOrPact httpsUri
-    httpReqs <- async $ discoverChainwebOrPact httpUri
+    chainwebResponseHttps <- discoverChainwebNode httpsUri
+    pactResponseHttps     <- discoverPactNode httpsUri
+    chainwebResponseHttp  <- discoverChainwebNode httpUri
+    pactResponseHttp      <- discoverPactNode httpUri
 
-    -- For some http only servers waiting for a https response will take ages
-    -- on the other hand we need to prefer chainweb detection over pact -s
-    -- detection (as the former is more reliable). Therefore we group them by
-    -- protocol and go with the first success result.
-    waitSuccess [httpsReqs, httpReqs]
+    let allResponses = [chainwebResponseHttps, pactResponseHttps,
+                        chainwebResponseHttp, pactResponseHttp]
+
+    case rights allResponses of
+      [] ->
+        -- Since we didn't get a right response, we'll combine all the error messages
+        pure $ Left $ T.unlines $ lefts allResponses
+      (x:_) ->
+        -- We take the first good answer
+        pure (Right x)
 
   where
-    waitSuccess :: [Async (Either Text NodeInfo)] -> m (Either Text NodeInfo)
-    waitSuccess = \case
-      [] -> pure $ Left ""
-      xs -> do
-        (finished, r) <- waitAny xs
-        case r of
-          Left err -> do
-            left ((err <> "\n\n") <>) <$> waitSuccess (filter (/= finished) xs)
-          Right success -> pure $ Right success
-
     httpsUri = uriFromSchemeAuth [URI.scheme|https|]
     httpUri = uriFromSchemeAuth [URI.scheme|http|]
 
@@ -310,7 +308,7 @@ newXMLHttpRequestWithErrorSane req cb =
 
    Possibly a bug in 'newXMLHttpRequestWithError': https://github.com/reflex-frp/reflex-dom/issues/369
 -}
-newtype SafeXhrRequest a = SafeXhrRequest (XhrRequest a)
+newtype SafeXhrRequest a = SafeXhrRequest (XhrRequest a) deriving Show
 
 mkSafeReq :: URI -> Either Text (SafeXhrRequest ())
 mkSafeReq uri = case uri ^. uriAuthority ^? _Right . authPort of

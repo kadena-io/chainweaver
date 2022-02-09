@@ -353,7 +353,7 @@ getNodeInfosAsync
   => [NodeRef]
   -> ((NodeRef, Either Text NodeInfo) -> IO ())
   -> m ()
-getNodeInfosAsync nodes cb = for_ nodes $ \nodeRef -> void $ liftJSM $ forkJSM $ do
+getNodeInfosAsync nodes cb = liftJSM $ forkJSM $ for_ nodes $ \nodeRef -> void $ do
   r <- discoverNode nodeRef
   liftIO $ cb (nodeRef, r)
 
