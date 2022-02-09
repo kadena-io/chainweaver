@@ -156,21 +156,27 @@ uiQuickSign
   -> QuickSignRequest
   -> Event t ()
   -> m (mConf, Event t ())
-uiQuickSign ideL writeSigningResponse qsr _onCloseExternal = do
+uiQuickSign ideL writeSigningResponse qsr _onCloseExternal = (mempty, ) <$> do
   let toPayReqOrErr txt = ffor (eitherDecodeStrict $ encodeUtf8 txt) $ \p ->
         flip PayloadSigningRequest p $ payloadToSigData p txt
   if _quickSignRequest_commands qsr == []
-     then failWith "QuickSign request was empty"
-     else
-       case partitionEithers $ fmap toPayReqOrErr $ _quickSignRequest_commands qsr of
-         ([], payloads) ->
-           (mempty, ) <$> quickSignModal ideL writeSigningResponse payloads
-         (es, _) -> failWith $ "QuickSign request contained invalid commands:\n" <> T.unlines (map T.pack es)
+     then writeSigningResponse =<< failWith "QuickSign request was empty" ""
+     else case partitionEithers $ fmap toPayReqOrErr $ _quickSignRequest_commands qsr of
+       ([], payloads) ->
+         quickSignModal ideL writeSigningResponse payloads
+       (es, _) -> writeSigningResponse =<<
+         failWith ("QuickSign request contained invalid commands:\n" <> T.unlines (map T.pack es)) ""
   where
-    failWith msg = do
-      pb <- getPostBuild
-      finished <- writeSigningResponse (Left msg <$ pb)
-      pure (mempty, finished)
+
+failWith :: MonadWidget t m => Text -> Text -> m (Event t (Either Text QuickSignResponse))
+failWith msgHeader msg = do
+  onClose <- modalHeader $ text "QuickSign Failure"
+  void $ modalMain $ do
+    el "h3" $ text msgHeader
+    text msg
+  reject <- modalFooter $ confirmButton def "Done"
+  pure $ ffor (leftmost [reject, onClose]) $
+    const $ Left msgHeader
 
 quickSignModal
   :: forall key t m mConf model
