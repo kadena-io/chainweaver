@@ -189,7 +189,7 @@ quickSignModal
   -> (Event t (Either Text QuickSignResponse) -> m (Event t ()))
   -> [PayloadSigningRequest]
   -> m (Event t ())
-quickSignModal ideL writeSigningResponse payloadRequests = do
+quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDyn $ workflow $ Workflow $ do
   keysAndNet <- sample $ fetchKeysAndNet ideL
   runQuickSignChecks payloadRequests (_srws_currentNetwork keysAndNet) $ do
     onClose <- modalHeader $ text "QuickSign Request"
@@ -204,12 +204,14 @@ quickSignModal ideL writeSigningResponse payloadRequests = do
     (reject, sign) <- modalFooter $ (,)
       <$> cancelButton def "Reject"
       <*> confirmButton def "Sign All"
-    let toSign = fmap _psr_sigData payloadRequests
+    let --toSign = fmap _psr_sigData payloadRequests
         noResponseEv = ffor (leftmost [reject, onClose]) $
           const $ Left "QuickSign response rejected"
-    quickSignRes <- performEvent $ ffor sign $ const $ fmap QuickSignResponse $
-        forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
-    writeSigningResponse $ leftmost [ noResponseEv, Right <$> quickSignRes]
+    -- quickSignRes <- performEvent $ ffor sign $ const $ fmap QuickSignResponse $
+    --     forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
+    -- res <- writeSigningResponse $ leftmost [ noResponseEv, Right <$> quickSignRes]
+    res <- writeSigningResponse noResponseEv
+    pure (res, handleSigning payloadRequests writeSigningResponse keysAndNet <$ sign)
   where
     -- TODO: Will the network check make sense when using a pact-server instead of a node?
     runQuickSignChecks payloads cwNet qsWidget = do
@@ -226,9 +228,29 @@ quickSignModal ideL writeSigningResponse payloadRequests = do
              el "h3" $ text msgHeader
              text msg
            reject <- modalFooter $ confirmButton def "Done"
-           writeSigningResponse $ ffor (leftmost [reject, onClose]) $
+           res <- writeSigningResponse $ ffor (leftmost [reject, onClose]) $
              const $ Left msgHeader
+           pure (res, never)
          else qsWidget
+
+-- Web-based signing is SLOOOOOW so this workflow adds a loading screen
+handleSigning
+  :: (MonadWidget t m, HasCrypto key (Performable m))
+  => [PayloadSigningRequest]
+  -> (Event t (Either Text QuickSignResponse)-> m (Event t ()))
+  -> SigningRequestWalletState key
+  -> Workflow t m (Event t ())
+handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
+  void $ modalHeader $ text "Loading Signatures"
+  pb <- delay 0.2 =<< getPostBuild
+  modalMain $ text "Loading..."
+  let toSign = fmap _psr_sigData payloadRequests
+  quickSignRes <- performEvent $ ffor pb $ const $ fmap QuickSignResponse $
+    -- TODO: ForkIO and have an event for each payload in addition to the final event. The list of
+    -- events can be used to update the loading screen with: "x / y signatures left"
+    forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
+  res <- writeSigningResponse $ Right <$> quickSignRes
+  pure (res, never)
 
 -- |Summary view for quicksign ui
 summarizeTransactions
