@@ -157,15 +157,19 @@ uiQuickSign
   -> Event t ()
   -> m (mConf, Event t ())
 uiQuickSign ideL writeSigningResponse qsr _onCloseExternal = do
-  let toPsrOrErr txt = ffor (eitherDecodeStrict $ encodeUtf8 txt) $ \p ->
+  let toPayReqOrErr txt = ffor (eitherDecodeStrict $ encodeUtf8 txt) $ \p ->
         flip PayloadSigningRequest p $ payloadToSigData p txt
-  case partitionEithers $ fmap toPsrOrErr $ _quickSignRequest_commands qsr of
-    ([], payloads) -> do
-      (mempty, ) <$> quickSignModal ideL writeSigningResponse payloads
-    (es, _) -> do
+  if _quickSignRequest_commands qsr == []
+     then failWith "QuickSign request was empty"
+     else
+       case partitionEithers $ fmap toPayReqOrErr $ _quickSignRequest_commands qsr of
+         ([], payloads) ->
+           (mempty, ) <$> quickSignModal ideL writeSigningResponse payloads
+         (es, _) -> failWith $ "QuickSign request contained invalid commands:\n" <> T.unlines (map T.pack es)
+  where
+    failWith msg = do
       pb <- getPostBuild
-      let res = Left $ "QuickSign request contained invalid commands:\n" <> T.unlines (map T.pack es)
-      finished <- writeSigningResponse (res <$ pb)
+      finished <- writeSigningResponse (Left msg <$ pb)
       pure (mempty, finished)
 
 quickSignModal
@@ -181,24 +185,44 @@ quickSignModal
   -> m (Event t ())
 quickSignModal ideL writeSigningResponse payloadRequests = do
   keysAndNet <- sample $ fetchKeysAndNet ideL
-  onClose <- modalHeader $ text "QuickSign Request"
-  modalMain $ do
-    qsTabDyn <- fst <$> sigBuilderTabs never
-    dyn_ $ ffor qsTabDyn $ \case
-      SigBuilderTab_Summary ->
-        summarizeTransactions payloadRequests keysAndNet
-      SigBuilderTab_Details ->
-        quickSignTransactionDetails payloadRequests
-    pure ()
-  (reject, sign) <- modalFooter $ (,)
-    <$> cancelButton def "Reject"
-    <*> confirmButton def "Sign All"
-  let toSign = fmap _psr_sigData payloadRequests
-      noResponseEv = ffor (leftmost [reject, onClose]) $
-        const $ Left "QuickSign response rejected"
-  quickSignRes <- performEvent $ ffor sign $ const $ fmap QuickSignResponse $
-      forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
-  writeSigningResponse $ leftmost [ noResponseEv, Right <$> quickSignRes ]
+  runQuickSignChecks payloadRequests (_srws_currentNetwork keysAndNet) $ do
+    onClose <- modalHeader $ text "QuickSign Request"
+    modalMain $ do
+      qsTabDyn <- fst <$> sigBuilderTabs never
+      dyn_ $ ffor qsTabDyn $ \case
+        SigBuilderTab_Summary ->
+          summarizeTransactions payloadRequests keysAndNet
+        SigBuilderTab_Details ->
+          quickSignTransactionDetails payloadRequests
+      pure ()
+    (reject, sign) <- modalFooter $ (,)
+      <$> cancelButton def "Reject"
+      <*> confirmButton def "Sign All"
+    let toSign = fmap _psr_sigData payloadRequests
+        noResponseEv = ffor (leftmost [reject, onClose]) $
+          const $ Left "QuickSign response rejected"
+    quickSignRes <- performEvent $ ffor sign $ const $ fmap QuickSignResponse $
+        forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
+    writeSigningResponse $ leftmost [ noResponseEv, Right <$> quickSignRes]
+  where
+    -- TODO: Will the network check make sense when using a pact-server instead of a node?
+    runQuickSignChecks payloads cwNet qsWidget = do
+      let
+        toNetworkName = mkNetworkName . view networkId
+        netCheck = flip filter payloads $ \(PayloadSigningRequest _ p) ->
+          maybe False (\reqNet -> (fmap (== toNetworkName reqNet) cwNet) == Just True) $ p^.pNetworkId
+      if length netCheck /= length payloads
+         then do
+           let msgHeader = "Invalid NetworkID"
+               msg = "One or more of the quicksign requests has a networkId that does not match current chainweaver network"
+           onClose <- modalHeader $ text "QuickSign Failure"
+           void $ modalMain $ do
+             el "h3" $ text msgHeader
+             text msg
+           reject <- modalFooter $ confirmButton def "Done"
+           writeSigningResponse $ ffor (leftmost [reject, onClose]) $
+             const $ Left msgHeader
+         else qsWidget
 
 -- |Summary view for quicksign ui
 summarizeTransactions
@@ -243,16 +267,16 @@ accumulateCWSigners
   :: [PayloadSigningRequest]
   -> Set PublicKeyHex
   -> Map PublicKeyHex [(Text, [SigCapability])]
-accumulateCWSigners payloads cwKeyset = foldr 
+accumulateCWSigners payloads cwKeyset = foldr
   (\(hash, signers) signerMap -> foldr (go hash) signerMap signers) mempty $
     (renderCompactText . _sigDataHash . _psr_sigData &&& _pSigners . _psr_payload)
       <$> payloads
   where
     go hash signer accum = let pkh = PublicKeyHex $ _siPubKey signer in
-       if Set.notMember pkh cwKeyset 
+       if Set.notMember pkh cwKeyset
          then accum
          else Map.insertWith (<>) pkh [(hash, _siCapList signer)] accum
-    
+
 
 -- | Details page for quicksign transactions
 quickSignTransactionDetails

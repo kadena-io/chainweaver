@@ -98,11 +98,13 @@ data PayloadSigningRequest = PayloadSigningRequest
   { _psr_sigData        :: SigData Text
   , _psr_payload        :: Payload PublicMeta Text
   }
+  deriving (Show, Eq)
 
 data SigningRequestWalletState key = SigningRequestWalletState
   { _srws_currentNetwork :: Maybe NetworkName
   , _srws_cwKeys         :: [ KeyPair key ]
   }
+  deriving (Show, Eq)
 
 --TODO: As we build out quicksign we will eventually get rid of this and replace it with the two
 --structures above
@@ -243,13 +245,6 @@ checkAll
 checkAll nextW [] = nextW
 checkAll nextW [singleW] = singleW nextW
 checkAll nextW (x:xs) = x $ checkAll nextW xs
-
--- data PayloadSigningRequest = PayloadSigningRequest
---   { _psr_sigData        :: SigData Text
---   , _psr_payload        :: Payload PublicMeta Text
---   }
-
--- data SigningRequestWalletState key = SigningRequestWalletState
 
 checkAndSummarize
   :: SigBuilderWorkflow t m model key
@@ -558,7 +553,7 @@ signatureDetails sd = do
 signAndShowSigDialog
   :: SigBuilderWorkflow t m model key
   => model
-  -> SigBuilderRequest key
+  -> SigBuilderRequest key --TODO
   -> [KeyPair key]  -- ChainweaverKeys
   -> Workflow t m (Event t ()) -- Workflow for going back
   -> [(PublicKeyHex, UserSig)] -- User-supplied Sigs
