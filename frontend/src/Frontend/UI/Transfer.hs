@@ -60,10 +60,8 @@ import           Data.These (These(This))
 import           Data.Traversable
 import           Data.Time.Clock.POSIX
 
-#if !defined(ghcjs_HOST_OS)
 import qualified Codec.QRCode as QR
 import qualified Codec.QRCode.JuicyPixels as QR
-#endif
 import qualified Data.YAML.Aeson as Y
 
 import           Pact.Types.SigData
@@ -1484,11 +1482,10 @@ transferDetails signedCmd = do
           & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
           & textAreaElementConfig_setValue .~ updated preview
 
-#if !defined(ghcjs_HOST_OS)
       tabPane mempty curSelection TransferDetails_HashQR $ do
         let hashText = hashToText . toUntypedHash . _sigDataHash <$> signedCmd
             qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> hashText
-            img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 6) <$> qrImage
+            img = maybe "Error creating QR code" (QR.toBmpDataUrlT 4 6) <$> qrImage
         el "div" $ text $ T.unwords
           [ "This QR code contains only the request key."
           , "It doesn't give any transaction information, so some wallets may not accept it."
@@ -1499,13 +1496,8 @@ transferDetails signedCmd = do
       tabPane mempty curSelection TransferDetails_FullQR $ do
         let yamlText = T.decodeUtf8 . Y.encode1Strict <$> signedCmd
             qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> yamlText
-            img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) <$> qrImage
+            img = maybe "Error creating QR code" (QR.toBmpDataUrlT 4 4) <$> qrImage
         elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
-#else
-      let notAvailMsg = el "ul" $ text "This feature is not currently available in the browser"
-      tabPane mempty curSelection TransferDetails_HashQR notAvailMsg
-      tabPane mempty curSelection TransferDetails_FullQR notAvailMsg
-#endif
 
       pure ()
 
