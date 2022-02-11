@@ -16,7 +16,6 @@
 module Frontend.UI.Dialogs.Signing
   ( uiSigning
   , uiQuickSign
-  -- , QuickSignSummary(..)
   ) where
 
 import           Control.Arrow                  ((&&&))
@@ -189,7 +188,7 @@ quickSignModal
   -> (Event t (Either Text QuickSignResponse) -> m (Event t ()))
   -> [PayloadSigningRequest]
   -> m (Event t ())
-quickSignModal ideL writeSigningResponse payloadRequests = do
+quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDyn $ workflow $ Workflow $ do
   keysAndNet <- sample $ fetchKeysAndNet ideL
   runQuickSignChecks payloadRequests (_srws_currentNetwork keysAndNet) $ do
     onClose <- modalHeader $ text "QuickSign Request"
@@ -204,12 +203,14 @@ quickSignModal ideL writeSigningResponse payloadRequests = do
     (reject, sign) <- modalFooter $ (,)
       <$> cancelButton def "Reject"
       <*> confirmButton def "Sign All"
-    let toSign = fmap _psr_sigData payloadRequests
+    let --toSign = fmap _psr_sigData payloadRequests
         noResponseEv = ffor (leftmost [reject, onClose]) $
           const $ Left "QuickSign response rejected"
-    quickSignRes <- performEvent $ ffor sign $ const $ fmap QuickSignResponse $
-        forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
-    writeSigningResponse $ leftmost [ noResponseEv, Right <$> quickSignRes]
+    -- quickSignRes <- performEvent $ ffor sign $ const $ fmap QuickSignResponse $
+    --     forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
+    -- res <- writeSigningResponse $ leftmost [ noResponseEv, Right <$> quickSignRes]
+    res <- writeSigningResponse noResponseEv
+    pure (res, handleSigning payloadRequests writeSigningResponse keysAndNet <$ sign)
   where
     -- TODO: Will the network check make sense when using a pact-server instead of a node?
     runQuickSignChecks payloads cwNet qsWidget = do
@@ -226,9 +227,29 @@ quickSignModal ideL writeSigningResponse payloadRequests = do
              el "h3" $ text msgHeader
              text msg
            reject <- modalFooter $ confirmButton def "Done"
-           writeSigningResponse $ ffor (leftmost [reject, onClose]) $
+           res <- writeSigningResponse $ ffor (leftmost [reject, onClose]) $
              const $ Left msgHeader
+           pure (res, never)
          else qsWidget
+
+-- Web-based signing is SLOOOOOW so this workflow adds a loading screen
+handleSigning
+  :: (MonadWidget t m, HasCrypto key (Performable m))
+  => [PayloadSigningRequest]
+  -> (Event t (Either Text QuickSignResponse)-> m (Event t ()))
+  -> SigningRequestWalletState key
+  -> Workflow t m (Event t ())
+handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
+  void $ modalHeader $ text "Loading Signatures"
+  pb <- delay 0.2 =<< getPostBuild
+  modalMain $ text "Signing ..."
+  let toSign = fmap _psr_sigData payloadRequests
+  quickSignRes <- performEvent $ ffor pb $ const $ fmap QuickSignResponse $
+    -- TODO: ForkIO and have an event for each payload in addition to the final event. The list of
+    -- events can be used to update the loading screen with: "x / y signatures left"
+    forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
+  res <- writeSigningResponse $ Right <$> quickSignRes
+  pure (res, never)
 
 -- |Summary view for quicksign ui
 summarizeTransactions
@@ -240,7 +261,8 @@ summarizeTransactions payloadReqs walletState = do
   let cwKeyset = Set.fromList $
         fmap (PublicKeyHex . keyToText . _keyPair_publicKey) $ _srws_cwKeys walletState
       signerMap = accumulateCWSigners payloadReqs cwKeyset
-  impactSummary payloadReqs $ Set.fromList $ Map.keys signerMap
+      mNetId = _srws_currentNetwork walletState
+  impactSummary payloadReqs mNetId $ Set.fromList $ Map.keys signerMap
   dialogSectionHeading mempty "My Signers"
   mapM_ signerCapsWidget $ Map.toList signerMap
   pure ()
@@ -249,17 +271,18 @@ summarizeTransactions payloadReqs walletState = do
 
 capListWidgetWithHash
   :: MonadWidget t m
-  => [(Text, [SigCapability])]
+  => [(Text, ChainId, [SigCapability])]
   -> m ()
 --TODO: This case should never return
 capListWidgetWithHash [] = text "Unscoped Signer"
 capListWidgetWithHash cl = do
-  forM_ cl $ \(hash, txCapList) -> do
+  forM_ cl $ \(hash, cid, txCapList) -> do
     let capLines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] txCapList
         txt = if txCapList == [] then "Unscoped Signer" else T.init $ T.init $ T.unlines capLines
         --TODO: This is pretty lazy -- clean it up before final version
         rows = tshow $ 2 * length capLines
-    dialogSubSectionHeading mempty $ "Tx ID: " <> hash
+    elClass "h4" "heading heading_type_h4" $ text $ "Tx ID: " <> hash
+    elClass "h4" "heading heading_type_h4" $ text $ "On Chain: " <> tshow cid
     _ <- uiTextAreaElement $ def
       & textAreaElementConfig_initialValue .~ txt
       & initialAttributes .~ fold
@@ -272,16 +295,20 @@ capListWidgetWithHash cl = do
 accumulateCWSigners
   :: [PayloadSigningRequest]
   -> Set PublicKeyHex
-  -> Map PublicKeyHex [(Text, [SigCapability])]
+  -> Map PublicKeyHex [(Text, ChainId, [SigCapability])]
 accumulateCWSigners payloads cwKeyset = foldr
-  (\(hash, signers) signerMap -> foldr (go hash) signerMap signers) mempty $
-    (renderCompactText . _sigDataHash . _psr_sigData &&& _pSigners . _psr_payload)
-      <$> payloads
+  (\(hash, cid, signers) signerMap -> foldr (go hash cid) signerMap signers) mempty $
+    getSigner <$> payloads
   where
-    go hash signer accum = let pkh = PublicKeyHex $ _siPubKey signer in
+    getSigner p =
+      let hash = renderCompactText $ _sigDataHash $ _psr_sigData p
+          chain = view (pMeta.pmChainId) $ _psr_payload p
+          capList = _pSigners $ _psr_payload p
+      in (hash, chain, capList)
+    go hash cid signer accum = let pkh = PublicKeyHex $ _siPubKey signer in
        if Set.notMember pkh cwKeyset
          then accum
-         else Map.insertWith (<>) pkh [(hash, _siCapList signer)] accum
+         else Map.insertWith (<>) pkh [(hash, cid, _siCapList signer)] accum
 
 
 -- | Details page for quicksign transactions
@@ -302,9 +329,10 @@ quickSignTransactionDetails payloadReqs = do
           visible' <- toggle startExpanded clk
         divClass "payload__txid" $ text $ "Tx ID: " <> tshow txId
         pure visible'
-      let defAttrMap = "class" =: "payload__background-wrapper"
-      elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty <> defAttrMap) defAttrMap)$
-        sigBuilderDetailsUI p "payload__info" $ Just "qs-wrapper"
+      dyn_ $ ffor visible $ \case
+        False -> blank
+        True -> divClass "payload__background-wrapper" $
+                  sigBuilderDetailsUI p "payload__info" $ Just "qs-wrapper"
 
 data QuickSignSummary = QuickSignSummary
   { _qss_numSigs       :: Int
@@ -326,35 +354,38 @@ instance Default QuickSignSummary where
 impactSummary
   :: MonadWidget t m
   => [PayloadSigningRequest]
+  -> Maybe NetworkName
   -> Set PublicKeyHex
   -> m ()
-impactSummary payloadReqs signerSet = do
+impactSummary payloadReqs mNetId signerSet = do
   let signingImpact = foldr scrapePayload def $ _psr_payload <$> payloadReqs
   dialogSectionHeading mempty "Impact Summary"
   divClass "group" $ do
+    maybe blank (mkCategory "Network" . text . textNetworkName) mNetId
     let tokens = _qss_tokens signingImpact
         kda = Map.lookup "coin" tokens
         tokens' = Map.delete "coin" tokens
     flip (maybe blank) kda $ \kdaAmount ->
-      void $ mkLabeledClsInput True "Spending" $ const $
-        text $ showWithDecimal kdaAmount <> " KDA"
+      mkCategory "Spending" $ text $ showWithDecimal kdaAmount <> " KDA"
     if tokens' == mempty then blank else
-      void $ mkLabeledClsInput True "Spending (Tokens)" $ const $ el "div" $
+      mkCategory "Spending (Tokens)" $ el "div" $
         forM_ (Map.toList tokens') $ \(name, amount) ->
           el "p" $ text $ showWithDecimal amount <> " " <> name
     case _qss_gasSubTotal signingImpact of
       0 -> blank
-      price -> void $ mkLabeledClsInput True "Max Gas Cost" $
-        const $ text $ renderCompactText price <> " KDA"
-    void $ mkLabeledClsInput True "Number of Signatures" $
-      const $ text $ tshow $ _qss_numSigs signingImpact
-    void $ mkLabeledClsInput True "Via Chains" $ const $
-      text $ T.intercalate ", " $ fmap renderCompactText $ Set.toList $ _qss_chainsSigned signingImpact
+      price -> mkCategory "Max Gas Cost" $ text $ renderCompactText price <> " KDA"
+    mkCategory "Number of Requests" $ text $ tshow $ length payloadReqs
+    mkCategory "Number of Signatures" $ text $ tshow $ _qss_numSigs signingImpact
+    let multipleChains = 1 < (Set.size $ _qss_chainsSigned signingImpact)
+        chainHeader = bool "Via Chain" "Via Chains" multipleChains
+    mkCategory chainHeader $ text $ T.intercalate ", " $ fmap renderCompactText $
+        sortChainIds $ Set.toList $ _qss_chainsSigned signingImpact
     let unscoped = _qss_unscoped signingImpact
     if unscoped == 0 then blank else
-      void $ mkLabeledClsInput True "Unscoped Signers" $
-        const $ text $ tshow unscoped
+      mkCategory "Unscoped Signers" $ text $ tshow unscoped
   where
+    mkCategory header content =
+      void $ mkLabeledClsInput True header $ const content
     isSigning = flip Set.member signerSet . PublicKeyHex . _siPubKey
     scrapePayload :: Payload PublicMeta Text -> QuickSignSummary -> QuickSignSummary
     scrapePayload p qss =
