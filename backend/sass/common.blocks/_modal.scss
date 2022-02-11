@@ -431,7 +431,6 @@ $signer-width: 60%;
 .payload__txid {
   width: $signer-width;
   overflow: hidden;
-  height: 100%;
   text-overflow: ellipsis;
   vertical-align: middle;
 }
