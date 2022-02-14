@@ -484,12 +484,13 @@ showTransactionSummary dSummary p = do
 --------------------------------------------------------------------------------
 -- Signature and Submission
 --------------------------------------------------------------------------------
-data SigDetails = SigDetails_Yaml | SigDetails_Json
+data SigDetails = SigDetails_Yaml | SigDetails_Json | SigDetails_Command
   deriving (Eq,Ord,Show,Read,Enum,Bounded)
 
 showSigDetailsTabName :: SigDetails -> Text
 showSigDetailsTabName SigDetails_Json = "JSON"
 showSigDetailsTabName SigDetails_Yaml = "YAML"
+showSigDetailsTabName SigDetails_Command = "Command JSON"
 
 signatureDetails
   :: (MonadWidget t m)
@@ -500,10 +501,11 @@ signatureDetails sd = do
     (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
       & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ _sigDataHash sd)
 
+  let canMakeCmd = (length $ _sigDataSigs sd) == (length $ catMaybes $ snd <$> _sigDataSigs sd)
   divClass "tabset" $ mdo
-    curSelection <- holdDyn SigDetails_Yaml onTabClick
+    curSelection <- holdDyn (if canMakeCmd then SigDetails_Command else SigDetails_Yaml) onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [minBound .. maxBound]
+      { _tabBarCfg_tabs = if canMakeCmd then [minBound .. maxBound] else [SigDetails_Yaml, SigDetails_Json]
       , _tabBarCfg_mkLabel = const $ text . showSigDetailsTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
@@ -516,6 +518,14 @@ signatureDetails sd = do
     tabPane mempty curSelection SigDetails_Json $ do
       let sigDataText = T.decodeUtf8 $ LB.toStrict $ A.encode $ A.toJSON sd
       void $ uiSignatureResult sigDataText
+    if canMakeCmd
+       then
+         tabPane mempty curSelection SigDetails_Command $ do
+            let cmdText = either (const "Command not available")
+                                (T.decodeUtf8 . LB.toStrict . A.encode . A.toJSON)
+                                $ sigDataToCommand sd
+            void $ uiSignatureResult cmdText
+       else blank
   pure ()
   where
     uiSignatureResult txt = do
