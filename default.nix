@@ -20,7 +20,7 @@ let
   ovaReleaseNumber = "0";
 
   obApp = import ./obApp.nix { inherit obelisk; };
-  pactServerModule = import ./pact-server/service.nix;
+  pactServerModule = import ./pact-server/service.nix { inherit obelisk };
   sass = pkgs.runCommand "sass" {} ''
     set -eux
     mkdir $out
@@ -52,7 +52,7 @@ in obApp // rec {
       system = "x86_64-linux";
       configuration = {
         imports = [
-          (module { inherit exe hostName adminEmail routeHost enableHttps version; nixosPkgs = pkgs; })
+          (module { inherit obelisk exe hostName adminEmail routeHost enableHttps version; nixosPkgs = pkgs; })
           (obelisk.serverModules.mkDefaultNetworking args)
           (obelisk.serverModules.mkObeliskApp (args // { inherit exe; }))
           ./acme.nix  # Backport of ACME upgrades from 20.03
