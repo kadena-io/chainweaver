@@ -20,7 +20,7 @@ let
   ovaReleaseNumber = "0";
 
   obApp = import ./obApp.nix { inherit obelisk; };
-  pactServerModule = import ./pact-server/service.nix { inherit obelisk };
+  # pactServerModule = import ./pact-server/service.nix { inherit obelisk; };
   sass = pkgs.runCommand "sass" {} ''
     set -eux
     mkdir $out
