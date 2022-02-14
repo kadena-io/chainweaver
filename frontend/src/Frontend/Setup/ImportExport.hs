@@ -2,37 +2,40 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-module Desktop.ImportExport where
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE ConstraintKinds #-}
+module Frontend.Setup.ImportExport where
 
-import qualified Cardano.Crypto.Wallet as Crypto
 import Control.Lens (over, mapped, _Left)
 import Control.Error (hoistEither, failWith)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Except (ExceptT(ExceptT), runExceptT, throwError)
 import Control.Monad.Trans (lift)
-import Data.Aeson (FromJSON, Value, eitherDecode, object, (.=), (.:), withObject)
+import Data.Aeson (FromJSON, Value, eitherDecode, object, (.=), (.:), withObject, ToJSON)
 import Data.Aeson.Types (Parser, parseEither)
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Bifunctor (first)
+import Data.Constraint.Extras (Has)
 import Data.Foldable (traverse_)
 import Data.List (intercalate)
+import Data.Proxy (Proxy)
 import Data.Dependent.Map (DMap)
+import Data.GADT.Compare (GCompare)
+import Data.GADT.Show (GShow)
 import qualified Data.Dependent.Map as DMap
 import Data.Time (getZonedTime, zonedTimeToLocalTime, iso8601DateFormat, formatTime)
 import Data.Functor.Identity (Identity, runIdentity)
 import Language.Javascript.JSaddle (MonadJSM)
-import Data.Time (getCurrentTime)
-import System.Locale.Read (getCurrentLocale)
+import Data.Time (getCurrentTime, defaultTimeLocale)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.IO as TL
 import qualified Data.Text.Lazy.Encoding as TL
+import Data.Universe.Some (UniverseSome)
 import Reflex
 
-import Desktop.Orphans ()
-import Desktop.Crypto.BIP (BIPStorage(..), bipMetaPrefix, runBIPCryptoT, passwordRoundTripTest)
 import Frontend.AppCfg (ExportWalletError(..), FileType(FileType_Import), fileTypeExtension)
 import Pact.Server.ApiClient (WalletEvent (..), TransactionLogger (..))
 import Frontend.Crypto.Class (HasCrypto)
@@ -40,6 +43,7 @@ import Frontend.Wallet (PublicKeyPrefix (..), genZeroKeyPrefix)
 import Frontend.Storage (HasStorage, dumpLocalStorage)
 import Frontend.VersionedStore (VersionedStorage(..), StorageVersion, VersioningDecodeJsonError(..))
 import qualified Frontend.VersionedStore as FrontendStore
+import Frontend.Storage (StoreKeyMetaPrefix(..))
 import Frontend.Crypto.Password
 
 data ImportWalletError
@@ -66,6 +70,9 @@ storeFrontendDataKey = "StoreFrontend_Data"
 
 chainweaverImportObj :: String
 chainweaverImportObj = "ChainweaverImport"
+
+bipMetaPrefix :: StoreKeyMetaPrefix
+bipMetaPrefix = StoreKeyMetaPrefix "BIPStorage_Meta"
 
 hoistParser
   :: Monad m
@@ -100,36 +107,50 @@ extractImportVersionField
 extractImportVersionField =
   extractImportDataField
 
+data ImportWidgetApis bipStorage key n m = ImportWidgetApis
+  { _importWidgetApis_bipStorageKey :: bipStorage key
+  , _importWidgetApis_pwCheck :: (key -> Password -> m Bool)
+  , _importWidgetApis_runF :: (forall a . () => key -> Password -> n m a -> m a)
+  }
+
+type ImportWidgetConstraints bipStorage key n m =
+  ( MonadIO m, MonadIO (n m), HasCrypto key (n m), MonadIO (n m),
+    HasStorage (n m), FromJSON key, ToJSON key, FromJSON (DMap bipStorage Identity),
+    GCompare bipStorage
+  )
+
 doImport
-  :: forall t m
+  :: forall t m n key bipStorage
   .  ( MonadIO m
      , MonadJSM m
      , HasStorage m
      , MonadSample t m
      , Reflex t
+     , ImportWidgetConstraints bipStorage key n m
      )
   => TransactionLogger
+  -> ImportWidgetApis bipStorage key n m
   -> Password
   -> Text -- Backup data
-  -> m (Either ImportWalletError (Crypto.XPrv, Password))
-doImport txLogger pw contents = runExceptT $ do
+  -> m (Either ImportWalletError (key, Password))
+doImport txLogger (ImportWidgetApis bipStorageKey passwordRoundTripTest runF) pw contents = runExceptT $ do
   jVal <- hoistEither . first (ImportWalletError_NotJson . T.pack) $
     eitherDecode @Value (TL.encodeUtf8 . TL.fromStrict $ contents)
 
   bVer <- extractImportVersionField bipStorageVersionKey 0 jVal
   unless (bVer == 0) $ throwError $ ImportWalletError_UnknownVersion "BIPStorage" bVer
-  bipCrypto <- extractImportDataField @(DMap BIPStorage Identity) bipStorageDataKey 0 jVal
-  rootKey <- failWith ImportWalletError_NoRootKey (runIdentity <$> DMap.lookup BIPStorage_RootKey bipCrypto)
+  bipCrypto <- extractImportDataField @(DMap bipStorage Identity) bipStorageDataKey 0 jVal
+  rootKey <- failWith ImportWalletError_NoRootKey (runIdentity <$> DMap.lookup bipStorageKey bipCrypto)
 
-  let pwOk = passwordRoundTripTest rootKey pw
+  pwOk <- lift $ passwordRoundTripTest rootKey pw
 
   unless pwOk $ throwError ImportWalletError_PasswordIncorrect
 
   feVer <- extractImportVersionField storeFrontendVersionKey 0 jVal
   feData <- extractImportDataField @Value storeFrontendDataKey feVer jVal
 
-  _ <- ExceptT $ runBIPCryptoT (constant (rootKey, unPassword pw)) $ do
-    let vStore = FrontendStore.versionedStorage
+  _ <- ExceptT $ runF rootKey pw $ do
+    let vStore = FrontendStore.versionedStorage :: VersionedStorage (n m) (FrontendStore.StoreFrontend key)
     feLatestEither <- first (expandDecodeVersionJsonError storeFrontendDataKey feVer)
       <$> (_versionedStorage_decodeVersionedJson vStore feVer feData)
 
@@ -151,35 +172,43 @@ doImport txLogger pw contents = runExceptT $ do
       ImportWalletError_UnknownVersion section ver
 
 doExport
-  :: forall m
-  .  ( HasCrypto Crypto.XPrv m
+  :: forall m key bipStorage
+  .  ( HasCrypto key m
      , MonadJSM m
      , HasStorage m
+     , FromJSON key
+     , ToJSON key
+     , HasCrypto key m
+     , ToJSON (DMap bipStorage Identity)
+     , Has FromJSON bipStorage
+     , GCompare bipStorage
+     , UniverseSome bipStorage
+     , GShow bipStorage
      )
   => TransactionLogger
   -> PublicKeyPrefix
   -> Password
   -> Password
+  -> Proxy (bipStorage key)
   -> m (Either ExportWalletError (FilePath, Text))
-doExport txLogger keyPfx oldPw pw = runExceptT $ do
+doExport txLogger keyPfx oldPw pw _ = runExceptT $ do
   unless (oldPw == pw) $ throwError ExportWalletError_PasswordIncorrect
-  let store = FrontendStore.versionedStorage @Crypto.XPrv @m
+  let store = FrontendStore.versionedStorage @key @m
 
   -- Trigger an upgrade of the storage to ensure we're exporting the latest version.
   _ <- ExceptT $ over (mapped . _Left) (const ExportWalletError_UpgradeFailed)
     $ _versionedStorage_upgradeStorage store txLogger
 
-  (bipVer,bipData) <- lift $ dumpLocalStorage @BIPStorage bipMetaPrefix
+  (bipVer,bipData) <- lift $ dumpLocalStorage @bipStorage bipMetaPrefix
   (feVer, feData) <- lift $ _versionedStorage_dumpLocalStorage store
 
-  tl <- liftIO getCurrentLocale
   lt <- zonedTimeToLocalTime <$> liftIO getZonedTime
 
   pure $
     ( intercalate "."
       [ T.unpack $ _unPublicKeyPrefix keyPfx
       -- Mac does something weird with colons in the name and converts them to subdirs...
-      , formatTime tl (iso8601DateFormat (Just "%H-%M-%S")) lt
+      , formatTime defaultTimeLocale (iso8601DateFormat (Just "%H-%M-%S")) lt
       , T.unpack (fileTypeExtension FileType_Import)
       ]
     , TL.toStrict $ encodeToLazyText $ object $
