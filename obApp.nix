@@ -46,6 +46,7 @@ in with obelisk;
           obelisk-oauth-frontend = hackGet ./dep/obelisk-oauth + /frontend;
           obelisk-oauth-backend = hackGet ./dep/obelisk-oauth + /backend;
           HsYAML-aeson = hackGet ./dep/HsYAML-aeson;
+          qrcode-juicypixels = hackGet ./dep/qrcode + "/qrcode-juicypixels";
 
           # Needed for obelisk-oauth currently (ghcjs support mostly):
           entropy = hackGet ./dep/entropy;

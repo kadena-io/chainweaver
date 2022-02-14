@@ -105,14 +105,11 @@ library
     , unordered-containers
     , vector
     , witherable
+    , qrcode-juicypixels
 
   if impl(ghcjs)
     build-depends:
         ghcjs-base
-
-  if !impl(ghcjs)
-    build-depends:
-        qrcode-juicypixels
 
   exposed-modules: Frontend
                  , Frontend.AppCfg
