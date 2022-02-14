@@ -5,19 +5,34 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE PackageImports #-}
 module Frontend where
 
+import Control.Lens ((^.))
 import Control.Monad (join, void)
+import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Data.Coerce (coerce)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified GHCJS.DOM as DOM
+import qualified GHCJS.DOM.Blob as Blob
+import qualified "ghcjs-dom" GHCJS.DOM.Document as Document
 import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.FileReader as FileReader
+import qualified GHCJS.DOM.HTMLAnchorElement as HTMLAnchorElement
+import qualified GHCJS.DOM.HTMLBaseElement as HTMLBaseElement
 import qualified GHCJS.DOM.HTMLElement as HTMLElement
 import qualified GHCJS.DOM.HTMLInputElement as HTMLInput
 import qualified GHCJS.DOM.Types as Types
 import qualified GHCJS.DOM.File as JSFile
+import qualified GHCJS.DOM.Node as Node
+import qualified GHCJS.DOM.Types as DOM
+import qualified GHCJS.DOM.URL as URL
+import Foreign.JavaScript.Utils (bsToArrayBuffer)
+import Language.Javascript.JSaddle (JSException(..), js0, js1, (<#), (!), valToText)
 import Reflex.Dom
 import Pact.Server.ApiClient (runTransactionLoggerT, noLogger)
 import Obelisk.Frontend
@@ -72,7 +87,7 @@ frontend = Frontend
       let fileFFI = FileFFI
             { _fileFFI_externalFileOpened = fileOpened
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
-            , _fileFFI_deliverFile = \_ -> pure never
+            , _fileFFI_deliverFile = triggerFileDownload
             }
           printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
       bipWalletBrowser fileFFI $ \enabledSettings -> AppCfg
@@ -115,6 +130,24 @@ openFileDialog = do
             HTMLInput.setFiles (_inputElement_raw input) Nothing
             HTMLElement.click $ _inputElement_raw input
       pure (fmapMaybe id mContents, open)
+
+triggerFileDownload :: (MonadJSM (Performable m), PerformEvent t m)
+  => Event t (FilePath, Text) -> m (Event t (Either Text FilePath))
+triggerFileDownload ev = performEvent $ ffor ev $ \(fileName, c) -> liftJSM $ catch (do
+  doc   <- DOM.currentDocumentUnchecked
+  a :: HTMLAnchorElement.HTMLAnchorElement <- coerce <$> Document.createElement doc ("a" :: Text)
+  array <- bsToArrayBuffer (T.encodeUtf8 c)
+  blob <- Blob.newBlob [array] (Nothing :: Maybe DOM.BlobPropertyBag)
+  (url :: DOM.JSString) <- URL.createObjectURL blob
+  HTMLBaseElement.setHref (coerce a) url
+  HTMLAnchorElement.setDownload a fileName
+  body <- Document.getBodyUnchecked doc
+  void $ Node.appendChild body a
+  HTMLElement.click a
+  void $ Node.removeChild body a
+  URL.revokeObjectURL url
+  pure (Right fileName))
+  (\(JSException e) -> valToText e >>= return . Left)
 
 loaderMarkup :: DomBuilder t m => m ()
 loaderMarkup = divClass "spinner" $ do
