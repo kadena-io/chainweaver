@@ -1,4 +1,5 @@
 {
+    adminEmail,
     hostName,
     location,
     enableHttps,
@@ -63,6 +64,7 @@ in {pkgs, lib, ...}: {
     then [ 22 80 443 ]
     else [ 22 80 443 nginxPort ];
 
+  security.acme.email = adminEmail;
   services.nginx.virtualHosts."${hostName}" = {
     enableACME = enableHttps;
     forceSSL = enableHttps;
