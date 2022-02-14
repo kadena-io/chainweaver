@@ -1,10 +1,13 @@
 {
     hostName,
+    location,
+    enableHttps,
     nginxPort,
     pactPort,
     pactDataDir,
     pactUser,
     obApp,
+    z3,
     pkgs
 }:
 let
@@ -35,6 +38,7 @@ in {pkgs, lib, ...}: {
     description = "Pact Server";
     after = [ "network.target" ];
     wantedBy = [ "multi-user.target" ];
+    path = [ z3 ];
 
     preStart = ''
       export PATH=$PATH:${pkgs.coreutils}/bin
@@ -60,10 +64,10 @@ in {pkgs, lib, ...}: {
     else [ 22 80 443 nginxPort ];
 
   services.nginx.virtualHosts."${hostName}" = {
-    enableACME = true;
-    forceSSL = true;
-    locations."/" = {
-      proxyPass = "http://localhost:${toString pactPort}";
+    enableACME = enableHttps;
+    forceSSL = enableHttps;
+    locations."${location}" = {
+      proxyPass = "http://localhost:${toString pactPort}/";
       extraConfig = ''
         # Restrict transaction size:
         client_max_body_size 1m;
