@@ -19,7 +19,7 @@ in with obelisk;
     # ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
     # ios.bundleName = "Obelisk Minimal Example";
 
-    __closureCompilerOptimizationLevel = "SIMPLE";
+    # __closureCompilerOptimizationLevel = "SIMPLE";
 
     shellToolOverrides = ghc: super: {
       z3 = pkgs.z3;
