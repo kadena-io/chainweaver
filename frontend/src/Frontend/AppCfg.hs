@@ -68,8 +68,8 @@ data AppCfg key t m = AppCfg
   -- ^ Initial code to load into editor
   , _appCfg_editorReadOnly :: Bool
   -- ^ Is the editor read only?
-  , _appCfg_signingHandler :: m (FRPHandler SigningRequest SigningResponse t m)
-  , _appCfg_quickSignHandler :: m (FRPHandler QuickSignRequest QuickSignResponse t m)
+  , _appCfg_signingHandler :: m (FRPHandler SigningRequest SigningResponse t)
+  , _appCfg_quickSignHandler :: m (FRPHandler QuickSignRequest QuickSignResponse t)
   , _appCfg_enabledSettings :: EnabledSettings key t m
   , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
   -- ^ Logging Function
@@ -80,22 +80,18 @@ data MVarHandler req res = MVarHandler
   , _mvarHandler_writeResponse :: MVar (Either Text res)
   }
 
-data FRPHandler req res t m = FRPHandler
-  { _frpHandler_readRequests :: Event t req
-  , _frpHandler_writeResponses :: Event t (Either Text res) -> m (Event t ())
-  }
+type FRPHandler req res t = Event t (req, Either Text res -> JSM ())
 
 newMVarHandler :: IO (MVarHandler req res)
 newMVarHandler = MVarHandler <$> newEmptyMVar <*> newEmptyMVar
 
 mkFRPHandler
   :: (PerformEvent t m, TriggerEvent t m, MonadIO m)
-  => (PerformEvent t n, MonadJSM (Performable n))
-  => MVarHandler req res -> m (FRPHandler req res t n)
+  => MVarHandler req res -> m (FRPHandler req res t)
 mkFRPHandler (MVarHandler reqMVar resMVar) = do
   reqs <- takeMVarTriggerEvent reqMVar
-  let resps = performEvent . fmap (liftJSM . liftIO . putMVar resMVar)
-  pure $ FRPHandler reqs resps
+  let resp = liftIO . putMVar resMVar
+  pure $ (\r -> (r, resp)) <$> reqs
 
 takeMVarTriggerEvent
   :: (PerformEvent t m, TriggerEvent t m, MonadIO m)

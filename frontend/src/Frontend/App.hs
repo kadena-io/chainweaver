@@ -95,8 +95,8 @@ app
   -> RoutedT t (R FrontendRoute) m ()
 app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
-  FRPHandler signingReq signingResp <- _appCfg_signingHandler appCfg
-  FRPHandler quickSignReq quickSignResp <- _appCfg_quickSignHandler appCfg
+  signingReq <- _appCfg_signingHandler appCfg
+  quickSignReq <- _appCfg_quickSignHandler appCfg
   sigPopup <- walletSidebar sidebarExtra
   updates <- divClass "page" $ do
     let mkPageContent c = divClass (c <> " page__content visible")
@@ -169,8 +169,8 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
-    onSigningModal = Just . uiSigning ideL signingResp <$> req
-    onQuickSignModal = Just . uiQuickSign ideL quickSignResp <$> qreq
+    onSigningModal = Just . uiSigning ideL <$> req
+    onQuickSignModal = Just . uiQuickSign ideL <$> qreq
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
     quickSignModalCfg = mempty & modalCfg_setModal .~ onQuickSignModal
 

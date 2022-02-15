@@ -75,15 +75,13 @@ frontend = Frontend
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
             , _fileFFI_deliverFile = \_ -> pure never
             }
-          printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
-          printResponsesHandler2 f = pure $ FRPHandler never $ performEvent . fmap (liftIO . print . f)
 
       bipWalletBrowser fileFFI $ \enabledSettings -> AppCfg
         { _appCfg_gistEnabled = False
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
-        , _appCfg_quickSignHandler = printResponsesHandler2 (fmap unQuickSignResponse)
-        , _appCfg_signingHandler = printResponsesHandler
+        , _appCfg_quickSignHandler = pure never
+        , _appCfg_signingHandler = pure never
         , _appCfg_enabledSettings = enabledSettings
         , _appCfg_logMessage = errorLevelLogger
         }
