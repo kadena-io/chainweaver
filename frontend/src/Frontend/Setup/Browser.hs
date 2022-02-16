@@ -175,11 +175,13 @@ bipWalletBrowser fileFFI mkAppCfg = do
       keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists
       performEvent $ flip push keyAndPass $ \case
         Right (x, Password p, newWallet) -> pure $ Just $ do
-          setItemStorage localStorage BIPStorage_RootKey x
           when newWallet $ do
             liftIO $ _transactionLogger_rotateLogFile txLogger
-            removeItemStorage localStorage StoreFrontend_Wallet_Keys
-            removeItemStorage localStorage StoreFrontend_Wallet_Accounts
+
+            -- nuke it all before restart
+            removeKeyUniverse storeProxy localStorage
+
+          setItemStorage localStorage BIPStorage_RootKey x
           pure $ LockScreen_Unlocked ==> (x, Password p)
         Left _ ->
           for mPrv $ fmap (pure . (LockScreen_Locked ==>)) . sample
@@ -224,14 +226,14 @@ bipWalletBrowser fileFFI mkAppCfg = do
   pure ()
 
 appSettingsBrowser ::
-   ( HasStorage m 
+   ( HasStorage m
    , HasStorage (Performable m)
    , PerformEvent t m
    , MonadJSM (Performable m)
-   ) 
+   )
   => ((PrivateKey, Password) -> IO ())
   -> Dynamic t (Identity (PrivateKey, Password))
-  -> Event t (PrivateKey, Password) 
+  -> Event t (PrivateKey, Password)
   -> (Int -> PrivateKey -> Password -> (Performable m) (Key PrivateKey))
   -> EnabledSettings PrivateKey t m
 appSettingsBrowser newPwdTrigger details keyUpdates changePasswordBrowserAction = EnabledSettings

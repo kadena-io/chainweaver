@@ -227,39 +227,38 @@ uiGenericTransfer
   -> TransferCfg t
   -> m mConf
 uiGenericTransfer model cfg = do
-  let attrs = do
-        visible <- _transferCfg_isVisible cfg
-        pure $ if visible
-          then ("class" =: "main transfer transfer__expanded")
-          else ("class" =: "main transfer transfer__collapsed")
-  elDynAttr "main" attrs $ mdo
-    transferInfo <- divClass "transfer-fields" $ do
-      (fromAcct,amount) <- divClass "transfer__left-pane" $ do
+  eTransInfoAndType <- gTransferWidget
+  let transferWithNet = flip push eTransInfoAndType $ \(mTInfo, tType) ->
+        sampleNetInfo model >>= pure . fmap (mTInfo, tType, )
+      mkModal (Nothing, _, _) = Nothing
+      mkModal (Just ti, ty, ni) = Just $ lookupAndTransfer model ni ti ty
+  pure $ mempty & modalCfg_setModal .~ (fmap mkModal transferWithNet)
+  where
+    -- From
+    fromAccountWidget eClearForm =
+      divClass "transfer__left-pane" $ do
         el "h4" $ text "From"
         fca <- labeledChainAccount model $ mkCfg Nothing
           & initialAttributes .~ "placeholder" =: "Account Name"
-          & setValue .~ (Just $ Nothing <$ clear)
+          & setValue .~ (Just $ Nothing <$ eClearForm)
         rec
           amt <- amountFormWithMaxButton model fca $ mkCfg (Left "", False)
             & setValue .~ (Just $ (Left "", False) <$ leftmost
-                [ clear
+                [ eClearForm
 
                 -- If Max is checked, clear the amount and max checkbox when the
                 -- ChainAccount is updated.  Otherwise leave it alone.
                 , () <$ gate (fmap snd <$> current $ value amt) (updated (value fca))
                 ])
         return (fca,amt)
-      (toAcct,ks) <- divClass "transfer__right-pane" $ do
-        el "h4" $ text "To"
-        toFormWidget model $ mkCfg (Nothing, Nothing)
-          & setValue .~ (Just $ (Nothing, Nothing) <$ clear)
-      return $ runMaybeT $ TransferInfo <$>
-        MaybeT (value fromAcct) <*>
-        MaybeT (hush . fst <$> value amount) <*>
-        lift (snd <$> value amount) <*>
-        MaybeT (value toAcct) <*>
-        lift ks
-    (clear, signTransfer) <- divClass "transfer-fields submit" $ do
+
+    -- Destination
+    toAccountWidget = divClass "transfer__right-pane" $ do
+      el "h4" $ text "To"
+      toFormWidget model $ mkCfg (Nothing, Nothing)
+
+    -- Submit
+    submitOrClearWidget transferInfo =  divClass "transfer-fields submit" $ do
       clr <- el "div" $ uiButton btnCfgTertiary $ text "Clear"
       normal <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
       let safeDisabled Nothing = True
@@ -277,18 +276,31 @@ uiGenericTransfer model cfg = do
             , _uiButtonCfg_title = constDyn $ Just "Safe transfers make it impossible to lose coins by sending to the wrong public key when transferring to the same chain.  They require a little extra work because the receiving account also has to sign the transaction."
             }
       safe <- confirmButton safeBtnCfg "Safe Transfer"
-      -- _ <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Quick Transfer"
       let txEvt = leftmost
             [ NormalTransfer <$ normal
             , SafeTransfer <$ safe
             ]
       return (clr, txEvt)
-    let netInfo = flip push signTransfer $ \ty -> do
-          ni <- sampleNetInfo model
-          return ((ty,) <$> ni)
-    let mkModal (Just ti) (ty, ni) = Just $ lookupAndTransfer model ni ti ty
-        mkModal Nothing _ = Nothing
-    pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfo)
+
+    attrs = do
+      visible <- _transferCfg_isVisible cfg
+      pure $ if visible
+        then ("class" =: "main transfer transfer__expanded")
+        else ("class" =: "main transfer transfer__collapsed")
+
+    -- Put it all together
+    gTransferWidget = elDynAttr "main" attrs $ mdo
+      transferInfo <- divClass "transfer-fields" $ do
+        (fromAcct,amount) <- fromAccountWidget eClearTransfer
+        (toAcct,ks) <- toAccountWidget
+        return $ runMaybeT $ TransferInfo <$>
+          MaybeT (value fromAcct) <*>
+          MaybeT (hush . fst <$> value amount) <*>
+          lift (snd <$> value amount) <*>
+          MaybeT (value toAcct) <*>
+          lift ks
+      (eClearTransfer, signTransfer) <- submitOrClearWidget transferInfo
+      pure $ flip attach signTransfer $ current transferInfo
 
 amountFormWithMaxButton
   :: ( DomBuilder t m, MonadFix m

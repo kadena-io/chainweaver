@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -48,4 +49,6 @@ kadenaWalletLogo :: DomBuilder t m => m ()
 kadenaWalletLogo = divClass "logo" $ do
   elAttr "img" ("src" =: static @"img/kadena_blue_logo.png" <> "class" =: setupClass "kadena-logo") blank
   elClass "div" "chainweaver" $ text "Chainweaver"
+#ifdef  ghcjs_HOST_OS
   elClass "div" "by-kadena" $ text "by Kadena (BETA)"
+#endif
