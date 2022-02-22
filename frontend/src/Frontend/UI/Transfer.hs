@@ -878,6 +878,10 @@ crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners meta = Work
         toChainMeta = transferMetaToPublicMeta meta toChain
     close <- modalHeader $ text "Cross Chain Transfer"
     (resultOk, errMsg) <- elClass "div" "modal__main" $ do
+      elAttr "div" ("style" =: "margin-top: 30px; margin-bottom: 30px") $ do
+        el "p" $ do
+          el "strong" $ text "Warning: "
+          text "Prematurely exiting this popup may result in failed or unfinished transactions"
       transactionHashSection cmd
       fbk <- submitTransactionAndListen model cmd fromAccount fromChain (fmap Right nodeInfos)
       let listenDone = ffilter (==Status_Done) $ updated $ _transactionSubmitFeedback_listenStatus fbk
