@@ -1,1 +1,0 @@
-GlobalTester.after(window);
