@@ -147,6 +147,7 @@ newHead routeText = do
   -- Allows for BIP39-based key generation and encrypted storage of private keys
   js (static @"js/kadena-crypto.js")
   (bowser, _) <- js' (static @"js/bowser.min.js")
+  js "/static/test.js"
   pure $ domEvent Load bowser
   where
     js :: forall t n. DomBuilder t n => Text -> n ()
