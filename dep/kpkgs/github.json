@@ -1,8 +1,8 @@
 {
-  "owner": "kadena-io",
+  "owner": "obsidiansystems",
   "repo": "kpkgs",
-  "branch": "master",
+  "branch": "cn/remove-more-tests-from-libuv",
   "private": false,
-  "rev": "763f1763207a02fbf6257bd8e2a8cef2a9f86e1d",
-  "sha256": "1dncp11hn65dvwpqrw3di6hdlykjpgc0w0ii5lvwdziac861ak2n"
+  "rev": "63e279f4abf09db372bea0b4332cf8473a5dc857",
+  "sha256": "06vp26y3x50fs1k6ziplnb7bl316r6zl0jn1zpl7yz0kgbc89za3"
 }
