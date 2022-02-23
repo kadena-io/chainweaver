@@ -256,8 +256,8 @@ executable frontend
   -- https://github.com/ghcjs/ghcjs/issues/748 is fixed. -dedupe greatly
   -- reduces closure compile time, reduces final JS size quite a bit and
   -- improves page load times:
-  -- if impl(ghcjs)
-  --   ghcjs-options: -dedupe
+  if impl(ghcjs)
+    ghcjs-options: -dedupe
 
 test-suite tests
   type: exitcode-stdio-1.0
