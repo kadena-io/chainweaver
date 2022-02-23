@@ -139,6 +139,7 @@ newHead routeText = do
   ss "https://fonts.googleapis.com/css?family=Work+Sans"
   ss (static @"css/font-awesome.min.css")
   ss (static @"css/ace-theme-chainweaver.css")
+  js "/static/externs.js"
   js "/static/js/ace/ace.js"
   prerender_ blank $ js "/static/js/ace/mode-pact.js"
   -- Allows importing private keys
