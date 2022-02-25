@@ -19,7 +19,6 @@ in with obelisk;
     # ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
     # ios.bundleName = "Obelisk Minimal Example";
 
-    # __closureCompilerOptimizationLevel = "SIMPLE";
     staticFiles =
       let
         staticFilePath = ./static;
