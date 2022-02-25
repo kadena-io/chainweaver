@@ -20,7 +20,17 @@ in with obelisk;
     # ios.bundleName = "Obelisk Minimal Example";
 
     # __closureCompilerOptimizationLevel = "SIMPLE";
-
+    staticFiles =
+      let
+        staticFilePath = ./static;
+      in
+      pkgs.runCommand "minify" { buildInputs = [ pkgs.xorg.lndir ]; }
+        ''
+        mkdir -p $out
+        cd $out
+        lndir -silent ${staticFilePath} $out
+        '${pkgs.closurecompiler}/bin/closure-compiler' --externs 'externs.js' --externs '${reflex-platform.ghcjsExternsJs}' --language_in=ECMASCRIPT_2018 --jscomp_warning=checkVars --js_output_file="js/kadena-crypto.min.js" "js/kadena-crypto.js"
+        '';
     shellToolOverrides = ghc: super: {
       z3 = pkgs.z3;
      };
