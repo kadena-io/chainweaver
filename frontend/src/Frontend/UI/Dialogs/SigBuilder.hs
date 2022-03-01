@@ -72,6 +72,7 @@ type SigBuilderWorkflow t m model key =
   , HasCrypto key m
   , HasTransactionLogger m
   , HasLogger model t
+  , HasCrypto key (Performable m)
   )
 
 sigBuilderCfg
@@ -290,7 +291,6 @@ approveSigDialog
   -> Workflow t m (Event t ())
 approveSigDialog model sbr = Workflow $ do
   let sigData = _sbr_sigData sbr
-      -- sdHash = toUntypedHash $ _sigDataHash $ 
       keys = fmap _key_pair $ _sbr_cwKeys sbr
       sigs = _sigDataSigs sigData --[(PublicKeyHex, Maybe UserSig)]
       p = _sbr_payload sbr
@@ -588,7 +588,7 @@ signatureDetails sd = do
       uiDetailsCopyButton $ constant txt
 
 signAndShowSigDialog
-  :: SigBuilderWorkflow t m model key
+  :: (SigBuilderWorkflow t m model key)
   => model
   -> SigBuilderRequest key
   -> [KeyPair key]  -- ChainweaverKeys
@@ -600,19 +600,26 @@ signAndShowSigDialog model sbr keys backW sigsOrPrivate = Workflow $ mdo
   -- This allows a "loading" page to render before we attempt to do the really computationally
   -- expensive sigs
   pb <- delay 0.1 =<< getPostBuild
+  dmCmd <- holdDyn Nothing $ snd <$> eSDmCmdTuple
+  eSDmCmdTuple <- performEvent $ ffor pb $ \_-> do
+    sd <- addSigsToSigData (_sbr_sigData sbr) keys sigsOrPrivate
+    if Nothing `elem` (snd <$> _sigDataSigs sd)
+      then pure (sd, Nothing)
+      else pure (sd, hush $ sigDataToCommand sd)
   -- TODO: Can we forkIO the sig process and display something after they are done?
-  dmCmd <- widgetHold (modalMain $ text "Loading Signatures ..." >> pure Nothing) $ ffor pb $ \_ ->
+  widgetHold_ (modalMain $ text "Loading Signatures ...") $ ffor eSDmCmdTuple $ \(sd, mCmd) -> do
     modalMain $ do
-      sd <- addSigsToSigData (_sbr_sigData sbr) keys sigsOrPrivate
+      let cmdE = fmapMaybe id $ updated dmCmd
+          dPayload = constDyn $ _sbr_payload sbr
+      pb' <- getPostBuild
+      case mCmd of
+        Nothing -> blank
+        Just cmd -> previewTransaction model chain dPayload $ cmd <$ pb'
       signatureDetails sd
-      if Nothing `elem` (snd <$> _sigDataSigs sd)
-        then pure Nothing
-        else pure $ hush $ sigDataToCommand sd
   (back, done, submit) <- modalFooter $ (,,)
     <$> cancelButton def "Back"
     <*> confirmButton def "Done"
     <*> submitButton dmCmd
-
   let
       cmdAndNet = (,) <$> dmCmd <*> model ^. network_selectedNodes
       -- Gets rid of Maybe over Command by filtering
@@ -620,12 +627,12 @@ signAndShowSigDialog model sbr keys backW sigsOrPrivate = Workflow $ mdo
                      $ current cmdAndNet <@ submit
       -- Given M (a, b) and f :: a -> b -> c , give us M c
       fUncurry f functor = fmap (\tpl -> uncurry f tpl) functor
-      p = _sbr_payload sbr
-      chain = p^.pMeta.pmChainId
       sender = p^.pMeta.pmSender
       submitToNetworkE = transferAndStatus model (AccountName sender, chain) `fUncurry` eCmdAndNet
   return (onClose <> done, leftmost [backW <$ back, submitToNetworkE])
   where
+    p = _sbr_payload sbr
+    chain = p^.pMeta.pmChainId
     submitButton dmCmd = do
       let baseCfg = "class" =: "button button_type_confirm"
           dynAttr = ffor dmCmd $ \case
