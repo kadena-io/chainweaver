@@ -130,7 +130,7 @@ showModal ideL = do
     onEsc <- mkOnEsc document
 
     elDynKlass "div" (mkModalWrapperClass <$> isVisible) $ mdo
-      (backdropEl, ev) <- elClass' "div" "modal__screen" $
+      ev <- elClass "div" "modal__screen" $
         divClass "modal__dialog" $ networkView $ ffor (_ide_modal ideL) $ \case
           Nothing -> removePreventScrollClass $> (mempty, never) -- The modal is closed
           Just f -> addPreventScrollClass >> f onClose -- The modal is open
@@ -143,7 +143,6 @@ showModal ideL = do
         onClose = leftmost
           [ onFinish
           , onEsc
-          , domEvent Click backdropEl
           ]
         lConf = mempty & ideCfg_setModal .~ (LeftmostEv $ Nothing <$ onClose)
 

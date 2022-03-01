@@ -57,7 +57,7 @@ import Frontend.Repl
 import Frontend.Storage
 import qualified Frontend.VersionedStore as Store
 import Frontend.UI.Button
-import Frontend.UI.Dialogs.AddVanityAccount (uiAddAccountButton)
+import Frontend.UI.Dialogs.AddVanityAccount (uiWatchAccountButton)
 import Frontend.UI.Dialogs.SigBuilder
 import Frontend.UI.Dialogs.CreateGist (uiCreateGist)
 import Frontend.UI.Dialogs.CreatedGist (uiCreatedGist)
@@ -120,7 +120,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
           refreshCfg <- uiWalletRefreshButton
           watchCfg <- uiWatchRequestButton ideL
-          addCfg <- uiAddAccountButton ideL
+          addCfg <- uiWatchAccountButton ideL
           xferVisible <- uiTransferButton
           pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
         divClass "wallet-scroll-wrapper" $ do
@@ -310,6 +310,7 @@ networkBar
   ::
   ( MonadWidget t m
   , HasCrypto key m
+  , HasCrypto key (Performable m)
   , HasTransactionLogger m
   )
   => ModalIde m key t
