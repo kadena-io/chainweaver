@@ -464,7 +464,7 @@ qrCodesWidget sd = do
     tabPane mempty curSelection SBTransferDetails_HashQR $ do
       let hashText = hashToText $ toUntypedHash $ _sigDataHash sd
           qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI hashText
-          img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 6) qrImage
+          img = maybe "Error creating QR code" (QR.toBmpDataUrlT 4 6) qrImage
       el "div" $ text $ T.unwords
         [ "This QR code contains only the hash."
         , "It doesn't give any transaction information, so some wallets may not accept it."
@@ -475,7 +475,7 @@ qrCodesWidget sd = do
     tabPane mempty curSelection SBTransferDetails_FullQR $ do
       let yamlText = T.decodeUtf8 $ Y.encode1Strict sd
           qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI yamlText
-          img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) qrImage
+          img = maybe "Error creating QR code" (QR.toBmpDataUrlT 4 4) qrImage
       elAttr "img" ("src" =: LT.toStrict img) blank
 #else
     blank
