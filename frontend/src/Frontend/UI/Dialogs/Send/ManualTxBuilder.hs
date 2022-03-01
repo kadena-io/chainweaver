@@ -16,7 +16,7 @@
 
 module Frontend.UI.Dialogs.Send.ManualTxBuilder
   ( uiManualTxBuilderInput
-  , uiExplodedTxBuilder
+  -- , uiExplodedTxBuilder
   , recipientMatchesSenderTxBuilder
   ) where
 
@@ -111,107 +111,107 @@ uiManualTxBuilderInput onReset fromName fromChain mUcct mInitToAddress = do
     & textAreaElementConfig_initialValue .~ (maybe "" renderTxBuilder mInitToAddress)
     & textAreaElementConfig_setValue .~ (mempty <$ onReset)
 
-uiExplodedChainSelect
-  :: forall t m model
-     . ( MonadWidget t m
-       , HasNetwork model t
-       )
-  => model
-  -> Maybe UnfinishedCrossChainTransfer
-  -> Event t (Maybe AccountName)
-  -> Dynamic t (Maybe AccountName)
-  -> AccountName
-  -> ChainId
-  -> Event t (Maybe ChainId)
-  -> m ( Dropdown t (Maybe ChainId) )
-uiExplodedChainSelect model mUcct onFromName dFromName fromName fromChain onTxChainId = do
-  let
-    chainSelect _ = elClass' "div" "segment_type_tertiary" $
-      mkLabeledClsInput False "Chain ID" (uiChainSelectionWithUpdate (getChainsFromHomogenousNetwork model) onTxChainId)
+-- uiExplodedChainSelect
+--   :: forall t m model
+--      . ( MonadWidget t m
+--        , HasNetwork model t
+--        )
+--   => model
+--   -> Maybe UnfinishedCrossChainTransfer
+--   -> Event t (Maybe AccountName)
+--   -> Dynamic t (Maybe AccountName)
+--   -> AccountName
+--   -> ChainId
+--   -> Event t (Maybe ChainId)
+--   -> m ( Dropdown t (Maybe ChainId) )
+-- uiExplodedChainSelect model mUcct onFromName dFromName fromName fromChain onTxChainId = do
+--   let
+--     chainSelect _ = elClass' "div" "segment_type_tertiary" $
+--       mkLabeledClsInput False "Chain ID" (uiChainSelectionWithUpdate (getChainsFromHomogenousNetwork model) onTxChainId)
 
-    onNameChainUpdated (_, chainE) = leftmost
-      [ (,) <$> current dFromName <@> _dropdown_change chainE
-      , flip (,) <$> current (value chainE) <@> onFromName
-      ]
+--     onNameChainUpdated (_, chainE) = leftmost
+--       [ (,) <$> current dFromName <@> _dropdown_change chainE
+--       , flip (,) <$> current (value chainE) <@> onFromName
+--       ]
 
-    showPopover e = pure $ onNameChainUpdated e <&> \case
-      (Just toName, Just toChain) ->
-        showManualTxBuilderPopover mUcct (fromName, fromChain) (toName, toChain)
-      _ ->
-        PopoverState_Disabled
+--     showPopover e = pure $ onNameChainUpdated e <&> \case
+--       (Just toName, Just toChain) ->
+--         showManualTxBuilderPopover mUcct (fromName, fromChain) (toName, toChain)
+--       _ ->
+--         PopoverState_Disabled
 
-  fmap snd $ uiInputWithPopover chainSelect (_element_raw . fst) showPopover (def :: DropdownConfig t k)
+--   fmap snd $ uiInputWithPopover chainSelect (_element_raw . fst) showPopover (def :: DropdownConfig t k)
 
-uiExplodedTxBuilder
-  :: forall t m model key
-     . ( MonadWidget t m
-       , HasWallet model key t
-       , HasJsonData model t
-       , HasNetwork model t
-       )
-  => model
-  -> AccountName
-  -> ChainId
-  -> Maybe UnfinishedCrossChainTransfer
-  -> Maybe TxBuilder
-  -> m (Dynamic t (Maybe TxBuilder))
-uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
-  let
-    mkAlteredTxB mname mchain intKeys extKeys mPredicate = TxBuilder <$> mname <*> mchain
-      <*> pure (fmap (\p -> toPactKeyset $ KeySetHeritage (intKeys <> extKeys) p Nothing) mPredicate)
+-- uiExplodedTxBuilder
+--   :: forall t m model key
+--      . ( MonadWidget t m
+--        , HasWallet model key t
+--        , HasJsonData model t
+--        , HasNetwork model t
+--        )
+--   => model
+--   -> AccountName
+--   -> ChainId
+--   -> Maybe UnfinishedCrossChainTransfer
+--   -> Maybe TxBuilder
+--   -> m (Dynamic t (Maybe TxBuilder))
+-- uiExplodedTxBuilder model fromName fromChain mUcct mInitToAddress = do
+--   let
+--     mkAlteredTxB mname mchain intKeys extKeys mPredicate = TxBuilder <$> mname <*> mchain
+--       <*> pure (fmap (\p -> toPactKeyset $ KeySetHeritage (intKeys <> extKeys) p Nothing) mPredicate)
 
-    explodedTxB onTxAccountName onTxChainId keysetsPresets = do
-      (onNameInput, dname) <- uiAccountNameInput "Account Name" False Nothing onTxAccountName noValidation
+--     explodedTxB onTxAccountName onTxChainId keysetsPresets = do
+--       (onNameInput, dname) <- uiAccountNameInput "Account Name" False Nothing onTxAccountName noValidation
 
-      chainE <- uiExplodedChainSelect model
-        mUcct
-        onNameInput
-        dname
-        fromName
-        fromChain
-        onTxChainId
+--       chainE <- uiExplodedChainSelect model
+--         mUcct
+--         onNameInput
+--         dname
+--         fromName
+--         fromChain
+--         onTxChainId
 
-      keyset <- fmap snd $ uiDefineKeyset model keysetsPresets
+--       keyset <- fmap snd $ uiDefineKeyset model keysetsPresets
 
-      let onKeysetChange = mconcat
-            [ () <$ _keysetInputs_rowAddDelete (_definedKeyset_internalKeys keyset)
-            , () <$ _keysetInputs_rowAddDelete (_definedKeyset_externalKeys keyset)
-            , () <$ _keysetInputs_rowChange (_definedKeyset_internalKeys keyset)
-            , () <$ _keysetInputs_rowChange (_definedKeyset_externalKeys keyset)
-            , () <$ _definedKeyset_predicateChange keyset
-            , () <$ onNameInput
-            , () <$ _dropdown_change chainE
-            ]
+--       let onKeysetChange = mconcat
+--             [ () <$ _keysetInputs_rowAddDelete (_definedKeyset_internalKeys keyset)
+--             , () <$ _keysetInputs_rowAddDelete (_definedKeyset_externalKeys keyset)
+--             , () <$ _keysetInputs_rowChange (_definedKeyset_internalKeys keyset)
+--             , () <$ _keysetInputs_rowChange (_definedKeyset_externalKeys keyset)
+--             , () <$ _definedKeyset_predicateChange keyset
+--             , () <$ onNameInput
+--             , () <$ _dropdown_change chainE
+--             ]
 
-      pure $ (,) onKeysetChange $ mkAlteredTxB
-        <$> dname
-        <*> value chainE
-        <*> _keysetInputs_set (_definedKeyset_internalKeys keyset)
-        <*> _keysetInputs_set (_definedKeyset_externalKeys keyset)
-        <*> _definedKeyset_predicate keyset
+--       pure $ (,) onKeysetChange $ mkAlteredTxB
+--         <$> dname
+--         <*> value chainE
+--         <*> _keysetInputs_set (_definedKeyset_internalKeys keyset)
+--         <*> _keysetInputs_set (_definedKeyset_externalKeys keyset)
+--         <*> _definedKeyset_predicate keyset
 
-  rec
-    onEitherTxB <- fmap (fst . snd) $
-      uiManualTxBuilderInput onKeysetChange fromName fromChain mUcct mInitToAddress
+--   rec
+--     onEitherTxB <- fmap (fst . snd) $
+--       uiManualTxBuilderInput onKeysetChange fromName fromChain mUcct mInitToAddress
 
-    let
-      onTxBAccountName = fmap (^? _Right . to _txBuilder_accountName) onEitherTxB
-      onTxBChainId = fmap (^? _Right . to _txBuilder_chainId) onEitherTxB
-      onTxBPredicate = fmap
-        (^? _Right . to _txBuilder_keyset . _Just . to Pact._ksPredFun . to Pact.renderCompactText)
-        onEitherTxB
+--     let
+--       onTxBAccountName = fmap (^? _Right . to _txBuilder_accountName) onEitherTxB
+--       onTxBChainId = fmap (^? _Right . to _txBuilder_chainId) onEitherTxB
+--       onTxBPredicate = fmap
+--         (^? _Right . to _txBuilder_keyset . _Just . to Pact._ksPredFun . to Pact.renderCompactText)
+--         onEitherTxB
 
-      (onInternalKeys, onExternalKeys) = splitE $ attachWithMaybe
-        (\keys -> either (const Nothing) (Just . mkKeysets keys))
-        (current $ model ^. wallet_keys)
-        onEitherTxB
+--       (onInternalKeys, onExternalKeys) = splitE $ attachWithMaybe
+--         (\keys -> either (const Nothing) (Just . mkKeysets keys))
+--         (current $ model ^. wallet_keys)
+--         onEitherTxB
 
-    (onKeysetChange, dKeyset) <- explodedTxB onTxBAccountName onTxBChainId $ emptyKeysetPresets
-      & definedKeyset_internalKeys . keysetInputs_rowAddDelete .~ onInternalKeys
-      & definedKeyset_externalKeys . keysetInputs_rowAddDelete .~ onExternalKeys
-      & definedKeyset_predicateChange .~ onTxBPredicate
+--     (onKeysetChange, dKeyset) <- explodedTxB onTxBAccountName onTxBChainId $ emptyKeysetPresets
+--       & definedKeyset_internalKeys . keysetInputs_rowAddDelete .~ onInternalKeys
+--       & definedKeyset_externalKeys . keysetInputs_rowAddDelete .~ onExternalKeys
+--       & definedKeyset_predicateChange .~ onTxBPredicate
 
-  pure dKeyset
+--   pure dKeyset
 
 mkKeysets
   :: KeyStorage key
