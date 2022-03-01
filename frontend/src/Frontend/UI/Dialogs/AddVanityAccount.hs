@@ -3,7 +3,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TupleSections #-}
 module Frontend.UI.Dialogs.AddVanityAccount
-  ( uiAddAccountButton
+  ( uiWatchAccountButton
   , uiCreateAccountButton
   ) where
 
@@ -22,16 +22,16 @@ import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Network
 import Frontend.Wallet
 
-uiAddAccountButton
+uiWatchAccountButton
   :: forall t m key mConf
      . ( MonadWidget t m, Monoid mConf
        , HasModalCfg mConf (ModalImpl m key t) t
        )
   => ModalIde m key t
   -> m mConf
-uiAddAccountButton m = do
-  eOpenAddAccount <- uiButton headerBtnCfg  (text "+ Add Account")
-  pure $ mempty & modalCfg_setModal .~ (Just (uiAddAccountDialog m) <$ eOpenAddAccount)
+uiWatchAccountButton m = do
+  eOpenAddAccount <- uiButton headerBtnCfg  (text "+ Watch Account")
+  pure $ mempty & modalCfg_setModal .~ (Just (uiWatchAccountDialog m) <$ eOpenAddAccount)
 
 uiAddAccountDialog
   :: ( MonadWidget t m, Monoid mConf
