@@ -36,6 +36,7 @@ module Frontend.UI.Widgets
   , accountListId
   , accountDatalist
   , uiAccountNameInput
+  , uiAccountNameInputAsync
   , uiAccountNameInputNoDropdown
   , accountNameFormWidget
   , accountNameFormWidgetNoDropdown
@@ -1108,6 +1109,30 @@ uiAccountNameInput label inlineLabel initval onSetName validateName = do
     & setValue .~ Just onSetName
   pure (tagPromptlyDyn v i, v)
 
+uiAccountNameInputAsync
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     , MonadFix m
+     )
+  => Text
+  -> Bool
+  -> Maybe AccountName
+  -> Event t (Maybe AccountName)
+  -> Dynamic t (Event t AccountName -> m (Event t (Maybe AccountName)))
+  -> Dynamic t (Event t AccountName -> m (Event t (Maybe Text)))
+  -> m ( Event t (Maybe AccountName)
+       , Dynamic t (Maybe AccountName)
+       )
+uiAccountNameInputAsync label inlineLabel initval onSetName isValidDyn errorDyn = do
+  (FormWidget v _ _, _) <- mkLabeledInput inlineLabel label (accountNameFormWidgetAsync isValidDyn errorDyn) $ mkCfg initval
+    & setValue .~ Just onSetName
+  pure (updated v, v)
+
 uiAccountNameInputNoDropdown
   :: ( DomBuilder t m
      , PostBuild t m
@@ -1260,6 +1285,7 @@ uiSidebarIcon selected src label = do
 data PopoverState
   = PopoverState_Error Text
   | PopoverState_Warning Text
+  | PopoverState_Loading
   | PopoverState_Disabled
   deriving (Eq, Show)
 
@@ -1286,7 +1312,7 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
     popoverBlurCls = \case
       PopoverState_Error _ -> Just "popover__error-state"
       PopoverState_Warning _ -> Just "popover__warning-state"
-      PopoverState_Disabled -> Nothing
+      _ -> Nothing
 
     popoverDiv :: Map Text Text -> m ()
     popoverDiv attrs = elAttr "div" attrs blank
@@ -1300,7 +1326,7 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
     popoverToAttrs = \case
       PopoverState_Error m -> popoverAttrs "popover__error" m
       PopoverState_Warning m -> popoverAttrs "popover__warning" m
-      PopoverState_Disabled -> popoverHiddenAttrs
+      _ -> popoverHiddenAttrs
 
     pushClass :: JS.IsElement e => Text -> e -> JSM ()
     pushClass cls = JS.getClassList >=> flip JS.add [cls]
@@ -1314,6 +1340,9 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
     popoverIcon cls =
       elClass "i" ("fa fa-warning popover__icon " <> cls) blank
 
+    popoverLoader cls =
+      elAttr "img" ("class" =: ("fa fa-warning popover__icon " <> cls) <> "src" =: static @"img/two-arrows-small.gif") blank
+
   a <- body cfg
 
   onMsg <- mkMsg a
@@ -1321,6 +1350,7 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
 
   _ <- dyn_ $ ffor dPopState $ \case
     PopoverState_Disabled -> blank
+    PopoverState_Loading -> popoverLoader ""
     PopoverState_Error _ -> popoverIcon "popover__icon-error"
     PopoverState_Warning _ -> popoverIcon "popover__icon-warning"
 
@@ -1415,6 +1445,65 @@ accountNameFormWidget validateName cfg = do
   let w = FormWidget
             (hush <$> (validate <*> fmap T.strip (value inputE)))
             (() <$ _inputElement_input inputE)
+            (_inputElement_hasFocus inputE)
+  pure (w, domEvent Paste inputE)
+
+accountNameFormWidgetAsync
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     , MonadFix m
+     )
+  => Dynamic t (Event t AccountName -> m (Event t (Maybe AccountName)))
+  -> Dynamic t (Event t AccountName -> m (Event t (Maybe Text)))
+  -> PrimFormWidgetConfig t (Maybe AccountName)
+  -> m (FormWidget t (Maybe AccountName), Event t (Maybe Text))
+accountNameFormWidgetAsync isValidDyn errorDyn cfg = mdo
+  let
+    validate textEv = do
+      let
+        (errorEv, accEv) = fanEither $ mkAccountName <$> textEv
+      eventEv <- networkView $ ($ accEv) <$> isValidDyn
+      maybeAccountEv <- switchHold never eventEv
+      pure $ leftmost [Nothing <$ errorEv, maybeAccountEv]
+
+    showError textEv = do
+      let
+        (errorEv, accEv) = fanEither $ mkAccountName <$> textEv
+      eventEv <- networkView $ ($ accEv) <$> errorDyn
+      chainErrorEv <- switchHold never eventEv
+      pure $ leftmost [Just <$> errorEv, chainErrorEv]
+
+    showPopover (ie, _) = do
+      let
+        loadingEv = inputEv <&> \input ->
+          if T.null input
+            then PopoverState_Disabled
+            else PopoverState_Loading
+      errorEv <- showError inputEv
+      pure $ leftmost
+        [ errorEv <&> \case
+            Just e -> PopoverState_Error e
+            _ -> PopoverState_Disabled
+        , loadingEv
+        ]
+
+    uiNameInput cfg = do
+      inp <- uiInputElement $ cfg & initialAttributes %~
+               (<> "list" =: accountListId) . addToClassAttr "account-input"
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ pfwc2iec (maybe "" unAccountName) cfg
+  let inputEv = _inputElement_input inputE
+  validEv <- validate inputEv
+  validDyn <- holdDyn Nothing validEv
+  let w = FormWidget
+            validDyn
+            (() <$ inputEv)
             (_inputElement_hasFocus inputE)
   pure (w, domEvent Paste inputE)
 
