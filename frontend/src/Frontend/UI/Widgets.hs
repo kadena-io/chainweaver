@@ -36,7 +36,6 @@ module Frontend.UI.Widgets
   , accountListId
   , accountDatalist
   , uiAccountNameInput
-  , uiAccountNameInputAsync
   , uiAccountNameInputNoDropdown
   , accountNameFormWidget
   , accountNameFormWidgetNoDropdown
@@ -46,9 +45,11 @@ module Frontend.UI.Widgets
   , uiAccountDropdown'
   , uiKeyPairDropdown
   , uiRequestKeyInput
+  , uiTextInputAsync
 
   -- ** Other widgets
   , PopoverState (..)
+  , ValidationResult (..)
   , uiInputWithPopover
   , uiSegment
   , uiGroup
@@ -1109,7 +1110,13 @@ uiAccountNameInput label inlineLabel initval onSetName validateName = do
     & setValue .~ Just onSetName
   pure (tagPromptlyDyn v i, v)
 
-uiAccountNameInputAsync
+-- | Creates an input widget, along with an initial value and a setter event.
+-- The validation function will be used to filter out erroneous results.
+--
+-- Values that result in `Success` or `Warning` will be passed on. `Failure` values will be filtered out.
+--
+-- Values that result in `Failure` or `Warning` will be shown as a pop over error. `Success` values will not show errors.
+uiTextInputAsync
   :: ( DomBuilder t m
      , PostBuild t m
      , MonadHold t m
@@ -1119,17 +1126,17 @@ uiAccountNameInputAsync
      , MonadJSM (Performable m)
      , MonadFix m
      )
-  => Text
-  -> Bool
-  -> Maybe AccountName
-  -> Event t (Maybe AccountName)
-  -> Dynamic t (Event t AccountName -> m (Event t (Maybe AccountName)))
-  -> Dynamic t (Event t AccountName -> m (Event t (Maybe Text)))
-  -> m ( Event t (Maybe AccountName)
-       , Dynamic t (Maybe AccountName)
+  => Text                     -- ^ The label for this input
+  -> Bool                     -- ^ Should the label be inline?
+  -> Maybe Text               -- ^ Initial Value for the input
+  -> Event t (Maybe Text)     -- ^ An event that can be used to set the input's value
+  -> Dynamic t (Event t Text -> m (Event t (ValidationResult Text a)))
+  -- ^ A `Dynamic` of function of validation functions. These functions will receive the user's input as an event.
+  -> m ( Event t (Maybe a)
+       , Dynamic t (Maybe a)
        )
-uiAccountNameInputAsync label inlineLabel initval onSetName isValidDyn errorDyn = do
-  (FormWidget v _ _, _) <- mkLabeledInput inlineLabel label (accountNameFormWidgetAsync isValidDyn errorDyn) $ mkCfg initval
+uiTextInputAsync label inlineLabel initval onSetName isValidDyn = do
+  (FormWidget v _ _, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync isValidDyn) $ mkCfg initval
     & setValue .~ Just onSetName
   pure (updated v, v)
 
@@ -1448,7 +1455,15 @@ accountNameFormWidget validateName cfg = do
             (_inputElement_hasFocus inputE)
   pure (w, domEvent Paste inputE)
 
-accountNameFormWidgetAsync
+-- | A data type that includes a warning state, apart from success and failure.
+-- A warning state is not considered a failure, the value is considered acceptable,
+-- but there is scope for improvement.
+data ValidationResult a b
+  = Failure a     -- ^ Signifies a failure, value is invalid
+  | Warning a b   -- ^ Signifies a warning, value may be accepted
+  | Success b     -- ^ Value is valid
+
+textFormWidgetAsync
   :: ( DomBuilder t m
      , PostBuild t m
      , MonadHold t m
@@ -1458,25 +1473,20 @@ accountNameFormWidgetAsync
      , MonadJSM (Performable m)
      , MonadFix m
      )
-  => Dynamic t (Event t AccountName -> m (Event t (Maybe AccountName)))
-  -> Dynamic t (Event t AccountName -> m (Event t (Maybe Text)))
-  -> PrimFormWidgetConfig t (Maybe AccountName)
-  -> m (FormWidget t (Maybe AccountName), Event t (Maybe Text))
-accountNameFormWidgetAsync isValidDyn errorDyn cfg = mdo
+  => Dynamic t (Event t Text -> m (Event t (ValidationResult Text a)))
+  -> PrimFormWidgetConfig t (Maybe Text)
+  -> m (FormWidget t (Maybe a), Event t (Maybe Text))
+textFormWidgetAsync isValidDyn cfg = mdo
   let
     validate textEv = do
-      let
-        (errorEv, accEv) = fanEither $ mkAccountName <$> textEv
-      eventEv <- networkView $ ($ accEv) <$> isValidDyn
-      maybeAccountEv <- switchHold never eventEv
-      pure $ leftmost [Nothing <$ errorEv, maybeAccountEv]
+      eventEv <- networkView $ ($ textEv) <$> isValidDyn
+      switchHold never eventEv
 
-    showError textEv = do
-      let
-        (errorEv, accEv) = fanEither $ mkAccountName <$> textEv
-      eventEv <- networkView $ ($ accEv) <$> errorDyn
-      chainErrorEv <- switchHold never eventEv
-      pure $ leftmost [Just <$> errorEv, chainErrorEv]
+    -- Treats Warning and Result types as valid values, errors are treated as invalid
+    toValid = \case
+      Warning _ a -> Just a
+      Success a -> Just a
+      Failure _ -> Nothing
 
     showPopover (ie, _) = do
       let
@@ -1484,10 +1494,10 @@ accountNameFormWidgetAsync isValidDyn errorDyn cfg = mdo
           if T.null input
             then PopoverState_Disabled
             else PopoverState_Loading
-      errorEv <- showError inputEv
       pure $ leftmost
-        [ errorEv <&> \case
-            Just e -> PopoverState_Error e
+        [ resultEv <&> \case
+            Failure e -> PopoverState_Error e
+            Warning e _ -> PopoverState_Warning e
             _ -> PopoverState_Disabled
         , loadingEv
         ]
@@ -1497,10 +1507,12 @@ accountNameFormWidgetAsync isValidDyn errorDyn cfg = mdo
                (<> "list" =: accountListId) . addToClassAttr "account-input"
       pure (inp, _inputElement_raw inp)
 
-  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ pfwc2iec (maybe "" unAccountName) cfg
-  let inputEv = _inputElement_input inputE
-  validEv <- validate inputEv
-  validDyn <- holdDyn Nothing validEv
+  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
+  let
+    inputDyn = value inputE
+    inputEv = updated inputDyn
+  resultEv <- validate inputEv
+  validDyn <- holdDyn Nothing $ toValid <$> resultEv
   let w = FormWidget
             validDyn
             (() <$ inputEv)
