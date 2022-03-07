@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -255,7 +256,7 @@ uiSelectElement uCfg child = do
 
 uiPassword :: DomBuilder t m => Text -> Text -> Text -> m (InputElement EventResult (DomBuilderSpace m) t)
 uiPassword wrapperCls inputCls ph = elClass "span" wrapperCls $ do
-  imgWithAltCls "password-input__lock" (static @"img/lock-dark.svg") "Password" blank
+  imgWithAltCls "password-input__lock" $(static "img/lock-dark.svg") "Password" blank
   uiInputElement $ def & initialAttributes .~ mconcat
     [ "type" =: "password"
     , "placeholder" =: ph

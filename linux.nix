@@ -49,8 +49,8 @@
   });
   ubuntuHPkgs = obApp.ghc.override {
     overrides = self: super: {
-      gi-javascriptcore = addGObjectIntrospection (self.callHackage "gi-javascriptcore" "4.0.20" { webkitgtk = ubuntuWebkitgtk; });
-      gi-webkit2 = addGObjectIntrospection (self.callHackage "gi-webkit2" "4.0.24" { webkitgtk = ubuntuWebkitgtk; });
+      gi-javascriptcore = addGObjectIntrospection (self.callHackage "gi-javascriptcore" "4.0.21" { webkitgtk = ubuntuWebkitgtk; });
+      gi-webkit2 = addGObjectIntrospection (self.callHackage "gi-webkit2" "4.0.25" { webkitgtk = ubuntuWebkitgtk; });
       webkitgtk3-javascriptcore = addGObjectIntrospection (self.callHackage "webkitgtk3-javascriptcore" "0.14.2.1" { webkitgtk = ubuntuWebkitgtk; });
       linux = pkgs.haskell.lib.overrideCabal super.linux (old: {
         libraryPkgconfigDepends = [ ubuntuWebkitgtk pkgs.glib-networking ];

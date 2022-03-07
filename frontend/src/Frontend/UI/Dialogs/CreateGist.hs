@@ -58,7 +58,7 @@ uiCreateGist _onClose = do
   (name, desc) <- modalMain $ do
       divClass "segment modal__filler" $ do
         divClass "modal__filler-horizontal-center-box" $
-          imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "Github logo" blank
+          imgWithAltCls "modal__filler-img" $(static "img/Octocat.jpg") "Github logo" blank
 
         dialogSectionHeading mempty "What shall your Gist be called?"
         divClass "group" $ do

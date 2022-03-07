@@ -110,26 +110,26 @@ exampleName = \case
 exampleFileName :: ExampleRef -> Text
 exampleFileName = \case
   ExampleRef_HelloWorld
-    -> static @ "examples/helloWorld-1.0.pact"
+    -> $(static "examples/helloWorld-1.0.pact")
   ExampleRef_HelloWorld_Keyset
-    -> static @ "examples/helloWorld-keyset-1.0.pact"
+    -> $(static "examples/helloWorld-keyset-1.0.pact")
   ExampleRef_SimplePayment
-    -> static @ "examples/simplePayments-1.0.pact"
+    -> $(static "examples/simplePayments-1.0.pact")
   ExampleRef_Verification
-    -> static @ "examples/verification-1.0.pact"
+    -> $(static "examples/verification-1.0.pact")
 
 
 -- | File name of JSON data for example.
 exampleDataName :: ExampleRef -> Text
 exampleDataName = \case
   ExampleRef_HelloWorld
-    -> static @ "examples/helloWorld-1.0.data.json"
+    -> $(static "examples/helloWorld-1.0.data.json")
   ExampleRef_HelloWorld_Keyset
-    -> static @ "examples/helloWorld-keyset-1.0.data.json"
+    -> $(static "examples/helloWorld-keyset-1.0.data.json")
   ExampleRef_SimplePayment
-    -> static @ "examples/simplePayments-1.0.data.json"
+    -> $(static "examples/simplePayments-1.0.data.json")
   ExampleRef_Verification
-    -> static @ "examples/verification-1.0.data.json"
+    -> $(static "examples/verification-1.0.data.json")
 
 -- | Actually fetch Example code and data.
 --

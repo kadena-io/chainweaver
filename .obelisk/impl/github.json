@@ -1,7 +1,8 @@
 {
   "owner": "obsidiansystems",
   "repo": "obelisk",
-  "branch": "master",
-  "rev": "7ad33cbe3e84b209e83c505ce25486445bbd602e",
-  "sha256": "0dlk8y6rxc87crw7764zq2py7nqn38lw496ca1y893m9gdq8qdkz"
+  "branch": "aa/closure-compiler-crash",
+  "private": false,
+  "rev": "d090d08c2e18ba99dbb538cf394e27bb2bf4be6e",
+  "sha256": "0inisvngi409dmbbczxycf005g6czkqackvh0hl5irywbnllgwk9"
 }

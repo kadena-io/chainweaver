@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 -- |
 -- Copyright   :  (C) 2020 Kadena
@@ -52,17 +53,17 @@ uiSettings
   -> m mConf
 uiSettings enabledSettings model fileFFI = elClass "div" "icon-grid" $ do
 
-  netCfg <- settingItemOnClick "Network" (static @"img/network.svg") $ \onOpen -> uiNetworkEdit model
+  netCfg <- settingItemOnClick "Network" $(static "img/network.svg") $ \onOpen -> uiNetworkEdit model
     <$> current (model ^. network_selectedNetwork)
     <*> current (model ^. network_networks)
     <@ onOpen
 
   configs <- sequence $ catMaybes $
     [ ffor (_enabledSettings_changePassword enabledSettings) $ \changePassword -> do
-      settingItem "Change Password" (static @"img/lock-light.svg") (uiChangePasswordDialog changePassword)
+      settingItem "Change Password" $(static "img/lock-light.svg") (uiChangePasswordDialog changePassword)
     , ffor (_enabledSettings_exportWallet enabledSettings) $ \exportWallet-> do
-      settingItem "Export Wallet" (static @"img/export.svg") (uiExportWalletDialog exportWallet)
-    , includeSetting _enabledSettings_transactionLog $ settingItem "Transaction Log" (static @"img/transaction-logs.svg")
+      settingItem "Export Wallet" $(static "img/export.svg") (uiExportWalletDialog exportWallet)
+    , includeSetting _enabledSettings_transactionLog $ settingItem "Transaction Log" $(static "img/transaction-logs.svg")
         $ uiTxLogs fileFFI
     ]
   pure $ netCfg <> fold configs

@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -165,7 +166,7 @@ restoreFromImport walletExists fileFFI backWF eBack = nagScreen
       (eSubmit, (dFileSelected, pwInput)) <- setupForm "" "Import File" disabled $ mdo
         ePb <- getPostBuild
         (selectElt, _) <- elClass' "div" "setup__recover-import-file" $ do
-          imgWithAlt (static @"img/import.svg") "Import" blank
+          imgWithAlt $(static "img/import.svg") "Import" blank
           divClass "setup__recover-import-file-text" $ dynText $ ffor dFileSelected $
             maybe "Select a file" (T.pack . takeFileName . fst)
 

@@ -96,13 +96,6 @@ in with obelisk;
           ];
         });
       };
-      linux-overlay = self: super: {
-        gi-gtk-hs = self.callHackageDirect {
-          pkg = "gi-gtk-hs";
-          ver =  "0.3.7.0";
-          sha256 = "0h5959ayjvipj54z0f350bz23fic90xw9z06xw4wcvxvwkrsi2br";
-        } { };
-      };
       guard-ghcjs-overlay = self: super:
         let hsNames = [ "cacophony" "haskeline" "katip" "ridley" ];
         in lib.genAttrs hsNames (name: null);
@@ -119,6 +112,7 @@ in with obelisk;
         unliftio = haskellLib.dontCheck super.unliftio;
       };
       common-overlay = self: super: {
+        gi-gtk-hs = self.callHackage "gi-gtk-hs" "0.3.8.1" {};
         brittany = haskellLib.dontCheck super.brittany;
         jsaddle-warp = haskellLib.dontCheck super.jsaddle-warp; # webdriver fails to build
         reflex-dom-contrib = haskellLib.doJailbreak (haskellLib.dontCheck super.reflex-dom-contrib); # webdriver fails to build
@@ -143,7 +137,6 @@ in with obelisk;
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [
       mac-overlay
-      linux-overlay
       common-overlay
       (optionalExtension (super.ghc.isGhcjs or false) guard-ghcjs-overlay)
       (optionalExtension (super.ghc.isGhcjs or false) ghcjs-overlay)
