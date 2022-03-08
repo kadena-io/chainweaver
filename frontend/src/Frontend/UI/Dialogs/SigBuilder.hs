@@ -8,6 +8,10 @@
 
 module Frontend.UI.Dialogs.SigBuilder where
 
+#if !defined(ghcjs_HOST_OS)
+import qualified Codec.QRCode as QR
+import qualified Codec.QRCode.JuicyPixels as QR
+#endif
 import           Control.Error hiding (bool, mapMaybe)
 import           Control.Lens
 import           Control.Monad (forM)
@@ -22,6 +26,7 @@ import           Data.List (partition)
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import qualified Data.Text.Lazy as LT
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.IntMap as IMap
@@ -67,6 +72,7 @@ type SigBuilderWorkflow t m model key =
   , HasCrypto key m
   , HasTransactionLogger m
   , HasLogger model t
+  , HasCrypto key (Performable m)
   )
 
 sigBuilderCfg
@@ -138,7 +144,6 @@ txnInputDialog model mInitVal = Workflow $ mdo
     <$> cancelButton def "Cancel"
     <*> confirmButton (def & uiButtonCfg_disabled .~ ( isNothing <$> dmSigData )) "Review"
   let approveE = fmap (\(a, b) -> [PayloadSigningRequest a b]) $ fmapMaybe id $ tag (current dmSigData) approve
-      -- sbr = attachWith (\(keys, net) (sd, pl) -> SigBuilderRequest sd pl net keys) keysAndNet approveE
       sbr = attach keysAndNet approveE
   return (onCancel <> onClose, uncurry (checkAndSummarize model) <$> sbr)
 
@@ -303,14 +308,11 @@ checkAndSummarize model srws (psr:rest) =
 approveSigDialog
   :: SigBuilderWorkflow t m model key
   => model
-  -- -> SigBuilderRequest key
   -> SigningRequestWalletState key
   -> PayloadSigningRequest
   -> Workflow t m (Event t ())
 approveSigDialog model srws psr = Workflow $ do
   let sigData = _psr_sigData psr
-      sdHash = toUntypedHash $ _sigDataHash sigData
-      keys = _srws_cwKeys srws
       sigs = _sigDataSigs sigData --[(PublicKeyHex, Maybe UserSig)]
       p = _psr_payload psr
   onClose <- modalHeader $ text "Review Transaction"
@@ -322,7 +324,7 @@ approveSigDialog model srws psr = Workflow $ do
     eeSigList <- dyn $ ffor sbTabDyn $ \case
       SigBuilderTab_Summary ->
         updated . sequence <$>
-          showSigsWidget p (_keyPair_publicKey <$> keys) sigs sdHash
+          showSigsWidget p (_keyPair_publicKey <$> _srws_cwKeys srws) sigs sigData
       SigBuilderTab_Details ->  sigBuilderDetailsUI p "" Nothing >>  ([] <$) <$> getPostBuild
     switchHoldPromptly never eeSigList
   sigsOrKeys <- holdDyn [] sigsOrKeysE
@@ -330,13 +332,11 @@ approveSigDialog model srws psr = Workflow $ do
     <$> cancelButton def "Back"
     <*> confirmButton def "Sign"
   let sigsOnSubmit = mapMaybe (\(a, mb) -> fmap (a,) mb) <$> current sigsOrKeys <@ sign
-  let sbr = SigBuilderRequest sigData p (_srws_currentNetwork srws) keys
   let workflowEvent = leftmost
         [ txnInputDialog model (Just sigData) <$ back
-        , signAndShowSigDialog model sbr keys (approveSigDialog model srws psr) <$> sigsOnSubmit
+        , signAndShowSigDialog model srws psr (approveSigDialog model srws psr) <$> sigsOnSubmit
         ]
   return (onClose, workflowEvent)
-
 
 data SigBuilderTab = SigBuilderTab_Summary | SigBuilderTab_Details
   deriving (Show, Eq)
@@ -371,9 +371,9 @@ showSigsWidget
   => Payload PublicMeta Text
   -> [PublicKey]
   -> [(PublicKeyHex, Maybe UserSig)]
-  -> Hash
+  -> SigData Text
   -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
-showSigsWidget p cwKeys sigs sdHash = do
+showSigsWidget p cwKeys sigs sd = do
   let
     signers = p^.pSigners
     orderedSigs = catMaybes $ ffor signers $ \s ->
@@ -408,8 +408,11 @@ showSigsWidget p cwKeys sigs sdHash = do
                   $ ffilter (isJust . snd) new -- get rid of unsigned elems
              in cwSigners <> newSigners
         ]
+  dialogSectionHeading mempty "QR Codes"
+  qrCodesWidget sd
   pure sigsOrKeys
   where
+    sdHash = toUntypedHash $ _sigDataHash sd
     signersToSummary signers =
       let (trans, paysGas, unscoped) = foldr go (mempty, False, 0) signers
           pm = p ^. pMeta
@@ -456,6 +459,48 @@ signerSection pkh capListWidget =do
       pure visible'
     elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) ("class" =: "group signer__capList") )$ 
       capListWidget
+
+data SBTransferDetails
+  = SBTransferDetails_HashQR
+  | SBTransferDetails_FullQR
+  deriving (Eq,Ord,Show,Read,Enum,Bounded)
+
+showSBTransferDetailsTabName :: SBTransferDetails -> Text
+showSBTransferDetailsTabName = \case
+  SBTransferDetails_HashQR -> "Hash QR Code"
+  SBTransferDetails_FullQR -> "Full Tx QR Code"
+
+qrCodesWidget :: MonadWidget t m => SigData Text -> m ()
+qrCodesWidget sd = do
+  divClass "tabset" $ mdo
+    curSelection <- holdDyn SBTransferDetails_HashQR onTabClick
+    (TabBar onTabClick) <- makeTabBar $ TabBarCfg
+      { _tabBarCfg_tabs = [minBound .. maxBound]
+      , _tabBarCfg_mkLabel = const $ text . showSBTransferDetailsTabName
+      , _tabBarCfg_selectedTab = Just <$> curSelection
+      , _tabBarCfg_classes = mempty
+      , _tabBarCfg_type = TabBarType_Primary
+      }
+#if !defined(ghcjs_HOST_OS)
+    tabPane mempty curSelection SBTransferDetails_HashQR $ do
+      let hashText = hashToText $ toUntypedHash $ _sigDataHash sd
+          qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI hashText
+          img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 6) qrImage
+      el "div" $ text $ T.unwords
+        [ "This QR code contains only the hash."
+        , "It doesn't give any transaction information, so some wallets may not accept it."
+        , "This is useful when you are signing your own transactions and don't want to transmit as much data."
+        ]
+      el "br" blank
+      elAttr "img" ("src" =: LT.toStrict img) blank
+    tabPane mempty curSelection SBTransferDetails_FullQR $ do
+      let yamlText = T.decodeUtf8 $ Y.encode1Strict sd
+          qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI yamlText
+          img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) qrImage
+      elAttr "img" ("src" =: LT.toStrict img) blank
+#else
+    blank
+#endif
 
 parseFungibleTransferCap :: SigCapability -> Maybe (Text, Decimal)
 parseFungibleTransferCap cap = transferCap cap
@@ -510,12 +555,13 @@ showTransactionSummary dSummary p = do
 --------------------------------------------------------------------------------
 -- Signature and Submission
 --------------------------------------------------------------------------------
-data SigDetails = SigDetails_Yaml | SigDetails_Json
+data SigDetails = SigDetails_Yaml | SigDetails_Json | SigDetails_Command
   deriving (Eq,Ord,Show,Read,Enum,Bounded)
 
 showSigDetailsTabName :: SigDetails -> Text
 showSigDetailsTabName SigDetails_Json = "JSON"
 showSigDetailsTabName SigDetails_Yaml = "YAML"
+showSigDetailsTabName SigDetails_Command = "Command JSON"
 
 signatureDetails
   :: (MonadWidget t m)
@@ -523,10 +569,11 @@ signatureDetails
   -> m ()
 signatureDetails sd = do
   hashWidget $ toUntypedHash $ _sigDataHash sd
+  let canMakeCmd = (length $ _sigDataSigs sd) == (length $ catMaybes $ snd <$> _sigDataSigs sd)
   divClass "tabset" $ mdo
-    curSelection <- holdDyn SigDetails_Yaml onTabClick
+    curSelection <- holdDyn (if canMakeCmd then SigDetails_Command else SigDetails_Yaml) onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [minBound .. maxBound]
+      { _tabBarCfg_tabs = if canMakeCmd then [minBound .. maxBound] else [SigDetails_Yaml, SigDetails_Json]
       , _tabBarCfg_mkLabel = const $ text . showSigDetailsTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
@@ -539,6 +586,14 @@ signatureDetails sd = do
     tabPane mempty curSelection SigDetails_Json $ do
       let sigDataText = T.decodeUtf8 $ LB.toStrict $ A.encode $ A.toJSON sd
       void $ uiSignatureResult sigDataText
+    if canMakeCmd
+       then
+         tabPane mempty curSelection SigDetails_Command $ do
+            let cmdText = either (const "Command not available")
+                                (T.decodeUtf8 . LB.toStrict . A.encode . A.toJSON)
+                                $ sigDataToCommand sd
+            void $ uiSignatureResult cmdText
+       else blank
   pure ()
   where
     uiSignatureResult txt = do
@@ -551,31 +606,36 @@ signatureDetails sd = do
       uiDetailsCopyButton $ constant txt
 
 signAndShowSigDialog
-  :: SigBuilderWorkflow t m model key
+  :: (SigBuilderWorkflow t m model key)
   => model
-  -> SigBuilderRequest key --TODO
-  -> [KeyPair key]  -- ChainweaverKeys
+  -> SigningRequestWalletState key
+  -> PayloadSigningRequest 
   -> Workflow t m (Event t ()) -- Workflow for going back
   -> [(PublicKeyHex, UserSig)] -- User-supplied Sigs
   -> Workflow t m (Event t ())
-signAndShowSigDialog model sbr keys backW externalKeySigs = Workflow $ mdo
+signAndShowSigDialog model srws psr backW externalKeySigs = Workflow $ mdo
   onClose <- modalHeader $ text "Sig Data"
   -- This allows a "loading" page to render before we attempt to do the really computationally
   -- expensive sigs
   pb <- delay 0.1 =<< getPostBuild
+  dmCmd <- holdDyn Nothing $ snd <$> eSDmCmdTuple
+  eSDmCmdTuple <- performEvent $ ffor pb $ \_-> do
+    sd <- addSigsToSigData (_psr_sigData psr) keys externalKeySigs
+    if Nothing `elem` (snd <$> _sigDataSigs sd)
+      then pure (sd, Nothing)
+      else pure (sd, hush $ sigDataToCommand sd)
   -- TODO: Can we forkIO the sig process and display something after they are done?
-  dmCmd <- widgetHold (modalMain $ text "Loading Signatures ..." >> pure Nothing) $ ffor pb $ \_ ->
+  widgetHold_ (modalMain $ text "Loading Signatures ...") $ ffor eSDmCmdTuple $ \(sd, mCmd) -> do
     modalMain $ do
-      sd <- addSigsToSigData (_sbr_sigData sbr) keys externalKeySigs
+      pb' <- getPostBuild
+      case mCmd of
+        Nothing -> blank
+        Just cmd -> previewTransaction model chain (constDyn p) $ cmd <$ pb'
       signatureDetails sd
-      if Nothing `elem` (snd <$> _sigDataSigs sd)
-        then pure Nothing
-        else pure $ hush $ sigDataToCommand sd
   (back, done, submit) <- modalFooter $ (,,)
     <$> cancelButton def "Back"
     <*> confirmButton def "Done"
     <*> submitButton dmCmd
-
   let
       cmdAndNet = (,) <$> dmCmd <*> model ^. network_selectedNodes
       -- Gets rid of Maybe over Command by filtering
@@ -583,12 +643,13 @@ signAndShowSigDialog model sbr keys backW externalKeySigs = Workflow $ mdo
                      $ current cmdAndNet <@ submit
       -- Given M (a, b) and f :: a -> b -> c , give us M c
       fUncurry f functor = fmap (\tpl -> uncurry f tpl) functor
-      p = _sbr_payload sbr
-      chain = p^.pMeta.pmChainId
       sender = p^.pMeta.pmSender
       submitToNetworkE = transferAndStatus model (AccountName sender, chain) `fUncurry` eCmdAndNet
   return (onClose <> done, leftmost [backW <$ back, submitToNetworkE])
   where
+    keys = _srws_cwKeys srws
+    p = _psr_payload psr
+    chain = p^.pMeta.pmChainId
     submitButton dmCmd = do
       let baseCfg = "class" =: "button button_type_confirm"
           dynAttr = ffor dmCmd $ \case

@@ -8,6 +8,7 @@ module Frontend.VersionedStore
   , VersioningUpgradeError(..)
   , versionedStorage
   , versionedFrontend
+  , storeProxy
   ) where
 
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
@@ -55,6 +56,9 @@ data VersioningDecodeJsonError
 data StoreFrontendVersion key k where
   StoreFrontendVersion_0 :: StoreFrontendVersion key (V0.StoreFrontend key)
   StoreFrontendVersion_1 :: StoreFrontendVersion key (V1.StoreFrontend key)
+
+storeProxy :: Proxy (V1.StoreFrontend key)
+storeProxy = Proxy
 
 parseVersion :: forall key. StorageVersion -> Maybe (DSum (StoreFrontendVersion key) Proxy)
 parseVersion 0 = Just $ StoreFrontendVersion_0 :=> (Proxy @(V0.StoreFrontend key))
