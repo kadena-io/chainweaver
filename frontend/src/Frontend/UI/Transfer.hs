@@ -1076,7 +1076,11 @@ gasPayersSection model netInfo fks tks ti = do
         -- If this is a max amount transaction, then leave the source gas payer field empty
         -- Otherwise, fill it with the sender account.
         initialSourceGasPayer = if _ti_maxAmount ti then Nothing else Just fromAccount
-        initialSourceGasPayerAccount = unAccountName <$> initialSourceGasPayer
+        initPopState = case initialSourceGasPayer of
+          Nothing -> case mkAccountName "" of
+            Left e  -> PopoverState_Error e   -- The initial error message to be shown
+            Right _ -> PopoverState_Disabled  -- ERROR: This should never occur, since we have provided an invalid account name to `mkAccountName`
+        initValues = (unAccountName <$> initialSourceGasPayer, initPopState)
 
         getGasPayerKeys chain mgp = do
           case mgp of
@@ -1113,12 +1117,12 @@ gasPayersSection model netInfo fks tks ti = do
           pure $ leftmost [Failure <$> errorEv, switchDyn validationDynEv]
     (dgp1, mdmgp2) <- if fromChain == toChain
       then do
-        (_,dgp1) <- uiTextInputAsync "Gas Paying Account" True initialSourceGasPayerAccount
+        (_,dgp1) <- uiTextInputAsync "Gas Paying Account" True initValues
                                        never (constDyn goodGasPayer)
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
-        (_,dgp1) <- uiTextInputAsync (mkLabel fromChain) True initialSourceGasPayerAccount
+        (_,dgp1) <- uiTextInputAsync (mkLabel fromChain) True initValues
                                        never (constDyn goodGasPayer)
         (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True (Just defaultDestGasPayer) never noValidation
         pure $ (dgp1, Just dgp2)
