@@ -408,8 +408,13 @@ showSigsWidget p cwKeys sigs sd = do
                   $ ffilter (isJust . snd) new -- get rid of unsigned elems
              in cwSigners <> newSigners
         ]
+--TODO: Use ghcjs-based qrcode pkg
+#if !defined(ghcjs_HOST_OS)
   dialogSectionHeading mempty "QR Codes"
   qrCodesWidget sd
+#else
+  blank
+#endif
   pure sigsOrKeys
   where
     sdHash = toUntypedHash $ _sigDataHash sd
@@ -457,7 +462,7 @@ signerSection pkh capListWidget =do
         visible' <- toggle False clk
       divClass "signer__pubkey" $ text $ unPublicKeyHex pkh
       pure visible'
-    elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) ("class" =: "group signer__capList") )$ 
+    elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) ("class" =: "group signer__capList") )$
       capListWidget
 
 data SBTransferDetails
@@ -609,7 +614,7 @@ signAndShowSigDialog
   :: (SigBuilderWorkflow t m model key)
   => model
   -> SigningRequestWalletState key
-  -> PayloadSigningRequest 
+  -> PayloadSigningRequest
   -> Workflow t m (Event t ()) -- Workflow for going back
   -> [(PublicKeyHex, UserSig)] -- User-supplied Sigs
   -> Workflow t m (Event t ())
