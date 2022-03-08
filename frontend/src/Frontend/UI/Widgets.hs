@@ -1314,14 +1314,14 @@ uiInputWithPopover
   -> ((el,a) -> m (Event t PopoverState))
   -> cfg
   -> m (el,a)
-uiInputWithPopover body getStateBorderTarget mkMsgEv cfg = do
+uiInputWithPopover body getStateBorderTarget mkMsg cfg = do
   let
-    mkMsgDyn a = do
-      popStateEv <- mkMsgEv a
-      holdDyn PopoverState_Disabled popStateEv
-  uiInputWithPopoverDyn body getStateBorderTarget mkMsgDyn cfg
+    mkMsgWithInitState a = do
+      ev <- mkMsg a
+      pure (PopoverState_Disabled, ev)
+  uiInputWithPopoverWithInitState body getStateBorderTarget mkMsgWithInitState cfg
 
-uiInputWithPopoverDyn
+uiInputWithPopoverWithInitState
   :: forall t m cfg el rawEl a
   .  ( DomBuilder t m
      , MonadHold t m
@@ -1336,10 +1336,10 @@ uiInputWithPopoverDyn
   -- can be returned from your input widget.
   => (cfg -> m (el,a))
   -> ((el,a) -> rawEl)
-  -> ((el,a) -> m (Dynamic t PopoverState))
+  -> ((el,a) -> m (PopoverState, Event t PopoverState))
   -> cfg
   -> m (el,a)
-uiInputWithPopoverDyn body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
+uiInputWithPopoverWithInitState body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
   let
     popoverBlurCls = \case
       PopoverState_Error _ -> Just "popover__error-state"
@@ -1377,8 +1377,8 @@ uiInputWithPopoverDyn body getStateBorderTarget mkMsg cfg = divClass "popover" $
 
   a <- body cfg
 
-  dPopState <- mkMsg a
-  let onMsg = updated dPopState
+  (initState, onMsg) <- mkMsg a
+  dPopState <- holdDyn initState onMsg
 
   _ <- dyn_ $ ffor dPopState $ \case
     PopoverState_Disabled -> blank
@@ -1396,11 +1396,12 @@ uiInputWithPopoverDyn body getStateBorderTarget mkMsg cfg = divClass "popover" $
     , onShift dropClass borderTargetEl <$> current dPopState <@ onFocus
     ]
 
-  _ <- runWithReplace (divClass "popover__message" blank) $ leftmost
+  msgDyn <- holdDyn (popoverDiv . popoverToAttrs $ initState) $ leftmost
     [ popoverDiv . popoverToAttrs <$> onMsg
     , popoverDiv popoverHiddenAttrs <$ onBlur
     , popoverDiv . popoverToAttrs <$> current dPopState <@ onFocus
     ]
+  dyn_ msgDyn
 
   pure a
 
@@ -1520,20 +1521,23 @@ textFormWidgetAsync initPopState isValidDyn cfg = mdo
           if T.null input
             then PopoverState_Disabled
             else PopoverState_Loading
-      holdDyn initPopState $ leftmost
-        [ resultEv <&> \case
-            Failure e -> PopoverState_Error e
-            Warning e _ -> PopoverState_Warning e
-            _ -> PopoverState_Disabled
-        , loadingEv
-        ]
+      pure
+        ( initPopState
+        , leftmost
+          [ resultEv <&> \case
+              Failure e -> PopoverState_Error e
+              Warning e _ -> PopoverState_Warning e
+              _ -> PopoverState_Disabled
+          , loadingEv
+          ]
+        )
 
     uiNameInput cfg = do
       inp <- uiInputElement $ cfg & initialAttributes %~
                (<> "list" =: accountListId) . addToClassAttr "account-input"
       pure (inp, _inputElement_raw inp)
 
-  (inputE, _) <- uiInputWithPopoverDyn uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
+  (inputE, _) <- uiInputWithPopoverWithInitState uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
   let
     inputDyn = value inputE
     inputEv = updated inputDyn
