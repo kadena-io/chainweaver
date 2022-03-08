@@ -1126,17 +1126,17 @@ uiTextInputAsync
      , MonadJSM (Performable m)
      , MonadFix m
      )
-  => Text                     -- ^ The label for this input
-  -> Bool                     -- ^ Should the label be inline?
-  -> Maybe Text               -- ^ Initial Value for the input
-  -> Event t (Maybe Text)     -- ^ An event that can be used to set the input's value
+  => Text                       -- ^ The label for this input
+  -> Bool                       -- ^ Should the label be inline?
+  -> (Maybe Text, PopoverState) -- ^ Initial Value for the input, and initial popover state
+  -> Event t (Maybe Text)       -- ^ An event that can be used to set the input's value
   -> Dynamic t (Event t Text -> m (Event t (ValidationResult Text a)))
   -- ^ A `Dynamic` of function of validation functions. These functions will receive the user's input as an event.
   -> m ( Event t (Maybe a)
        , Dynamic t (Maybe a)
        )
-uiTextInputAsync label inlineLabel initval onSetName isValidDyn = do
-  (FormWidget v _ _, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync isValidDyn) $ mkCfg initval
+uiTextInputAsync label inlineLabel (initval, initPopState) onSetName isValidDyn = do
+  (FormWidget v _ _, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState isValidDyn) $ mkCfg initval
     & setValue .~ Just onSetName
   pure (updated v, v)
 
@@ -1314,7 +1314,32 @@ uiInputWithPopover
   -> ((el,a) -> m (Event t PopoverState))
   -> cfg
   -> m (el,a)
-uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
+uiInputWithPopover body getStateBorderTarget mkMsgEv cfg = do
+  let
+    mkMsgDyn a = do
+      popStateEv <- mkMsgEv a
+      holdDyn PopoverState_Disabled popStateEv
+  uiInputWithPopoverDyn body getStateBorderTarget mkMsgDyn cfg
+
+uiInputWithPopoverDyn
+  :: forall t m cfg el rawEl a
+  .  ( DomBuilder t m
+     , MonadHold t m
+     , PostBuild t m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , HasDomEvent t el 'BlurTag
+     , HasDomEvent t el 'FocusTag
+     , JS.IsElement rawEl
+     )
+  -- Return a tuple here so there is a bit more flexibility for what
+  -- can be returned from your input widget.
+  => (cfg -> m (el,a))
+  -> ((el,a) -> rawEl)
+  -> ((el,a) -> m (Dynamic t PopoverState))
+  -> cfg
+  -> m (el,a)
+uiInputWithPopoverDyn body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
   let
     popoverBlurCls = \case
       PopoverState_Error _ -> Just "popover__error-state"
@@ -1352,8 +1377,8 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
 
   a <- body cfg
 
-  onMsg <- mkMsg a
-  dPopState <- holdDyn PopoverState_Disabled onMsg
+  dPopState <- mkMsg a
+  let onMsg = updated dPopState
 
   _ <- dyn_ $ ffor dPopState $ \case
     PopoverState_Disabled -> blank
@@ -1473,10 +1498,11 @@ textFormWidgetAsync
      , MonadJSM (Performable m)
      , MonadFix m
      )
-  => Dynamic t (Event t Text -> m (Event t (ValidationResult Text a)))
+  => PopoverState
+  -> Dynamic t (Event t Text -> m (Event t (ValidationResult Text a)))
   -> PrimFormWidgetConfig t (Maybe Text)
   -> m (FormWidget t (Maybe a), Event t (Maybe Text))
-textFormWidgetAsync isValidDyn cfg = mdo
+textFormWidgetAsync initPopState isValidDyn cfg = mdo
   let
     validate textEv = do
       eventEv <- networkView $ ($ textEv) <$> isValidDyn
@@ -1488,13 +1514,13 @@ textFormWidgetAsync isValidDyn cfg = mdo
       Success a -> Just a
       Failure _ -> Nothing
 
-    showPopover (ie, _) = do
+    showPopover _ = do
       let
         loadingEv = inputEv <&> \input ->
           if T.null input
             then PopoverState_Disabled
             else PopoverState_Loading
-      pure $ leftmost
+      holdDyn initPopState $ leftmost
         [ resultEv <&> \case
             Failure e -> PopoverState_Error e
             Warning e _ -> PopoverState_Warning e
@@ -1507,7 +1533,7 @@ textFormWidgetAsync isValidDyn cfg = mdo
                (<> "list" =: accountListId) . addToClassAttr "account-input"
       pure (inp, _inputElement_raw inp)
 
-  (inputE, _) <- uiInputWithPopover uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
+  (inputE, _) <- uiInputWithPopoverDyn uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
   let
     inputDyn = value inputE
     inputEv = updated inputDyn
