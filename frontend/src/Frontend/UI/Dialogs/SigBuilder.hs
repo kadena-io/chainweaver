@@ -425,7 +425,7 @@ showSigsWidget p cwKeys sigs sd = do
           pm = p ^. pMeta
           totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
           gas = if paysGas then Just totalGas else Nothing
-       in TransactionSummary trans gas unscoped
+       in TransactionSummary trans gas unscoped $ length signers
     go signer (tokenMap, doesPayGas, unscopedCounter) =
       let capList = signer^.siCapList
           tokenTransfers = mapMaybe parseFungibleTransferCap capList
@@ -525,7 +525,8 @@ parseFungibleTransferCap cap = transferCap cap
 data TransactionSummary = TransactionSummary
   { _ts_tokenTransfers :: Map Text Decimal
   , _ts_maxGas :: Maybe GasPrice -- Checks for GAS cap -- and then uses meta to calc
-  , _ts_numUnscoped :: Int
+  , _ts_numUnscoped :: Int -- Unscoped that are BEING SIGNED FOR
+  , _ts_sigsAdded :: Int
   } deriving (Show, Eq)
 
 showTransactionSummary
@@ -551,8 +552,10 @@ showTransactionSummary dSummary p = do
       void $ mkLabeledClsInput True "Amount (Tokens)" $ const $ el "div" $
         forM_ (Map.toList tokens') $ \(name, amount) ->
           el "p" $ text $ showWithDecimal amount <> " " <> name
+    void $ mkLabeledClsInput True "Supplied Signatures" $
+      const $ text $ tshow $ _ts_sigsAdded summary
     if _ts_numUnscoped summary == 0 then blank else
-      void $ mkLabeledClsInput True "Unscoped Sigs" $
+      void $ mkLabeledClsInput True "Unscoped Sigs Added" $
         const $ text $ tshow $ _ts_numUnscoped summary
   where
     prpc (Exec _) = "Exec"
