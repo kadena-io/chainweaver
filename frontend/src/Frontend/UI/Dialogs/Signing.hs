@@ -267,7 +267,7 @@ summarizeTransactions payloadReqs walletState = do
   mapM_ signerCapsWidget $ Map.toList signerMap
   pure ()
   where
-    signerCapsWidget (pkh, capList) = signerSection pkh $ capListWidgetWithHash capList
+    signerCapsWidget (pkh, capList) = signerSection False pkh $ capListWidgetWithHash capList
 
 capListWidgetWithHash
   :: MonadWidget t m

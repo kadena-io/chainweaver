@@ -439,17 +439,17 @@ showSigsWidget p cwKeys sigs sd = do
       unOwnedSigningInput s
 
     scopedSignerRow signer = do
-      signerSection (PublicKeyHex $ _siPubKey signer) $
+      signerSection True (PublicKeyHex $ _siPubKey signer) $
         capListWidget $ _siCapList signer
       unOwnedSigningInput signer
 
-signerSection :: MonadWidget t m => PublicKeyHex -> m () -> m ()
-signerSection pkh capListWidget =do
+signerSection :: MonadWidget t m => Bool -> PublicKeyHex -> m () -> m ()
+signerSection initToggleState pkh capListWidget =do
     visible <- divClass "group signer__header" $ do
       let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
       rec
         clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
-        visible' <- toggle False clk
+        visible' <- toggle initToggleState clk
       divClass "signer__pubkey" $ text $ unPublicKeyHex pkh
       pure visible'
     elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) ("class" =: "group signer__capList") )$
