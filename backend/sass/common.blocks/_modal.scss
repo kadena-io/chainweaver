@@ -388,6 +388,10 @@ $index-width: 20%;
 $accordion-width: 10%;
 $signer-width: 60%;
 
+.signer__group {
+  margin-top: 30px;
+}
+
 .payload__header {
   display: flex;
   border-color: grey;
