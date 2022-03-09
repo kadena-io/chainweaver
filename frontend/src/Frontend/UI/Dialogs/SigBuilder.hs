@@ -357,6 +357,22 @@ sigBuilderTabs tabEv = do
     displaySigBuilderTab SigBuilderTab_Details = text "Details"
     displaySigBuilderTab SigBuilderTab_Summary = text "Summary"
 
+signersPartitonDisplay
+  :: MonadWidget t m
+  => Text
+  -> ([Signer] -> m [Maybe (Dynamic t (PublicKeyHex, Maybe UserSig))])
+  -> [Signer]
+  -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
+signersPartitonDisplay label widget signers =
+  divClass "signer__group" $
+   ifEmptyBlankSigner signers $ do
+     dialogSectionHeading mempty label
+     fmap catMaybes $ widget signers
+  where ifEmptyBlankSigner l w =
+          if l == []
+             then blank >> pure []
+             else w
+
 showSigsWidget
   :: (MonadWidget t m, HasCrypto key m)
   => Payload PublicMeta Text
@@ -366,32 +382,27 @@ showSigsWidget
   -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
 showSigsWidget p cwKeys sigs sd = do
   let
-    signers = p^.pSigners
-    orderedSigs = catMaybes $ ffor signers $ \s ->
+    orderedSigs = catMaybes $ ffor (p^.pSigners) $ \s ->
       ffor (lookup (PublicKeyHex $ _siPubKey s) sigs) $ \a-> (PublicKeyHex $ _siPubKey s, s, a)
     missingSigs = filter (\(_, _, sig) -> isNothing sig) orderedSigs
-    (unscoped, scoped) = partition isUnscoped $ view _2 <$> missingSigs
+
     -- CwSigners we only need the signer structure;
     -- ExternalSigners we need a (pkh, Signer) tuple to make lookup more efficient
     -- when a new signature is added
-    (cwSigners, externalSigners) = first (fmap (view _2)) $ partition isCWSigner missingSigs
-    externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigners
+    (cwSigs, externalSigs) = partition isCWSigner missingSigs
+    (cwUnscoped, cwScoped) = partition isUnscoped $ view _2 <$> cwSigs
+    cwSigners = cwScoped <> cwUnscoped
+    externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigs
   hashWidget sdHash
   rec showTransactionSummary (signersToSummary <$> dSigners) p
-      dUnscoped <- ifEmptyBlankSigner unscoped $ do
-        dialogSectionHeading mempty "Unscoped Signers"
-        divClass "group" $ do
-          fmap catMaybes $ mapM unscopedSignerRow unscoped
-
-      dScoped <- ifEmptyBlankSigner scoped $ do
-        dialogSectionHeading mempty "Scoped Signers"
-        fmap catMaybes $ mapM scopedSignerRow scoped
-      let sigsOrKeys = dScoped <> dUnscoped
-          sigsOrKeys' = sequence sigsOrKeys
+      --TODO: Specialize the function for ones with no opitinal sig
+      void $ signersPartitonDisplay "My Unscoped Signers" unscopedSignerGroup cwUnscoped
+      void $ signersPartitonDisplay "My Scoped Signers" (mapM scopedSignerRow) cwScoped 
+      dExternal <- signersPartitonDisplay "External Signatures" (mapM scopedSignerRow) $ view _2 <$> externalSigs
       -- This constructs the entire list of all signers going to be signed each time a new signer is
       -- added.
       dSigners <- foldDyn ($) cwSigners $ leftmost
-        [ ffor (updated sigsOrKeys') $ \new _ ->
+        [ ffor (updated $ sequence dExternal) $ \new _ ->
             let newSigners = catMaybes -- lookups shouldn't fail but we use this to get rid of the maybes
                   $ fmap (`lookup` externalLookup) -- use the pkh to get the official Signer structure
                   $ fmap fst -- we only care about the pubkey, not the sig
@@ -405,7 +416,8 @@ showSigsWidget p cwKeys sigs sd = do
 #else
   blank
 #endif
-  pure sigsOrKeys
+  pure dExternal
+
   where
     sdHash = toUntypedHash $ _sigDataHash sd
     signersToSummary signers =
@@ -424,7 +436,6 @@ showSigsWidget p cwKeys sigs sd = do
     cwKeysPKH = PublicKeyHex . keyToText <$> cwKeys
     isCWSigner (pkh, _, _) = pkh `elem` cwKeysPKH
     isUnscoped (Signer _ _ _ capList) = capList == []
-    ifEmptyBlankSigner l w = if l == [] then (blank >> pure []) else w
     unOwnedSigningInput s =
       let mPub = hush $ parsePublicKey $ _siPubKey s
        in case mPub of
@@ -434,9 +445,9 @@ showSigsWidget p cwKeys sigs sd = do
                 then blank >> pure Nothing
                 else fmap Just $ uiSigningInput sdHash pub
 
-    unscopedSignerRow s = do
+    unscopedSignerGroup signers = divClass "group" $ forM signers $ \s -> do
       divClass "signer__pubkey" $ text $ _siPubKey s
-      unOwnedSigningInput s
+      pure Nothing
 
     scopedSignerRow signer = do
       signerSection True (PublicKeyHex $ _siPubKey signer) $
