@@ -112,20 +112,11 @@ data SigningRequestWalletState key = SigningRequestWalletState
   }
   deriving (Show, Eq)
 
---TODO: As we build out quicksign we will eventually get rid of this and replace it with the two
---structures above
-data SigBuilderRequest key = SigBuilderRequest
-  { _sbr_sigData        :: SigData Text
-  , _sbr_payload        :: Payload PublicMeta Text
-  , _sbr_currentNetwork :: Maybe NetworkName
-  , _sbr_cwKeys         :: [ KeyPair key ]
-  }
-
-fetchKeysAndNet
+fetchKeysAndNetwork
   :: (Reflex t, HasNetwork model t, HasWallet model key t)
   => model
   -> Behavior t (SigningRequestWalletState key)
-fetchKeysAndNet model =
+fetchKeysAndNetwork model =
   let cwKeys = fmap _key_pair . IMap.elems <$> (model^.wallet_keys)
       selNodes = model ^. network_selectedNodes
       nid = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
@@ -138,7 +129,7 @@ txnInputDialog
   -> Workflow t m (Event t ())
 txnInputDialog model mInitVal = Workflow $ mdo
   onClose <- modalHeader $ text "Signature Builder"
-  let keysAndNet = fetchKeysAndNet model
+  let keysAndNet = fetchKeysAndNetwork model
   dmSigData <- modalMain $ divClass "group" $ parseInputToSigDataWidget mInitVal
   (onCancel, approve) <- modalFooter $ (,)
     <$> cancelButton def "Cancel"
@@ -385,7 +376,6 @@ showSigsWidget p cwKeys sigs sd = do
     -- when a new signature is added
     (cwSigners, externalSigners) = first (fmap (view _2)) $ partition isCWSigner missingSigs
     externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigners
-
   hashWidget sdHash
   rec showTransactionSummary (signersToSummary <$> dSigners) p
       dUnscoped <- ifEmptyBlankSigner unscoped $ do
@@ -438,7 +428,7 @@ showSigsWidget p cwKeys sigs sd = do
     unOwnedSigningInput s =
       let mPub = hush $ parsePublicKey $ _siPubKey s
        in case mPub of
-            Nothing -> blank >> pure Nothing
+            Nothing -> text "^ ERROR parsing public key -- Cannot collect external signature" >> pure Nothing
             Just pub ->
               if pub `elem` cwKeys
                 then blank >> pure Nothing
@@ -550,8 +540,9 @@ showTransactionSummary dSummary p = do
       void $ mkLabeledClsInput True "Amount (Tokens)" $ const $ el "div" $
         forM_ (Map.toList tokens') $ \(name, amount) ->
           el "p" $ text $ showWithDecimal amount <> " " <> name
-    void $ mkLabeledClsInput True "Unscoped Sigs" $
-      const $ text $ tshow $ _ts_numUnscoped summary
+    if _ts_numUnscoped summary == 0 then blank else
+      void $ mkLabeledClsInput True "Unscoped Sigs" $
+        const $ text $ tshow $ _ts_numUnscoped summary
   where
     prpc (Exec _) = "Exec"
     prpc (Continuation _) = "Continuation"
@@ -647,9 +638,9 @@ signAndShowSigDialog model srws psr backW externalKeySigs = Workflow $ mdo
       eCmdAndNet = fmapMaybe (\(mCmd, ni) -> fmap (,ni) mCmd)
                      $ current cmdAndNet <@ submit
       -- Given M (a, b) and f :: a -> b -> c , give us M c
-      fUncurry f functor = fmap (\tpl -> uncurry f tpl) functor
+      uncurryM f functor = fmap (\tpl -> uncurry f tpl) functor
       sender = p^.pMeta.pmSender
-      submitToNetworkE = transferAndStatus model (AccountName sender, chain) `fUncurry` eCmdAndNet
+      submitToNetworkE = transferAndStatus model (AccountName sender, chain) `uncurryM` eCmdAndNet
   return (onClose <> done, leftmost [backW <$ back, submitToNetworkE])
   where
     keys = _srws_cwKeys srws

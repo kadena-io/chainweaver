@@ -189,7 +189,7 @@ quickSignModal
   -> [PayloadSigningRequest]
   -> m (Event t ())
 quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDyn $ workflow $ Workflow $ do
-  keysAndNet <- sample $ fetchKeysAndNet ideL
+  keysAndNet <- sample $ fetchKeysAndNetwork ideL
   runQuickSignChecks payloadRequests (_srws_currentNetwork keysAndNet) $ do
     onClose <- modalHeader $ text "QuickSign Request"
     modalMain $ do
