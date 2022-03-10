@@ -253,9 +253,10 @@ uiGenericTransfer model cfg = do
         return (fca,amt)
 
     -- Destination
-    toAccountWidget = divClass "transfer__right-pane" $ do
+    toAccountWidget eClear = divClass "transfer__right-pane" $ do
       el "h4" $ text "To"
       toFormWidget model $ mkCfg (Nothing, Nothing)
+        & setValue .~ (Just $ (Nothing, Nothing) <$ eClear)
 
     -- Submit
     submitOrClearWidget transferInfo =  divClass "transfer-fields submit" $ do
@@ -292,7 +293,7 @@ uiGenericTransfer model cfg = do
     gTransferWidget = elDynAttr "main" attrs $ mdo
       transferInfo <- divClass "transfer-fields" $ do
         (fromAcct,amount) <- fromAccountWidget eClearTransfer
-        (toAcct,ks) <- toAccountWidget
+        (toAcct,ks) <- toAccountWidget eClearTransfer
         return $ runMaybeT $ TransferInfo <$>
           MaybeT (value fromAcct) <*>
           MaybeT (hush . fst <$> value amount) <*>
@@ -572,7 +573,7 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
           else
             transferDialog model netInfo ti ty fks tks fromPair
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
-        let 
+        let
           transferDialogWithWarn model netInfo ti ty fks tks fromPair = Workflow $ do
             close <- modalHeader $ text "Account Keyset"
             _ <- elClass "div" "modal__main" $ do
@@ -636,7 +637,7 @@ handleMissingKeyset
   -> (AccountName, AccountDetails)
   -> Workflow t m (mConf, Event t ())
 handleMissingKeyset model netInfo ti ty fks tks fromPair = do
-    let 
+    let
       toAccount = _ca_account $ _ti_toAccount ti
       toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
     case parsePubKeyOrKAccount toAccount of
@@ -1086,7 +1087,7 @@ gasPayersSection model netInfo fks tks ti = do
         toChain = _ca_chain (_ti_toAccount ti)
         defaultDestGasPayer = case Map.lookup toAccount tks of
           Just (AccountStatus_Exists dets)
-            | _accountDetails_balance dets > AccountBalance 0 -> toAccount 
+            | _accountDetails_balance dets > AccountBalance 0 -> toAccount
           _ -> AccountName "free-x-chain-gas"
     (dgp1, mdmgp2) <- if fromChain == toChain
       then do
