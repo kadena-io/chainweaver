@@ -398,7 +398,15 @@ showSigsWidget p cwKeys sigs sd = do
       --TODO: Specialize the function for ones with no opitinal sig
       void $ signersPartitonDisplay "My Unscoped Signers" unscopedSignerGroup cwUnscoped
       void $ signersPartitonDisplay "My Scoped Signers" (mapM scopedSignerRow) cwScoped 
-      dExternal <- signersPartitonDisplay "External Signatures" (mapM scopedSignerRow) $ view _2 <$> externalSigs
+
+      keysetOpen <- toggle False clk
+      (clk,(_,dExternal)) <- controlledAccordionItem keysetOpen mempty
+        (accordionHeaderBtn "External Signatures and QR Codes") $ do
+          sigBuilderAdvancedTab sd externalSigs scopedSignerRow
+          -- signersPartitonDisplay "External Signatures" (mapM scopedSignerRow) $ view _2 <$> externalSigs
+
+      -- dExternal <- signersPartitonDisplay "External Signatures" (mapM scopedSignerRow) $ view _2 <$> externalSigs
+ 
       -- This constructs the entire list of all signers going to be signed each time a new signer is
       -- added.
       dSigners <- foldDyn ($) cwSigners $ leftmost
@@ -409,13 +417,6 @@ showSigsWidget p cwKeys sigs sd = do
                   $ ffilter (isJust . snd) new -- get rid of unsigned elems
              in cwSigners <> newSigners
         ]
---TODO: Use ghcjs-based qrcode pkg
-#if !defined(ghcjs_HOST_OS)
-  dialogSectionHeading mempty "QR Codes"
-  qrCodesWidget sd
-#else
-  blank
-#endif
   pure dExternal
 
   where
@@ -466,29 +467,34 @@ signerSection initToggleState pkh capListWidget =do
     elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) ("class" =: "group signer__capList") )$
       capListWidget
 
-data SBTransferDetails
-  = SBTransferDetails_HashQR
-  | SBTransferDetails_FullQR
+data SigBuilderAdvancedTab
+  = SigBuilderAdvancedTab_ExternalSigs
+  | SigBuilderAdvancedTab_HashQR
+  | SigBuilderAdvancedTab_FullQR
   deriving (Eq,Ord,Show,Read,Enum,Bounded)
 
-showSBTransferDetailsTabName :: SBTransferDetails -> Text
-showSBTransferDetailsTabName = \case
-  SBTransferDetails_HashQR -> "Hash QR Code"
-  SBTransferDetails_FullQR -> "Full Tx QR Code"
+showSBTabName :: SigBuilderAdvancedTab -> Text
+showSBTabName = \case
+  SigBuilderAdvancedTab_HashQR -> "Hash QR Code"
+  SigBuilderAdvancedTab_FullQR -> "Full Tx QR Code"
+  SigBuilderAdvancedTab_ExternalSigs -> "External Signatures"
 
-qrCodesWidget :: MonadWidget t m => SigData Text -> m ()
-qrCodesWidget sd = do
+-- sigBuilderAdvancedTab :: MonadWidget t m => SigData Text -> m ()
+sigBuilderAdvancedTab sd externalSigs signerRow = do
   divClass "tabset" $ mdo
-    curSelection <- holdDyn SBTransferDetails_HashQR onTabClick
+    curSelection <- holdDyn SigBuilderAdvancedTab_ExternalSigs onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = [minBound .. maxBound]
-      , _tabBarCfg_mkLabel = const $ text . showSBTransferDetailsTabName
+      , _tabBarCfg_mkLabel = const $ text . showSBTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
       , _tabBarCfg_type = TabBarType_Primary
       }
+    externalSigs' <- tabPane mempty curSelection SigBuilderAdvancedTab_ExternalSigs $
+      signersPartitonDisplay "External Signatures" (mapM signerRow) $ view _2 <$> externalSigs
+
 #if !defined(ghcjs_HOST_OS)
-    tabPane mempty curSelection SBTransferDetails_HashQR $ do
+    tabPane mempty curSelection SigBuilderAdvancedTab_HashQR $ do
       let hashText = hashToText $ toUntypedHash $ _sigDataHash sd
           qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI hashText
           img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 6) qrImage
@@ -499,14 +505,13 @@ qrCodesWidget sd = do
         ]
       el "br" blank
       elAttr "img" ("src" =: LT.toStrict img) blank
-    tabPane mempty curSelection SBTransferDetails_FullQR $ do
+    tabPane mempty curSelection SigBuilderAdvancedTab_FullQR $ do
       let yamlText = T.decodeUtf8 $ Y.encode1Strict sd
           qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI yamlText
           img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) qrImage
       elAttr "img" ("src" =: LT.toStrict img) blank
-#else
-    blank
 #endif
+    pure externalSigs'
 
 parseFungibleTransferCap :: SigCapability -> Maybe (Text, Decimal)
 parseFungibleTransferCap cap = transferCap cap
