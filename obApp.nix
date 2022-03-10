@@ -1,7 +1,6 @@
 { system ? builtins.currentSystem # TODO: Get rid of this system cruft
 , iosSdkVersion ? "10.2"
 , withHoogle ? false
-, kpkgs ? import ./dep/kpkgs { inherit system; }
 , obelisk
 }:
 let
@@ -33,6 +32,8 @@ in with obelisk;
           # servant-client-core = servantSrc + "/servant-client-core";
           # servant = servantSrc + "/servant";
           servant-jsaddle = hackGet ./dep/servant-jsaddle;
+          # Playing with attempts at fixing the xhr spin problem
+          # jsaddle = hackGet ./dep/jsaddle + /jsaddle;
           jsaddle-warp = hackGet ./dep/jsaddle + /jsaddle-warp; #https://github.com/ghcjs/jsaddle/pull/114
           kadena-signing-api = hackGet ./dep/signing-api + "/kadena-signing-api";
           pact = hackGet ./dep/pact;

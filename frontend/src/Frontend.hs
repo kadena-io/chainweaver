@@ -33,6 +33,7 @@ import qualified GHCJS.DOM.Types as DOM
 import qualified GHCJS.DOM.URL as URL
 import Foreign.JavaScript.Utils (bsToArrayBuffer)
 import Language.Javascript.JSaddle (JSException(..), js0, js1, (<#), (!), valToText)
+import Kadena.SigningApi
 import Reflex.Dom
 import Pact.Server.ApiClient (runTransactionLoggerT, noLogger)
 import Obelisk.Frontend
@@ -90,10 +91,13 @@ frontend = Frontend
             , _fileFFI_deliverFile = triggerFileDownload
             }
           printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
+          printResponsesHandler2 f = pure $ FRPHandler never $ performEvent . fmap (liftIO . print . f)
+
       bipWalletBrowser fileFFI $ \enabledSettings -> AppCfg
         { _appCfg_gistEnabled = False
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
+        , _appCfg_quickSignHandler = printResponsesHandler2 (fmap unQuickSignResponse)
         , _appCfg_signingHandler = printResponsesHandler
         , _appCfg_enabledSettings = enabledSettings
         , _appCfg_logMessage = errorLevelLogger

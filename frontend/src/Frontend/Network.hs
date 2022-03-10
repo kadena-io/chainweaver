@@ -63,13 +63,13 @@ module Frontend.Network
   , buildCmdWithPayload
   , buildCmdWithPactKey
   , buildExecPayload
+  , buildSigDataWithPayload
   , simpleLocal
   , mkSimpleReadReq
   , getChainsFromHomogenousNetwork
   , getNetworkNameAndMeta
   , getCreationTime
   , encodeAsText
-  , buildSigDataWithPayload 
     -- * Defaults
   , chainwebGasLimitMaximum
   , defaultTransactionGasLimit
@@ -122,6 +122,7 @@ import           Pact.Types.Command
 import           Pact.Types.Runtime                (PactError (..), GasLimit (..), GasPrice (..), Gas (..), ModuleName)
 import           Pact.Types.ChainMeta              (PublicMeta (..), TTLSeconds (..), TxCreationTime (..))
 import qualified Pact.Types.ChainMeta              as Pact
+import qualified Pact.Types.Term                   as Pact
 import           Pact.Types.ChainId                (NetworkId (..))
 import           Pact.Types.Exp                    (Literal (LString))
 import           Pact.Types.Hash                   (hash, Hash (..), TypedHash (..), toUntypedHash)
@@ -1052,6 +1053,22 @@ buildSigDataWithPayload payload signingKeys = do
       , _cmdSigs = []
       , _cmdHash = cmdHashL
       }
+  where
+    toPactSig sig = UserSig $ keyToText sig
+    toPubKeyHex = PublicKeyHex . _siPubKey
+    buildSigsPreserveOrder
+      :: ( MonadJSM m
+         , HasCrypto key m
+         )
+      => TypedHash h
+      -> [(Signer, Maybe (KeyPair key))]
+      -> m [(PublicKeyHex, Maybe UserSig)]
+    buildSigsPreserveOrder cmdHashL signingPairs =
+      forM signingPairs $ \(signer, mkp)-> case mkp of
+        Just (KeyPair _ (Just privKey)) -> do
+          sig <- cryptoSign (unHash . toUntypedHash $ cmdHashL) privKey
+          pure (toPubKeyHex signer, Just $ toPactSig sig )
+        _ -> pure (toPubKeyHex signer, Nothing)
 
 -- |Copied from Pact.Types.SigData in anticipation of the function `commandToSigData` being
 --  changed and silently breaking any use of it that relies on the fact that it ignores the
@@ -1064,25 +1081,6 @@ unsignedCommandToSigData c = do
     Right p -> do
       let sigs = map (\s -> (PublicKeyHex $ _siPubKey s, Nothing)) $ _pSigners p
       Right $ SigData (_cmdHash c) sigs (Just $ _cmdPayload c)
-
--- |Only accepts a list of signer/keypair tuples so that the ordering of sigs has the same ordering
--- as signers, which is required by pact
-buildSigsPreserveOrder
-  :: ( MonadJSM m
-     , HasCrypto key m
-     )
-  => TypedHash h
-  -> [(Signer, Maybe (KeyPair key))]
-  -> m [(PublicKeyHex, Maybe UserSig)]
-buildSigsPreserveOrder cmdHashL signingPairs =
-  forM signingPairs $ \(signer, mkp)-> case mkp of
-    Just (KeyPair _ (Just privKey)) -> do
-      sig <- cryptoSign (unHash . toUntypedHash $ cmdHashL) privKey
-      pure (toPubKeyHex signer, Just $ toPactSig sig )
-    _ -> pure (toPubKeyHex signer, Nothing)
-  where
-    toPactSig sig = UserSig $ keyToText sig
-    toPubKeyHex = PublicKeyHex . _siPubKey
 
 -- | Build a single cmd as expected in the `cmds` array of the /send payload.
 --

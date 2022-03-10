@@ -45,6 +45,7 @@ import           Pact.Types.Names (QualifiedName(..))
 import           Pact.Types.Exp (Literal(..))
 import           Pact.Types.Util (asString)
 import           Pact.Types.Pretty
+import           Pact.Parse (ParsedInteger(..))
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom hiding (Key, Command)
@@ -100,12 +101,27 @@ uiSigBuilderDialog model _onCloseExternal = do
 -- Input Flow
 --------------------------------------------------------------------------------
 
-data SigBuilderRequest key = SigBuilderRequest
-  { _sbr_sigData        :: SigData Text
-  , _sbr_payload        :: Payload PublicMeta Text
-  , _sbr_currentNetwork :: Maybe NetworkName
-  , _sbr_cwKeys         :: [ Key key ]
+data PayloadSigningRequest = PayloadSigningRequest
+  { _psr_sigData        :: SigData Text
+  , _psr_payload        :: Payload PublicMeta Text
   }
+  deriving (Show, Eq)
+
+data SigningRequestWalletState key = SigningRequestWalletState
+  { _srws_currentNetwork :: Maybe NetworkName
+  , _srws_cwKeys         :: [ KeyPair key ]
+  }
+  deriving (Show, Eq)
+
+fetchKeysAndNetwork
+  :: (Reflex t, HasNetwork model t, HasWallet model key t)
+  => model
+  -> Behavior t (SigningRequestWalletState key)
+fetchKeysAndNetwork model =
+  let cwKeys = fmap _key_pair . IMap.elems <$> (model^.wallet_keys)
+      selNodes = model ^. network_selectedNodes
+      nid = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
+   in current $ SigningRequestWalletState <$> nid <*> cwKeys
 
 txnInputDialog
   :: SigBuilderWorkflow t m model key
@@ -114,17 +130,14 @@ txnInputDialog
   -> Workflow t m (Event t ())
 txnInputDialog model mInitVal = Workflow $ mdo
   onClose <- modalHeader $ text "Signature Builder"
-  let cwKeys = IMap.elems <$> (model^.wallet_keys)
-      selNodes = model ^. network_selectedNodes
-      nid = (fmap (mkNetworkName . nodeVersion) . headMay . rights) <$> selNodes
-      keysAndNet = current $ (,) <$> cwKeys <*> nid
+  let keysAndNet = fetchKeysAndNetwork model
   dmSigData <- modalMain $ divClass "group" $ parseInputToSigDataWidget mInitVal
   (onCancel, approve) <- modalFooter $ (,)
     <$> cancelButton def "Cancel"
     <*> confirmButton (def & uiButtonCfg_disabled .~ ( isNothing <$> dmSigData )) "Review"
-  let approveE = fmapMaybe id $ tag (current dmSigData) approve
-      sbr = attachWith (\(keys, net) (sd, pl) -> SigBuilderRequest sd pl net keys) keysAndNet approveE
-  return (onCancel <> onClose, checkAndSummarize model <$> sbr)
+  let approveE = fmap (\(a, b) -> [PayloadSigningRequest a b]) $ fmapMaybe id $ tag (current dmSigData) approve
+      sbr = attach keysAndNet approveE
+  return (onCancel <> onClose, uncurry (checkAndSummarize model) <$> sbr)
 
 data DataToBeSigned
   = DTB_SigData (SigData T.Text, Payload PublicMeta Text)
@@ -230,23 +243,23 @@ checkAll nextW [] = nextW
 checkAll nextW [singleW] = singleW nextW
 checkAll nextW (x:xs) = x $ checkAll nextW xs
 
-
 checkAndSummarize
   :: SigBuilderWorkflow t m model key
   => model
-  -> SigBuilderRequest key
+  -> SigningRequestWalletState key
+  -> [PayloadSigningRequest]
   -> Workflow t m (Event t ())
-checkAndSummarize model sbr =
+checkAndSummarize model srws (psr:rest) =
   let errorWorkflows = [checkForHashMismatch, checkMissingSigs]
       warningWorkflows = [checkNetwork]
    in flip checkAll errorWorkflows $ checkAll nextW warningWorkflows
   where
-    sigData = _sbr_sigData sbr
+    sigData = _psr_sigData psr
     backW = txnInputDialog model (Just sigData)
-    nextW = approveSigDialog model sbr
-    cwNetwork = _sbr_currentNetwork sbr
+    nextW = approveSigDialog model srws psr
+    cwNetwork = _srws_currentNetwork srws
     payloadNetwork = mkNetworkName . view networkId
-      <$> (_pNetworkId $ _sbr_payload sbr)
+      <$> (_pNetworkId $ _psr_payload psr)
     checkForHashMismatch next = do
       let sbrHash = _sigDataHash sigData
           payloadTxt = _sigDataCmd sigData
@@ -287,15 +300,15 @@ checkAndSummarize model sbr =
 approveSigDialog
   :: SigBuilderWorkflow t m model key
   => model
-  -> SigBuilderRequest key
+  -> SigningRequestWalletState key
+  -> PayloadSigningRequest
   -> Workflow t m (Event t ())
-approveSigDialog model sbr = Workflow $ do
-  let sigData = _sbr_sigData sbr
-      keys = fmap _key_pair $ _sbr_cwKeys sbr
+approveSigDialog model srws psr = Workflow $ do
+  let sigData = _psr_sigData psr
       sigs = _sigDataSigs sigData --[(PublicKeyHex, Maybe UserSig)]
-      p = _sbr_payload sbr
+      p = _psr_payload psr
   onClose <- modalHeader $ text "Review Transaction"
-  sbTabDyn <- fst <$> sigBuilderSummaryTabs never
+  sbTabDyn <- fst <$> sigBuilderTabs never
   sigsOrKeysE <- modalMain $ do
     -- TODO: Do this in a way that isnt completely stupid
     -- The Summary tab produces a list of all external sigs -- when we switch tabs, we clear this
@@ -303,8 +316,8 @@ approveSigDialog model sbr = Workflow $ do
     eeSigList <- dyn $ ffor sbTabDyn $ \case
       SigBuilderTab_Summary ->
         updated . sequence <$>
-          showSigsWidget p (_keyPair_publicKey <$> keys) sigs (_sbr_sigData sbr)
-      SigBuilderTab_Details ->  sigBuilderDetailsUI p >>  ([] <$) <$> getPostBuild
+          showSigsWidget p (_keyPair_publicKey <$> _srws_cwKeys srws) sigs sigData
+      SigBuilderTab_Details ->  sigBuilderDetailsUI p "" Nothing >>  ([] <$) <$> getPostBuild
     switchHoldPromptly never eeSigList
   sigsOrKeys <- holdDyn [] sigsOrKeysE
   (back, sign) <- modalFooter $ (,)
@@ -313,19 +326,18 @@ approveSigDialog model sbr = Workflow $ do
   let sigsOnSubmit = mapMaybe (\(a, mb) -> fmap (a,) mb) <$> current sigsOrKeys <@ sign
   let workflowEvent = leftmost
         [ txnInputDialog model (Just sigData) <$ back
-        , signAndShowSigDialog model sbr keys (approveSigDialog model sbr) <$> sigsOnSubmit
+        , signAndShowSigDialog model srws psr (approveSigDialog model srws psr) <$> sigsOnSubmit
         ]
   return (onClose, workflowEvent)
-
 
 data SigBuilderTab = SigBuilderTab_Summary | SigBuilderTab_Details
   deriving (Show, Eq)
 
-sigBuilderSummaryTabs
+sigBuilderTabs
   :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
   => Event t SigBuilderTab
   -> m (Dynamic t SigBuilderTab, Event t ())
-sigBuilderSummaryTabs tabEv = do
+sigBuilderTabs tabEv = do
   let f t0 g = case g t0 of
         Nothing -> (Just t0, Just ())
         Just t  -> (Just t, Nothing)
@@ -346,6 +358,22 @@ sigBuilderSummaryTabs tabEv = do
     displaySigBuilderTab SigBuilderTab_Details = text "Details"
     displaySigBuilderTab SigBuilderTab_Summary = text "Summary"
 
+signersPartitonDisplay
+  :: MonadWidget t m
+  => Text
+  -> ([Signer] -> m [Maybe (Dynamic t (PublicKeyHex, Maybe UserSig))])
+  -> [Signer]
+  -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
+signersPartitonDisplay label widget signers =
+  divClass "signer__group" $
+   ifEmptyBlankSigner signers $ do
+     dialogSectionHeading mempty label
+     fmap catMaybes $ widget signers
+  where ifEmptyBlankSigner l w =
+          if l == []
+             then blank >> pure []
+             else w
+
 showSigsWidget
   :: (MonadWidget t m, HasCrypto key m)
   => Payload PublicMeta Text
@@ -355,45 +383,43 @@ showSigsWidget
   -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
 showSigsWidget p cwKeys sigs sd = do
   let
-    signers = p^.pSigners
-    orderedSigs = catMaybes $ ffor signers $ \s ->
+    orderedSigs = catMaybes $ ffor (p^.pSigners) $ \s ->
       ffor (lookup (PublicKeyHex $ _siPubKey s) sigs) $ \a-> (PublicKeyHex $ _siPubKey s, s, a)
     missingSigs = filter (\(_, _, sig) -> isNothing sig) orderedSigs
-    (unscoped, scoped) = partition isUnscoped $ view _2 <$> missingSigs
+
     -- CwSigners we only need the signer structure;
     -- ExternalSigners we need a (pkh, Signer) tuple to make lookup more efficient
     -- when a new signature is added
-    (cwSigners, externalSigners) = first (fmap (view _2)) $ partition isCWSigner missingSigs
-    externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigners
-
-  void $ mkLabeledInput False "Hash"
-    (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
-      & inputElementConfig_initialValue .~ hashToText sdHash
-
+    (cwSigs, externalSigs) = partition isCWSigner missingSigs
+    (cwUnscoped, cwScoped) = partition isUnscoped $ view _2 <$> cwSigs
+    cwSigners = cwScoped <> cwUnscoped
+    externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigs
+  hashWidget sdHash
   rec showTransactionSummary (signersToSummary <$> dSigners) p
-      dUnscoped <- ifEmptyBlankSigner unscoped $ do
-        dialogSectionHeading mempty "Unscoped Signers"
-        divClass "group" $ do
-          fmap catMaybes $ mapM unscopedSignerRow unscoped
+      --TODO: Specialize the function for ones with no opitinal sig
+      void $ signersPartitonDisplay "My Unscoped Signers" unscopedSignerGroup cwUnscoped
+      void $ signersPartitonDisplay "My Scoped Signers" (mapM scopedSignerRow) cwScoped
 
-      dScoped <- ifEmptyBlankSigner scoped $ do
-        dialogSectionHeading mempty "Scoped Signers"
-        fmap catMaybes $ mapM scopedSignerRow scoped
-      let sigsOrKeys = dScoped <> dUnscoped
-          sigsOrKeys' = sequence sigsOrKeys
+      keysetOpen <- toggle False clk
+      (clk,(_,dExternal)) <- controlledAccordionItem keysetOpen mempty
+        (accordionHeaderBtn "External Signatures and QR Codes") $ do
+          sigBuilderAdvancedTab sd externalSigs scopedSignerRow
+          -- signersPartitonDisplay "External Signatures" (mapM scopedSignerRow) $ view _2 <$> externalSigs
+
+      -- dExternal <- signersPartitonDisplay "External Signatures" (mapM scopedSignerRow) $ view _2 <$> externalSigs
+
       -- This constructs the entire list of all signers going to be signed each time a new signer is
       -- added.
       dSigners <- foldDyn ($) cwSigners $ leftmost
-        [ ffor (updated sigsOrKeys') $ \new _ ->
+        [ ffor (updated $ sequence dExternal) $ \new _ ->
             let newSigners = catMaybes -- lookups shouldn't fail but we use this to get rid of the maybes
                   $ fmap (`lookup` externalLookup) -- use the pkh to get the official Signer structure
                   $ fmap fst -- we only care about the pubkey, not the sig
                   $ ffilter (isJust . snd) new -- get rid of unsigned elems
              in cwSigners <> newSigners
         ]
-  dialogSectionHeading mempty "QR Codes"
-  qrCodesWidget sd
-  pure sigsOrKeys
+  pure dExternal
+
   where
     sdHash = toUntypedHash $ _sigDataHash sd
     signersToSummary signers =
@@ -401,7 +427,7 @@ showSigsWidget p cwKeys sigs sd = do
           pm = p ^. pMeta
           totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
           gas = if paysGas then Just totalGas else Nothing
-       in TransactionSummary trans gas unscoped
+       in TransactionSummary trans gas unscoped $ length signers
     go signer (tokenMap, doesPayGas, unscopedCounter) =
       let capList = signer^.siCapList
           tokenTransfers = mapMaybe parseFungibleTransferCap capList
@@ -412,56 +438,64 @@ showSigsWidget p cwKeys sigs sd = do
     cwKeysPKH = PublicKeyHex . keyToText <$> cwKeys
     isCWSigner (pkh, _, _) = pkh `elem` cwKeysPKH
     isUnscoped (Signer _ _ _ capList) = capList == []
-    ifEmptyBlankSigner l w = if l == [] then (blank >> pure []) else w
     unOwnedSigningInput s =
       let mPub = hush $ parsePublicKey $ _siPubKey s
        in case mPub of
-            Nothing -> blank >> pure Nothing
+            Nothing -> text "^ ERROR parsing public key -- Cannot collect external signature" >> pure Nothing
             Just pub ->
               if pub `elem` cwKeys
                 then blank >> pure Nothing
                 else fmap Just $ uiSigningInput sdHash pub
 
-    unscopedSignerRow s = do
+    unscopedSignerGroup signers = divClass "group" $ forM signers $ \s -> do
       divClass "signer__pubkey" $ text $ _siPubKey s
-      unOwnedSigningInput s
+      pure Nothing
 
     scopedSignerRow signer = do
-      divClass "group__signer" $ do
-        visible <- divClass "signer__row" $ do
-          let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
-          rec
-            clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
-            visible' <- toggle True clk
-          divClass "signer__pubkey" $ text $ _siPubKey signer
-          pure visible'
-        elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) mempty)$ do
-          capListWidget $ _siCapList signer
+      signerSection True (PublicKeyHex $ _siPubKey signer) $ do
+        capListWidget $ _siCapList signer
         unOwnedSigningInput signer
 
-data SBTransferDetails
-  = SBTransferDetails_HashQR
-  | SBTransferDetails_FullQR
+signerSection :: MonadWidget t m => Bool -> PublicKeyHex -> m a -> m a
+signerSection initToggleState pkh capListWidget =do
+    visible <- divClass "group signer__header" $ do
+      let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
+      rec
+        clk <- elDynClass "div" (accordionCell <$> visible') $ accordionButton def
+        visible' <- toggle initToggleState clk
+      divClass "signer__pubkey" $ text $ unPublicKeyHex pkh
+      pure visible'
+    elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) ("class" =: "group signer__capList") )$
+      capListWidget
+
+data SigBuilderAdvancedTab
+  = SigBuilderAdvancedTab_ExternalSigs
+  | SigBuilderAdvancedTab_HashQR
+  | SigBuilderAdvancedTab_FullQR
   deriving (Eq,Ord,Show,Read,Enum,Bounded)
 
-showSBTransferDetailsTabName :: SBTransferDetails -> Text
-showSBTransferDetailsTabName = \case
-  SBTransferDetails_HashQR -> "Hash QR Code"
-  SBTransferDetails_FullQR -> "Full Tx QR Code"
+showSBTabName :: SigBuilderAdvancedTab -> Text
+showSBTabName = \case
+  SigBuilderAdvancedTab_HashQR -> "Hash QR Code"
+  SigBuilderAdvancedTab_FullQR -> "Full Tx QR Code"
+  SigBuilderAdvancedTab_ExternalSigs -> "External Signatures"
 
-qrCodesWidget :: MonadWidget t m => SigData Text -> m ()
-qrCodesWidget sd = do
+-- sigBuilderAdvancedTab :: MonadWidget t m => SigData Text -> m ()
+sigBuilderAdvancedTab sd externalSigs signerRow = do
   divClass "tabset" $ mdo
-    curSelection <- holdDyn SBTransferDetails_HashQR onTabClick
+    curSelection <- holdDyn SigBuilderAdvancedTab_ExternalSigs onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = [minBound .. maxBound]
-      , _tabBarCfg_mkLabel = const $ text . showSBTransferDetailsTabName
+      , _tabBarCfg_mkLabel = const $ text . showSBTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
       , _tabBarCfg_type = TabBarType_Primary
       }
+    externalSigs' <- tabPane mempty curSelection SigBuilderAdvancedTab_ExternalSigs $
+      signersPartitonDisplay "External Signatures" (mapM signerRow) $ view _2 <$> externalSigs
+
 #if !defined(ghcjs_HOST_OS)
-    tabPane mempty curSelection SBTransferDetails_HashQR $ do
+    tabPane mempty curSelection SigBuilderAdvancedTab_HashQR $ do
       let hashText = hashToText $ toUntypedHash $ _sigDataHash sd
           qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI hashText
           img = maybe "Error creating QR code" (QR.toBmpDataUrlT 4 6) qrImage
@@ -472,14 +506,13 @@ qrCodesWidget sd = do
         ]
       el "br" blank
       elAttr "img" ("src" =: LT.toStrict img) blank
-    tabPane mempty curSelection SBTransferDetails_FullQR $ do
+    tabPane mempty curSelection SigBuilderAdvancedTab_FullQR $ do
       let yamlText = T.decodeUtf8 $ Y.encode1Strict sd
           qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI yamlText
           img = maybe "Error creating QR code" (QR.toBmpDataUrlT 4 4) qrImage
       elAttr "img" ("src" =: LT.toStrict img) blank
-#else
-    blank
 #endif
+    pure externalSigs'
 
 parseFungibleTransferCap :: SigCapability -> Maybe (Text, Decimal)
 parseFungibleTransferCap cap = transferCap cap
@@ -498,7 +531,8 @@ parseFungibleTransferCap cap = transferCap cap
 data TransactionSummary = TransactionSummary
   { _ts_tokenTransfers :: Map Text Decimal
   , _ts_maxGas :: Maybe GasPrice -- Checks for GAS cap -- and then uses meta to calc
-  , _ts_numUnscoped :: Int
+  , _ts_numUnscoped :: Int -- Unscoped that are BEING SIGNED FOR
+  , _ts_sigsAdded :: Int
   } deriving (Show, Eq)
 
 showTransactionSummary
@@ -512,6 +546,7 @@ showTransactionSummary dSummary p = do
     let tokens = _ts_tokenTransfers summary
         kda = Map.lookup "coin" tokens
         tokens' = Map.delete "coin" tokens
+    mkLabeledClsInput True "On Chain" $ const $ text $ renderCompactText $ p^.pMeta.pmChainId
     mkLabeledClsInput True "Tx Type" $ const $ text $ prpc $ p^.pPayload
     case _ts_maxGas summary of
       Nothing -> blank
@@ -524,8 +559,11 @@ showTransactionSummary dSummary p = do
       void $ mkLabeledClsInput True "Amount (Tokens)" $ const $ el "div" $
         forM_ (Map.toList tokens') $ \(name, amount) ->
           el "p" $ text $ showWithDecimal amount <> " " <> name
-    void $ mkLabeledClsInput True "Unscoped Sigs" $
-      const $ text $ tshow $ _ts_numUnscoped summary
+    void $ mkLabeledClsInput True "Supplied Signatures" $
+      const $ text $ tshow $ _ts_sigsAdded summary
+    if _ts_numUnscoped summary == 0 then blank else
+      void $ mkLabeledClsInput True "Unscoped Sigs Added" $
+        const $ text $ tshow $ _ts_numUnscoped summary
   where
     prpc (Exec _) = "Exec"
     prpc (Continuation _) = "Continuation"
@@ -547,10 +585,7 @@ signatureDetails
   => SigData Text
   -> m ()
 signatureDetails sd = do
-  void $ mkLabeledInput False "Hash"
-    (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
-      & inputElementConfig_initialValue .~ hashToText (toUntypedHash $ _sigDataHash sd)
-
+  hashWidget $ toUntypedHash $ _sigDataHash sd
   let canMakeCmd = (length $ _sigDataSigs sd) == (length $ catMaybes $ snd <$> _sigDataSigs sd)
   divClass "tabset" $ mdo
     curSelection <- holdDyn (if canMakeCmd then SigDetails_Command else SigDetails_Yaml) onTabClick
@@ -590,31 +625,29 @@ signatureDetails sd = do
 signAndShowSigDialog
   :: (SigBuilderWorkflow t m model key)
   => model
-  -> SigBuilderRequest key
-  -> [KeyPair key]  -- ChainweaverKeys
+  -> SigningRequestWalletState key
+  -> PayloadSigningRequest
   -> Workflow t m (Event t ()) -- Workflow for going back
   -> [(PublicKeyHex, UserSig)] -- User-supplied Sigs
   -> Workflow t m (Event t ())
-signAndShowSigDialog model sbr keys backW sigsOrPrivate = Workflow $ mdo
+signAndShowSigDialog model srws psr backW externalKeySigs = Workflow $ mdo
   onClose <- modalHeader $ text "Sig Data"
   -- This allows a "loading" page to render before we attempt to do the really computationally
   -- expensive sigs
   pb <- delay 0.1 =<< getPostBuild
   dmCmd <- holdDyn Nothing $ snd <$> eSDmCmdTuple
   eSDmCmdTuple <- performEvent $ ffor pb $ \_-> do
-    sd <- addSigsToSigData (_sbr_sigData sbr) keys sigsOrPrivate
+    sd <- addSigsToSigData (_psr_sigData psr) keys externalKeySigs
     if Nothing `elem` (snd <$> _sigDataSigs sd)
       then pure (sd, Nothing)
       else pure (sd, hush $ sigDataToCommand sd)
   -- TODO: Can we forkIO the sig process and display something after they are done?
   widgetHold_ (modalMain $ text "Loading Signatures ...") $ ffor eSDmCmdTuple $ \(sd, mCmd) -> do
     modalMain $ do
-      let cmdE = fmapMaybe id $ updated dmCmd
-          dPayload = constDyn $ _sbr_payload sbr
       pb' <- getPostBuild
       case mCmd of
         Nothing -> blank
-        Just cmd -> previewTransaction model chain dPayload $ cmd <$ pb'
+        Just cmd -> previewTransaction model chain (constDyn p) $ cmd <$ pb'
       signatureDetails sd
   (back, done, submit) <- modalFooter $ (,,)
     <$> cancelButton def "Back"
@@ -626,12 +659,13 @@ signAndShowSigDialog model sbr keys backW sigsOrPrivate = Workflow $ mdo
       eCmdAndNet = fmapMaybe (\(mCmd, ni) -> fmap (,ni) mCmd)
                      $ current cmdAndNet <@ submit
       -- Given M (a, b) and f :: a -> b -> c , give us M c
-      fUncurry f functor = fmap (\tpl -> uncurry f tpl) functor
+      uncurryM f functor = fmap (\tpl -> uncurry f tpl) functor
       sender = p^.pMeta.pmSender
-      submitToNetworkE = transferAndStatus model (AccountName sender, chain) `fUncurry` eCmdAndNet
+      submitToNetworkE = transferAndStatus model (AccountName sender, chain) `uncurryM` eCmdAndNet
   return (onClose <> done, leftmost [backW <$ back, submitToNetworkE])
   where
-    p = _sbr_payload sbr
+    keys = _srws_cwKeys srws
+    p = _psr_payload psr
     chain = p^.pMeta.pmChainId
     submitButton dmCmd = do
       let baseCfg = "class" =: "button button_type_confirm"
@@ -649,7 +683,7 @@ addSigsToSigData
   => SigData Text
   -> [KeyPair key]
   -- ^ Keys which we are signing with
-  -> [(PublicKeyHex, UserSig)]
+  -> [(PublicKeyHex, UserSig)] -- External signatures collected
   -> m (SigData Text)
 addSigsToSigData sd signingKeys sigList = do
   let hashToSign = unHash $ toUntypedHash $ _sigDataHash sd
@@ -687,22 +721,25 @@ transferAndStatus model (sender, cid) cmd nodeInfos = Workflow $ do
 sigBuilderDetailsUI
   :: MonadWidget t m
   => Payload PublicMeta Text
+  -> Text
+  -> Maybe Text
   -> m ()
-sigBuilderDetailsUI p = do
-  txMetaWidget (p^.pMeta) $ p^.pNetworkId
-  pactRpcWidget  $ _pPayload p
-  signerWidget $ p^.pSigners
+sigBuilderDetailsUI p wrapperCls mCls = divClass wrapperCls $ do
+  txMetaWidget (p^.pMeta) (p^.pNetworkId) (p^.pNonce) mCls
+  pactRpcWidget  (_pPayload p) mCls
+  signerWidget (p^.pSigners) mCls
   pure ()
-
 
 txMetaWidget
   :: MonadWidget t m
   => PublicMeta
   -> Maybe NetworkId
+  -> Text
+  -> Maybe Text
   -> m ()
-txMetaWidget pm mNet = do
-  dialogSectionHeading mempty "Transaction Metadata"
-  _ <- divClass "group segment" $ do
+txMetaWidget pm mNet nonce mCls = do
+  dialogSectionHeading mempty "Transaction Metadata & Information"
+  _ <- divClass (maybe "group segment" ("group segment " <>) mCls) $ do
     case mNet of
       Nothing -> blank
       Just n ->
@@ -713,27 +750,35 @@ txMetaWidget pm mNet = do
     mkLabeledClsInput True "Gas Limit" $ \_ -> text $ renderCompactText $ pm^.pmGasLimit
     let totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
     mkLabeledClsInput True "Max Gas Cost" $ \_ -> text $ renderCompactText totalGas <> " KDA"
+    let (TxCreationTime ct) = pm^.pmCreationTime
+    mkLabeledClsInput True "Creation Time" $ \_ -> text $ renderCompactText ct
+    let prettyTTL (TTLSeconds (ParsedInteger s)) = tshow s <> case s of
+          1 -> " second"
+          _ -> " seconds"
+    mkLabeledClsInput True "TTL" $ \_ -> text $ prettyTTL $ pm^.pmTTL
+    mkLabeledClsInput True "Nonce" $ \_ -> text nonce
   pure ()
 
 pactRpcWidget
   :: MonadWidget t m
   => PactRPC Text
+  -> Maybe Text
   -> m ()
-pactRpcWidget (Exec e) = do
+pactRpcWidget (Exec e) mCls = do
   dialogSectionHeading mempty "Code"
-  divClass "group" $ do
+  divClass (maybe "group" ("group " <>) mCls) $ do
     el "code" $ text $ tshow $ pretty $ _pmCode e
   case _pmData e of
     A.Null -> blank
     jsonVal -> do
       dialogSectionHeading mempty "Data"
-      divClass "group" $
+      divClass (maybe "group" ("group " <>) mCls) $
         void $ uiTextAreaElement $ def
           & textAreaElementConfig_initialValue .~ (T.decodeUtf8 $ LB.toStrict $ A.encode jsonVal)
           & initialAttributes .~ "disabled" =: "" <> "style" =: "width: 100%"
-pactRpcWidget (Continuation c) = do
+pactRpcWidget (Continuation c) mCls = do
   dialogSectionHeading mempty "Continuation Data"
-  divClass "group" $ do
+  divClass (maybe "group" ("group " <>) mCls) $ do
     mkLabeledClsInput True "Pact ID" $ \_ -> text $ renderCompactText $ _cmPactId c
     mkLabeledClsInput True "Step" $ \_ -> text $ tshow $ _cmStep c
     mkLabeledClsInput True "Rollback" $ \_ -> text $ tshow $ _cmRollback c
@@ -762,11 +807,12 @@ pactRpcWidget (Continuation c) = do
 signerWidget
   :: (MonadWidget t m)
   => [Signer]
+  -> Maybe Text
   -> m ()
-signerWidget signers = do
+signerWidget signers mCls= do
   dialogSectionHeading mempty "Signers"
   forM_ signers $ \s ->
-    divClass "group segment" $ do
+    divClass (maybe "group segment" ("group segment " <>) mCls) $ do
       mkLabeledClsInput True "Key:" $ \_ -> text (renderCompactText $ s ^.siPubKey)
       mkLabeledClsInput True "Caps:" $ \_ -> capListWidget $ s^.siCapList
 
@@ -793,3 +839,8 @@ networkWidget p =
       dialogSectionHeading mempty "Network"
       divClass "group" $ text $ n ^. networkId
 
+hashWidget :: MonadWidget t m => Hash -> m ()
+hashWidget hash =
+  void $ mkLabeledInput False "Hash"
+    (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
+      & inputElementConfig_initialValue .~ hashToText hash
