@@ -679,60 +679,80 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
     close <- modalHeader $ text $ transferModalTitle ty
     rec
       (currentTab, _done) <- transferTabs newTab
-      (conf, meta, payload, dSignedCmd, destChainInfo) <- mainSection currentTab
-      (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd
-    let backW = transferDialog model netInfo ti ty fks tks unused
+      (conf, meta, payload, dSignedCmd, destChainInfo, tiDyn) <- mainSection currentTab
+      (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd tiDyn
+    let backW ti = transferDialog model netInfo ti ty fks tks unused
     case destChainInfo of
       Nothing -> do
-        let nextScreen = ffor (tag (current dSignedCmd) next) $ \case
-              Nothing -> Workflow $ pure (mempty, never)
-              Just sc -> previewDialog model netInfo ti payload sc backW $
-                           sameChainTransferAndStatus model netInfo ti sc
+        let allDyns = (,)
+              <$> current tiDyn
+              <*> current dSignedCmd
+        let nextScreen = ffor (tag allDyns next) $ \case
+              (_, Nothing) -> Workflow $ pure (mempty, never)
+              (ti, Just sc) ->
+                previewDialog model netInfo ti payload sc (backW ti) $
+                  sameChainTransferAndStatus model netInfo ti sc
         pure ((conf, close <> cancel), nextScreen)
 
       Just (dgp, dss) -> do
-        let allDyns = (,,,,)
+        let allDyns = (,,,,,)
               <$> current payload
               <*> current dSignedCmd
               <*> current dgp
               <*> current dss
               <*> current meta
+              <*> current tiDyn
         let nextScreen = ffor (tag allDyns next) $ \case
-              (_,Nothing,_,_,_) -> Workflow $ pure (mempty, never)
-              (p,Just sc,gp,ss,meta') -> previewDialog model netInfo ti payload sc backW $
-                                           crossChainTransferAndStatus model netInfo ti sc gp ss meta'
+              (_,Nothing,_,_,_,_) -> Workflow $ pure (mempty, never)
+              (p,Just sc,gp,ss,meta',ti) ->
+                previewDialog model netInfo ti payload sc (backW ti) $
+                  crossChainTransferAndStatus model netInfo ti sc gp ss meta'
         pure ((conf, close <> cancel), nextScreen)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
-      (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
+      (conf, meta, destChainInfo, tiDyn) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti ty
-      let payload = buildUnsignedCmd netInfo ti ty <$> meta
+      void $ tabPane mempty currentTab TransferTab_MaxTransactionWarning $ do
+        el "h2" $ text "You have asked for a max transfer but used the same account to pay gas. As such, the amount being transferred has changed."
+        el "div" $ do
+          el "span" $ text "Amount being transferred (after deducting gas): "
+          el "span" $
+            el "b" $ dynText $ T.pack . show . _ti_amount <$> tiDyn
+      let payload = (\transferInfo m -> buildUnsignedCmd netInfo transferInfo ty m) <$> tiDyn <*> meta
       edSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
         networkView $ transferSigs
           <$> (model ^. wallet_keys)
           <*> payload
           <*> (_transferMeta_sourceChainSigners <$> meta)
       sc <- holdUniqDyn . join =<< holdDyn (constDyn Nothing) (Just <$$> edSigned)
-      return (conf, meta, payload, sc, destChainInfo)
-    footerSection currentTab meta sc = modalFooter $ do
+      return (conf, meta, payload, sc, destChainInfo, tiDyn)
+    footerSection currentTab meta sc tiDyn = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
             TransferTab_Metadata -> ("Cancel", Left ())
+            TransferTab_MaxTransactionWarning -> ("Back", Right TransferTab_Metadata)
             TransferTab_Signatures -> ("Back", Right TransferTab_Metadata)
       ev <- cancelButton def lbl
       let (cancel, back) = fanEither $ current fanTag <@ ev
 
       let isDisabled m s = length (_transferMeta_sourceChainSigners m) /= maybe (-1) (length . _cmdSigs) s
       let mkNextButton ct m s = case ct of
-            TransferTab_Metadata -> ("Next", isNothing . _transferMeta_senderAccount <$> meta) -- Only proceed if the gas payer is valid
-            TransferTab_Signatures -> ("Preview", isDisabled <$> meta <*> sc)
+            TransferTab_Metadata -> ("Next", isNothing $ _transferMeta_senderAccount m) -- Only proceed if the gas payer is valid
+            TransferTab_MaxTransactionWarning -> ("Proceed", False)
+            TransferTab_Signatures -> ("Preview", isDisabled m s)
           (name, disabled) = splitDynPure $ mkNextButton <$> currentTab <*> meta <*> sc
           cfg = def
             & uiButtonCfg_class <>~ "button_type_confirm"
-            & uiButtonCfg_disabled .~ join disabled
+            & uiButtonCfg_disabled .~ disabled
       nextClick <- uiButtonDyn cfg $ dynText name
-      let newTab = ffor (tag (current currentTab) nextClick) $ \case
-            TransferTab_Metadata -> Just TransferTab_Signatures
+      let calculateNewTab currentMeta currTab currentTi () = case currTab of
+            TransferTab_Metadata ->
+              -- If this is a max transaction, and gas payer is the sending account, show a warning screen
+              if _ti_maxAmount currentTi && Just (_ca_account $ _ti_fromAccount currentTi) == _transferMeta_senderAccount currentMeta
+                then Just TransferTab_MaxTransactionWarning
+                else Just TransferTab_Signatures
+            TransferTab_MaxTransactionWarning -> Just TransferTab_Signatures
             TransferTab_Signatures -> Nothing
+          newTab = calculateNewTab <$> current meta <*> current currentTab <*> current tiDyn <@> nextClick
 
       let tabChange = leftmost [back, fmapMaybe id newTab]
       let screenChange = () <$ ffilter isNothing newTab
@@ -1080,6 +1100,7 @@ gasPayersSection model netInfo fks tks ti = do
           Nothing -> case mkAccountName "" of
             Left e  -> PopoverState_Error e   -- The initial error message to be shown
             Right _ -> PopoverState_Disabled  -- ERROR: This should never occur, since we have provided an invalid account name to `mkAccountName`
+          Just acc -> PopoverState_Disabled
         initValues = (unAccountName <$> initialSourceGasPayer, initPopState)
 
         getGasPayerKeys chain mgp = do
@@ -1248,8 +1269,9 @@ transferMetadata
   -> m (mConf,
         Dynamic t TransferMeta,
         -- Destination chain gas payer and signer information when there is a cross-chain transfer
-        Maybe (Dynamic t (Maybe (AccountName, AccountStatus AccountDetails)), Dynamic t [Signer]))
-transferMetadata model netInfo fks tks ti ty = do
+        Maybe (Dynamic t (Maybe (AccountName, AccountStatus AccountDetails)), Dynamic t [Signer]),
+        Dynamic t TransferInfo)
+transferMetadata model netInfo fks tks ti ty = mdo
   let fromChain = _ca_chain $ _ti_fromAccount ti
       fromAccount = _ca_account $ _ti_fromAccount ti
       toChain = _ca_chain $ _ti_toAccount ti
@@ -1312,12 +1334,20 @@ transferMetadata model netInfo fks tks ti ty = do
       -- Build up a Map PublicKey [SigCapability]
       addCap cap pk = Map.insertWith (<>) pk [cap]
       gasCaps = foldr (addCap gasCapability) mempty <$> fromGasKeys
-      rawAmount = _ti_amount ti
-      amount = if ty == SafeTransfer then rawAmount + safeTransferEpsilon else rawAmount
-      transferCap = if fromChain == toChain
-                      then transferCapability fromAccount toAccount amount
-                      else crosschainCapability fromAccount
-      fromCapsA = foldr (addCap transferCap) <$> gasCaps <*> fromTxKeys
+      -- In case of a max-amount transaction, if the gas payer account is also the sender account,
+      -- then the effective amount being transferred is (max-amount - gas fees)
+      -- Note that the gas fees is not known at this point, so we deduct (GasLimit * GasPrice).
+      calculateRawAmount currentSrcPayer currentLimit currentPrice =
+        if _ti_maxAmount ti && Just fromAccount == gpdAccount currentSrcPayer
+          then _ti_amount ti - fromIntegral currentLimit * realToFrac currentPrice
+          else _ti_amount ti
+      rawAmountDyn = calculateRawAmount <$> srcPayer <*> lim <*> price
+        
+      amountDyn = rawAmountDyn <&> \rawAmount -> if ty == SafeTransfer then rawAmount + safeTransferEpsilon else rawAmount
+      transferCapDyn = if fromChain == toChain
+                      then transferCapability fromAccount toAccount <$> amountDyn
+                      else constDyn $ crosschainCapability fromAccount
+      fromCapsA = foldr <$> (addCap <$> transferCapDyn) <*> gasCaps <*> fromTxKeys
       allFromCaps = if ty == SafeTransfer
                       then foldr (addCap (transferCapability toAccount fromAccount safeTransferEpsilon))
                              <$> fromCapsA <*> safeTxKeys
@@ -1339,7 +1369,7 @@ transferMetadata model netInfo fks tks ti ty = do
                           , toSigners )
 
   dialogSectionHeading mempty "Transaction Settings"
-  divClass "group" $ do
+  ((lim, price), returnValue) <- divClass "group" $ do
     let defaultLimit = if ty == SafeTransfer
           then Just 1200
           else if fromChain == toChain
@@ -1359,7 +1389,8 @@ transferMetadata model netInfo fks tks ti ty = do
              <*> ttl
              <*> (TxCreationTime . ParsedInteger <$> ct)
              <*> fromSigners
-      return (conf, meta, destChainSigners)
+      return ((lim, price), (conf, meta, destChainSigners, rawAmountDyn <&> \rawAmount -> ti { _ti_amount = rawAmount }))
+  pure returnValue
 
 combineStatus :: AccountStatus a -> AccountStatus a -> AccountStatus a
 combineStatus a@(AccountStatus_Exists _) _ = a
@@ -1651,12 +1682,14 @@ checkSigOrKey hash pubKey userInput = do
 
 data TransferTab
   = TransferTab_Metadata
+  | TransferTab_MaxTransactionWarning
   | TransferTab_Signatures
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 displayTransferTab :: DomBuilder t m => TransferTab -> m ()
 displayTransferTab = text . \case
   TransferTab_Signatures -> "Signatures"
+  TransferTab_MaxTransactionWarning -> "Warning"
   TransferTab_Metadata -> "Metadata"
 
 transferTabs
@@ -1673,7 +1706,7 @@ transferTabs tabEv = do
       , const . Just <$> tabEv
       ]
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [TransferTab_Metadata, TransferTab_Signatures]
+      { _tabBarCfg_tabs = [TransferTab_Metadata, TransferTab_MaxTransactionWarning, TransferTab_Signatures]
       , _tabBarCfg_mkLabel = \_ -> displayTransferTab
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
