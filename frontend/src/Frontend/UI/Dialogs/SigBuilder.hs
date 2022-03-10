@@ -45,6 +45,7 @@ import           Pact.Types.Names (QualifiedName(..))
 import           Pact.Types.Exp (Literal(..))
 import           Pact.Types.Util (asString)
 import           Pact.Types.Pretty
+import           Pact.Parse (ParsedInteger(..))
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom hiding (Key, Command)
@@ -397,7 +398,7 @@ showSigsWidget p cwKeys sigs sd = do
   rec showTransactionSummary (signersToSummary <$> dSigners) p
       --TODO: Specialize the function for ones with no opitinal sig
       void $ signersPartitonDisplay "My Unscoped Signers" unscopedSignerGroup cwUnscoped
-      void $ signersPartitonDisplay "My Scoped Signers" (mapM scopedSignerRow) cwScoped 
+      void $ signersPartitonDisplay "My Scoped Signers" (mapM scopedSignerRow) cwScoped
 
       keysetOpen <- toggle False clk
       (clk,(_,dExternal)) <- controlledAccordionItem keysetOpen mempty
@@ -406,7 +407,7 @@ showSigsWidget p cwKeys sigs sd = do
           -- signersPartitonDisplay "External Signatures" (mapM scopedSignerRow) $ view _2 <$> externalSigs
 
       -- dExternal <- signersPartitonDisplay "External Signatures" (mapM scopedSignerRow) $ view _2 <$> externalSigs
- 
+
       -- This constructs the entire list of all signers going to be signed each time a new signer is
       -- added.
       dSigners <- foldDyn ($) cwSigners $ leftmost
@@ -545,6 +546,7 @@ showTransactionSummary dSummary p = do
     let tokens = _ts_tokenTransfers summary
         kda = Map.lookup "coin" tokens
         tokens' = Map.delete "coin" tokens
+    mkLabeledClsInput True "On Chain" $ const $ text $ renderCompactText $ p^.pMeta.pmChainId
     mkLabeledClsInput True "Tx Type" $ const $ text $ prpc $ p^.pPayload
     case _ts_maxGas summary of
       Nothing -> blank
@@ -723,7 +725,7 @@ sigBuilderDetailsUI
   -> Maybe Text
   -> m ()
 sigBuilderDetailsUI p wrapperCls mCls = divClass wrapperCls $ do
-  txMetaWidget (p^.pMeta) (p^.pNetworkId) mCls
+  txMetaWidget (p^.pMeta) (p^.pNetworkId) (p^.pNonce) mCls
   pactRpcWidget  (_pPayload p) mCls
   signerWidget (p^.pSigners) mCls
   pure ()
@@ -732,10 +734,11 @@ txMetaWidget
   :: MonadWidget t m
   => PublicMeta
   -> Maybe NetworkId
+  -> Text
   -> Maybe Text
   -> m ()
-txMetaWidget pm mNet mCls = do
-  dialogSectionHeading mempty "Transaction Metadata"
+txMetaWidget pm mNet nonce mCls = do
+  dialogSectionHeading mempty "Transaction Metadata & Information"
   _ <- divClass (maybe "group segment" ("group segment " <>) mCls) $ do
     case mNet of
       Nothing -> blank
@@ -747,6 +750,13 @@ txMetaWidget pm mNet mCls = do
     mkLabeledClsInput True "Gas Limit" $ \_ -> text $ renderCompactText $ pm^.pmGasLimit
     let totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
     mkLabeledClsInput True "Max Gas Cost" $ \_ -> text $ renderCompactText totalGas <> " KDA"
+    let (TxCreationTime ct) = pm^.pmCreationTime
+    mkLabeledClsInput True "Creation Time" $ \_ -> text $ renderCompactText ct
+    let prettyTTL (TTLSeconds (ParsedInteger s)) = tshow s <> case s of
+          1 -> " second"
+          _ -> " seconds"
+    mkLabeledClsInput True "TTL" $ \_ -> text $ prettyTTL $ pm^.pmTTL
+    mkLabeledClsInput True "Nonce" $ \_ -> text nonce
   pure ()
 
 pactRpcWidget
