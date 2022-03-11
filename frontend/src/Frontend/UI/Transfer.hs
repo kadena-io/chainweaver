@@ -678,7 +678,7 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
     -- It contains the from account name and details retrieved from blockchain
     close <- modalHeader $ text $ transferModalTitle ty
     rec
-      (currentTab, _done) <- transferTabs newTab
+      (currentTab, _done) <- transferTabs newTab $ shouldWarningTabBeShown <$> tiDyn <*> meta
       (conf, meta, payload, dSignedCmd, destChainInfo, tiDyn) <- mainSection currentTab
       (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd tiDyn
     let backW ti = transferDialog model netInfo ti ty fks tks unused
@@ -709,6 +709,8 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
                   crossChainTransferAndStatus model netInfo ti sc gp ss meta'
         pure ((conf, close <> cancel), nextScreen)
   where
+    shouldWarningTabBeShown currentTi currentMeta =
+      _ti_maxAmount currentTi && Just (_ca_account $ _ti_fromAccount currentTi) == _transferMeta_senderAccount currentMeta
     mainSection currentTab = elClass "div" "modal__main" $ do
       (conf, meta, destChainInfo, tiDyn) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti ty
@@ -747,7 +749,7 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
       let calculateNewTab currentMeta currTab currentTi () = case currTab of
             TransferTab_Metadata ->
               -- If this is a max transaction, and gas payer is the sending account, show a warning screen
-              if _ti_maxAmount currentTi && Just (_ca_account $ _ti_fromAccount currentTi) == _transferMeta_senderAccount currentMeta
+              if shouldWarningTabBeShown currentTi currentMeta
                 then Just TransferTab_MaxTransactionWarning
                 else Just TransferTab_Signatures
             TransferTab_MaxTransactionWarning -> Just TransferTab_Signatures
@@ -1695,8 +1697,9 @@ displayTransferTab = text . \case
 transferTabs
   :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m)
   => Event t TransferTab
+  -> Dynamic t Bool
   -> m (Dynamic t TransferTab, Event t ())
-transferTabs tabEv = do
+transferTabs tabEv shouldWarningTabBeShownDyn = do
   let f t0 g = case g t0 of
         Nothing -> (Just t0, Just ())
         Just t -> (Just t, Nothing)
@@ -1705,11 +1708,14 @@ transferTabs tabEv = do
       [ const . Just <$> onTabClick
       , const . Just <$> tabEv
       ]
-    (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [TransferTab_Metadata, TransferTab_MaxTransactionWarning, TransferTab_Signatures]
-      , _tabBarCfg_mkLabel = \_ -> displayTransferTab
-      , _tabBarCfg_selectedTab = Just <$> curSelection
-      , _tabBarCfg_classes = mempty
-      , _tabBarCfg_type = TabBarType_Secondary
+    (TabBar onTabClick) <- makeTabBarDyn $ TabBarDynCfg
+      { _tabBarDynCfg_tabs = shouldWarningTabBeShownDyn <&> \shouldWarningTabBeShown ->
+        if shouldWarningTabBeShown
+          then [TransferTab_Metadata, TransferTab_MaxTransactionWarning, TransferTab_Signatures]
+          else [TransferTab_Metadata, TransferTab_Signatures]
+      , _tabBarDynCfg_mkLabel = \_ -> displayTransferTab
+      , _tabBarDynCfg_selectedTab = Just <$> curSelection
+      , _tabBarDynCfg_classes = mempty
+      , _tabBarDynCfg_type = TabBarType_Secondary
       }
   pure (curSelection, done)
