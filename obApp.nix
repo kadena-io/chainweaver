@@ -18,7 +18,7 @@ in with obelisk;
     # android.displayName = "Obelisk Minimal Example";
     # ios.bundleIdentifier = "systems.obsidian.obelisk.examples.minimal";
     # ios.bundleName = "Obelisk Minimal Example";
-
+    externjs = ./static/externs.js;
     staticFiles =
       let
         staticFilePath = ./static;
