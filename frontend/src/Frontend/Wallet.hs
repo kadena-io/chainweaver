@@ -65,7 +65,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Kadena.SigningApi (AccountName(..), mkAccountName)
+import Kadena.SigningTypes (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
 import Pact.Types.Pretty
 import Reflex
