@@ -16,7 +16,7 @@
 module Frontend.PactQueries where
 
 import           Data.Text (Text)
-import           Kadena.SigningApi
+import           Kadena.SigningTypes
 import           Pact.Types.ChainMeta
 import qualified Data.Text as T
 import           Pact.Types.Command

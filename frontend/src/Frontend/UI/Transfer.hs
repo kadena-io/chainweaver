@@ -67,7 +67,7 @@ import qualified Codec.QRCode.JuicyPixels as QR
 import qualified Data.YAML.Aeson as Y
 
 import           Pact.Types.SigData
-import           Kadena.SigningApi (AccountName(..))
+import           Kadena.SigningTypes (AccountName(..))
 import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
@@ -572,7 +572,7 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
           else
             transferDialog model netInfo ti ty fks tks fromPair
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
-        let 
+        let
           transferDialogWithWarn model netInfo ti ty fks tks fromPair = Workflow $ do
             close <- modalHeader $ text "Account Keyset"
             _ <- elClass "div" "modal__main" $ do
@@ -636,7 +636,7 @@ handleMissingKeyset
   -> (AccountName, AccountDetails)
   -> Workflow t m (mConf, Event t ())
 handleMissingKeyset model netInfo ti ty fks tks fromPair = do
-    let 
+    let
       toAccount = _ca_account $ _ti_toAccount ti
       toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
     case parsePubKeyOrKAccount toAccount of
@@ -1086,7 +1086,7 @@ gasPayersSection model netInfo fks tks ti = do
         toChain = _ca_chain (_ti_toAccount ti)
         defaultDestGasPayer = case Map.lookup toAccount tks of
           Just (AccountStatus_Exists dets)
-            | _accountDetails_balance dets > AccountBalance 0 -> toAccount 
+            | _accountDetails_balance dets > AccountBalance 0 -> toAccount
           _ -> AccountName "free-x-chain-gas"
     (dgp1, mdmgp2) <- if fromChain == toChain
       then do

@@ -31,6 +31,7 @@ import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 import           Data.Text.Encoding
 import           Kadena.SigningApi
+import           Kadena.SigningTypes
 import           Pact.Parse
 import           Pact.Types.Capability
 import           Pact.Types.ChainId
@@ -160,7 +161,7 @@ uiQuickSign ideL writeSigningResponse qsr _onCloseExternal = (mempty, ) <$> do
         flip PayloadSigningRequest p $ payloadToSigData p txt
   if _quickSignRequest_commands qsr == []
      then writeSigningResponse =<< failWith "QuickSign request was empty" ""
-     else case partitionEithers $ fmap toPayReqOrErr $ _quickSignRequest_commands qsr of
+     else case partitionEithers $ fmap (toPayReqOrErr . _csr_cmd) $ _quickSignRequest_commands qsr of
        ([], payloads) ->
          quickSignModal ideL writeSigningResponse payloads
        (es, _) -> writeSigningResponse =<<
@@ -240,11 +241,14 @@ handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
   pb <- delay 0.2 =<< getPostBuild
   modalMain $ text "Signing ..."
   let toSign = fmap _psr_sigData payloadRequests
-  quickSignRes <- performEvent $ ffor pb $ const $ fmap QuickSignResponse $
+  quickSignRes <- performEvent $ ffor pb $ const $ -- fmap QuickSignResponse $
     -- TODO: ForkIO and have an event for each payload in addition to the final event. The list of
     -- events can be used to update the loading screen with: "x / y signatures left"
     forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
-  res <- writeSigningResponse $ Right <$> quickSignRes
+  -- TODO: [SigData] -> QuickSignResponse conversion needs to be refactored to be cleaner
+  let quickSignRes' = ffor quickSignRes $ \qsList -> QuickSignResponse $ ffor qsList $
+        \(SigData _ sl (Just a)) -> CommandSigRequest (SignatureList sl) a
+  res <- writeSigningResponse $ Right <$> quickSignRes'
   pure (res, never)
 
 -- |Summary view for quicksign ui
