@@ -45,9 +45,11 @@ module Frontend.UI.Widgets
   , uiAccountDropdown'
   , uiKeyPairDropdown
   , uiRequestKeyInput
+  , uiTextInputAsync
 
   -- ** Other widgets
   , PopoverState (..)
+  , ValidationResult (..)
   , uiInputWithPopover
   , uiSegment
   , uiGroup
@@ -1108,6 +1110,36 @@ uiAccountNameInput label inlineLabel initval onSetName validateName = do
     & setValue .~ Just onSetName
   pure (tagPromptlyDyn v i, v)
 
+-- | Creates an input widget, along with an initial value and a setter event.
+-- The validation function will be used to filter out erroneous results.
+--
+-- Values that result in `Success` or `Warning` will be passed on. `Failure` values will be filtered out.
+--
+-- Values that result in `Failure` or `Warning` will be shown as a pop over error. `Success` values will not show errors.
+uiTextInputAsync
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     , MonadFix m
+     )
+  => Text                       -- ^ The label for this input
+  -> Bool                       -- ^ Should the label be inline?
+  -> (Maybe Text, PopoverState) -- ^ Initial Value for the input, and initial popover state
+  -> Event t (Maybe Text)       -- ^ An event that can be used to set the input's value
+  -> (Event t Text -> m (Event t (ValidationResult Text a)))
+  -- ^ The validation function. This function will receive the user's input as an event.
+  -> m ( Event t (Maybe a)
+       , Dynamic t (Maybe a)
+       )
+uiTextInputAsync label inlineLabel (initval, initPopState) onSetName isValid = do
+  (FormWidget v _ _, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState isValid) $ mkCfg initval
+    & setValue .~ Just onSetName
+  pure (updated v, v)
+
 uiAccountNameInputNoDropdown
   :: ( DomBuilder t m
      , PostBuild t m
@@ -1260,6 +1292,7 @@ uiSidebarIcon selected src label = do
 data PopoverState
   = PopoverState_Error Text
   | PopoverState_Warning Text
+  | PopoverState_Loading
   | PopoverState_Disabled
   deriving (Eq, Show)
 
@@ -1281,12 +1314,37 @@ uiInputWithPopover
   -> ((el,a) -> m (Event t PopoverState))
   -> cfg
   -> m (el,a)
-uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
+uiInputWithPopover body getStateBorderTarget mkMsg cfg = do
+  let
+    mkMsgWithInitState a = do
+      ev <- mkMsg a
+      pure (PopoverState_Disabled, ev)
+  uiInputWithPopoverWithInitState body getStateBorderTarget mkMsgWithInitState cfg
+
+uiInputWithPopoverWithInitState
+  :: forall t m cfg el rawEl a
+  .  ( DomBuilder t m
+     , MonadHold t m
+     , PostBuild t m
+     , PerformEvent t m
+     , MonadJSM (Performable m)
+     , HasDomEvent t el 'BlurTag
+     , HasDomEvent t el 'FocusTag
+     , JS.IsElement rawEl
+     )
+  -- Return a tuple here so there is a bit more flexibility for what
+  -- can be returned from your input widget.
+  => (cfg -> m (el,a))
+  -> ((el,a) -> rawEl)
+  -> ((el,a) -> m (PopoverState, Event t PopoverState))
+  -> cfg
+  -> m (el,a)
+uiInputWithPopoverWithInitState body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
   let
     popoverBlurCls = \case
       PopoverState_Error _ -> Just "popover__error-state"
       PopoverState_Warning _ -> Just "popover__warning-state"
-      PopoverState_Disabled -> Nothing
+      _ -> Nothing
 
     popoverDiv :: Map Text Text -> m ()
     popoverDiv attrs = elAttr "div" attrs blank
@@ -1300,7 +1358,7 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
     popoverToAttrs = \case
       PopoverState_Error m -> popoverAttrs "popover__error" m
       PopoverState_Warning m -> popoverAttrs "popover__warning" m
-      PopoverState_Disabled -> popoverHiddenAttrs
+      _ -> popoverHiddenAttrs
 
     pushClass :: JS.IsElement e => Text -> e -> JSM ()
     pushClass cls = JS.getClassList >=> flip JS.add [cls]
@@ -1314,13 +1372,17 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
     popoverIcon cls =
       elClass "i" ("fa fa-warning popover__icon " <> cls) blank
 
+    popoverLoader cls =
+      elAttr "img" ("class" =: ("fa fa-warning popover__icon " <> cls) <> "src" =: static @"img/two-arrows-small.gif") blank
+
   a <- body cfg
 
-  onMsg <- mkMsg a
-  dPopState <- holdDyn PopoverState_Disabled onMsg
+  (initState, onMsg) <- mkMsg a
+  dPopState <- holdDyn initState onMsg
 
   _ <- dyn_ $ ffor dPopState $ \case
     PopoverState_Disabled -> blank
+    PopoverState_Loading -> popoverLoader ""
     PopoverState_Error _ -> popoverIcon "popover__icon-error"
     PopoverState_Warning _ -> popoverIcon "popover__icon-warning"
 
@@ -1334,11 +1396,12 @@ uiInputWithPopover body getStateBorderTarget mkMsg cfg = divClass "popover" $ do
     , onShift dropClass borderTargetEl <$> current dPopState <@ onFocus
     ]
 
-  _ <- runWithReplace (divClass "popover__message" blank) $ leftmost
+  msgDyn <- holdDyn (popoverDiv . popoverToAttrs $ initState) $ leftmost
     [ popoverDiv . popoverToAttrs <$> onMsg
     , popoverDiv popoverHiddenAttrs <$ onBlur
     , popoverDiv . popoverToAttrs <$> current dPopState <@ onFocus
     ]
+  dyn_ msgDyn
 
   pure a
 
@@ -1415,6 +1478,70 @@ accountNameFormWidget validateName cfg = do
   let w = FormWidget
             (hush <$> (validate <*> fmap T.strip (value inputE)))
             (() <$ _inputElement_input inputE)
+            (_inputElement_hasFocus inputE)
+  pure (w, domEvent Paste inputE)
+
+-- | A data type that includes a warning state, apart from success and failure.
+-- A warning state is not considered a failure, the value is considered acceptable,
+-- but there is scope for improvement.
+data ValidationResult a b
+  = Failure a     -- ^ Signifies a failure, value is invalid
+  | Warning a b   -- ^ Signifies a warning, value may be accepted
+  | Success b     -- ^ Value is valid
+
+textFormWidgetAsync
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     , MonadFix m
+     )
+  => PopoverState
+  -> (Event t Text -> m (Event t (ValidationResult Text a)))
+  -> PrimFormWidgetConfig t (Maybe Text)
+  -> m (FormWidget t (Maybe a), Event t (Maybe Text))
+textFormWidgetAsync initPopState isValid cfg = mdo
+  let
+    -- Treats Warning and Result types as valid values, errors are treated as invalid
+    toValid = \case
+      Warning _ a -> Just a
+      Success a -> Just a
+      Failure _ -> Nothing
+
+    showPopover _ = do
+      let
+        loadingEv = inputEv <&> \input ->
+          if T.null input
+            then PopoverState_Disabled
+            else PopoverState_Loading
+      pure
+        ( initPopState
+        , leftmost
+          [ resultEv <&> \case
+              Failure e -> PopoverState_Error e
+              Warning e _ -> PopoverState_Warning e
+              _ -> PopoverState_Disabled
+          , loadingEv
+          ]
+        )
+
+    uiNameInput cfg = do
+      inp <- uiInputElement $ cfg & initialAttributes %~
+               (<> "list" =: accountListId) . addToClassAttr "account-input"
+      pure (inp, _inputElement_raw inp)
+
+  (inputE, _) <- uiInputWithPopoverWithInitState uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
+  let
+    inputDyn = value inputE
+    inputEv = updated inputDyn
+  resultEv <- isValid inputEv
+  validDyn <- holdDyn Nothing $ toValid <$> resultEv
+  let w = FormWidget
+            validDyn
+            (() <$ inputEv)
             (_inputElement_hasFocus inputE)
   pure (w, domEvent Paste inputE)
 
