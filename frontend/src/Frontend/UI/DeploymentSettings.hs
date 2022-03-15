@@ -685,7 +685,7 @@ uiMetaData m mTTL mGasLimit = do
       Just _ -> pure never
       Nothing -> tag (current $ fmap _pmTTL $ m ^. network_meta) <$> getPostBuild
     let secondsInDay = 60 * 60 * 24
-        secondsInMonth = 30 * secondsInDay
+        maxTTL = secondsInDay * 2
         minTTL = 60
         prettyTTL s = tshow s <> case s of
           1 -> " second"
@@ -698,7 +698,7 @@ uiMetaData m mTTL mGasLimit = do
           sliderEl <- uiSlider "" (text $ prettyTTL minTTL) (text "1 day") $ conf
             & initialAttributes .~ "min" =: (tshow minTTL) <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
             & inputElementConfig_setValue .~ _inputElement_input inputEl
-          (inputEl, inputEv) <- dimensionalInputFeedbackWrapper (Just "Seconds") $ uiIntInputElement (Just minTTL) (Just secondsInMonth) $ conf
+          (inputEl, inputEv) <- dimensionalInputFeedbackWrapper (Just "Seconds") $ uiIntInputElement (Just minTTL) (Just maxTTL) $ conf
             & inputElementConfig_setValue .~ _inputElement_input sliderEl
             & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
           preventScrollWheel $ _inputElement_raw inputEl
