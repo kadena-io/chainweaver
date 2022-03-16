@@ -41,6 +41,7 @@ module Common.Wallet
   , toPactKeyset
   , UnfinishedCrossChainTransfer(..)
   , KeyStorage
+  , TokenStorage
   , AccountStatus (..)
   , _AccountStatus_Exists
   , _AccountStatus_Unknown
@@ -98,6 +99,7 @@ import Data.Decimal (Decimal, roundTo)
 import Data.Default
 import Data.Function (on)
 import Data.IntMap (IntMap)
+import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Ord (comparing)
 import Data.Set (Set)
@@ -391,6 +393,8 @@ instance FromJSON key => FromJSON (Key key) where
       }
 
 type KeyStorage key = IntMap (Key key)
+
+type TokenStorage = NonEmpty ModuleName
 
 -- | Predefined predicates in Pact.
 --

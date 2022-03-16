@@ -11,10 +11,13 @@ import Data.Dependent.Sum (DSum(..))
 import qualified Data.Dependent.Map as DMap
 import Data.Functor.Identity (Identity(Identity), runIdentity)
 import qualified Data.IntMap as IntMap
+import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
+
+import Pact.Types.Names (ModuleName)
 
 import Common.Foundation
 import Common.Wallet
@@ -36,6 +39,7 @@ import Obelisk.OAuth.Common (AccessToken, OAuthState)
 
 data StoreFrontend key a where
   StoreFrontend_Wallet_Keys :: StoreFrontend key (KeyStorage key)
+  StoreFrontend_Wallet_Tokens :: StoreFrontend key (NonEmpty ModuleName)
   StoreFrontend_Wallet_Accounts :: StoreFrontend key AccountStorage
 
   StoreFrontend_Network_PublicMeta :: StoreFrontend key PublicMeta

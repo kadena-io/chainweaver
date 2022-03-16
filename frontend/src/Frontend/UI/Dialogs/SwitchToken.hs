@@ -7,8 +7,13 @@ module Frontend.UI.Dialogs.SwitchToken
 
 import Control.Lens hiding (failover)
 import Control.Error (hush)
+import Control.Monad (forM)
 import Data.Either (rights)
+import qualified Data.List.NonEmpty as NE
+import qualified Data.Text as T
 import Reflex.Dom
+
+import Pact.Types.Pretty  (renderCompactText)
 
 import Frontend.Foundation hiding (Arg)
 import Frontend.UI.Modal
@@ -29,8 +34,15 @@ uiSwitchToken model onCloseExternal = do
   (conf, closes) <- fmap splitDynPure $ workflow $
     inputToken model onCloseExternal
   mConf <- flatten =<< tagOnPostBuild conf
+  eventEv <- networkView $ model ^. wallet_tokenList <&> \ne -> do
+    clicks <- forM (NE.toList ne) $ \token -> do
+      (e, _) <- el' "p" $ text $ T.pack $ show $ renderCompactText token
+      pure $ token <$ domEvent Click e
+    pure $ leftmost clicks
+  -- el "h1" $ dynText $ T.pack . show . map renderCompactText . NE.toList <$> model ^. wallet_tokenList
+  clickEv <- switchHold never eventEv
   let close = switch $ current closes
-  pure (mConf, close)
+  pure (mConf & walletCfg_delModule .~ clickEv, close)
 
 -- | Allow the user to input a new fungible
 inputToken

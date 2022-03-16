@@ -77,12 +77,13 @@ import Reflex.Dom.Core ((=:))
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Text as Text
 import qualified Data.IntMap as IntMap
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.ChainMeta as Pact
-import           Pact.Types.Names (ModuleName, parseModuleName)
+import           Pact.Types.Names (ModuleName(..), NamespaceName(..), parseModuleName)
 import qualified Pact.Types.Command as Pact
 
 import Common.Network (NetworkName)
@@ -113,6 +114,8 @@ data WalletCfg key t = WalletCfg
   -- immediately stored with all info we need to retry.
   , _walletCfg_updateAccountNotes :: Event t (NetworkName, AccountName, Maybe ChainId, Maybe AccountNotes)
   , _walletCfg_fungibleModule :: Event t ModuleName
+  -- ^ Remove a token from the wallet
+  , _walletCfg_delModule :: Event t ModuleName
   }
   deriving Generic
 
@@ -234,6 +237,18 @@ makeWallet mChangePassword model conf = do
   pb <- getPostBuild
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
+  let
+    testCoinList = map (\i -> ModuleName (Text.pack $ show i) Nothing) [1..10]
+    coinList = ModuleName "coin" Nothing :| testCoinList
+      --[ModuleName "fungible-crosschain-test" $ Just $ NamespaceName "free"]
+  initialTokens <- fromMaybe coinList <$> loadTokens
+  let
+    myFilter _ (t :| []) = t :| []
+    myFilter f (t :| ts@(t':ts')) =
+      if f t
+        then t :| filter f ts
+        else t' :| ts'
+  tokens <- foldDyn (\d tokens -> myFilter (/= d) tokens) initialTokens $ _walletCfg_delModule conf
 
   rec
     onNewKey <- performEvent $ leftmost
@@ -312,6 +327,7 @@ makeWallet mChangePassword model conf = do
   performEvent_ $ storeKeys <$> updated keys
   store <- holdUniqDyn $ toStorage <$> accounts
   performEvent_ $ storeAccounts <$> updated store
+  performEvent_ $ storeTokens <$> updated tokens
 
 
   pure $ Wallet
@@ -319,7 +335,8 @@ makeWallet mChangePassword model conf = do
     , _wallet_accounts = accounts
     , _wallet_fungible = dFungible
     , _wallet_moduleData = dModuleData
-    , _wallet_tokenList = constDyn $ "coin" :| [ "free.fungible-crosschain-test"]
+    , _wallet_tokenList = tokens
+      -- constDyn $ "coin" NE.:| [ "free.fungible-crosschain-test"]
     }
   where
     addStarterKey m = if IntMap.null m then Just (addNewKey m) else Nothing
@@ -473,6 +490,14 @@ storeKeys = setItemStorage localStorage StoreFrontend_Wallet_Keys
 loadKeys :: (FromJSON key, HasStorage m, Functor m) => m (Maybe (KeyStorage key))
 loadKeys = getItemStorage localStorage StoreFrontend_Wallet_Keys
 
+-- | Write tokens to localstorage.
+storeTokens :: HasStorage m => TokenStorage -> m ()
+storeTokens = setItemStorage localStorage StoreFrontend_Wallet_Tokens
+
+-- | Load tokens from localstorage.
+loadTokens :: (HasStorage m, Functor m) => m (Maybe TokenStorage)
+loadTokens = getItemStorage localStorage StoreFrontend_Wallet_Tokens
+
 -- | Write key pairs to localstorage.
 storeAccounts :: HasStorage m => AccountStorage -> m ()
 storeAccounts = setItemStorage localStorage StoreFrontend_Wallet_Accounts
@@ -513,10 +538,14 @@ instance Reflex t => Semigroup (WalletCfg key t) where
       [ _walletCfg_fungibleModule c1
       , _walletCfg_fungibleModule c2
       ]
+    , _walletCfg_delModule = leftmost
+      [ _walletCfg_delModule c1
+      , _walletCfg_delModule c2
+      ]
     }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never never never never never
+  mempty = WalletCfg never never never never never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -529,6 +558,7 @@ instance Flattenable (WalletCfg key t) t where
       <*> doSwitch never (_walletCfg_setCrossChainTransfer <$> ev)
       <*> doSwitch never (_walletCfg_updateAccountNotes <$> ev)
       <*> doSwitch never (_walletCfg_fungibleModule <$> ev)
+      <*> doSwitch never (_walletCfg_delModule <$> ev)
 
 -- instance Reflex t => Semigroup (Wallet key t) where
 --   wa <> wb = Wallet
