@@ -17,6 +17,7 @@ module Frontend.UI.Widgets.Helpers
   , preventScrollWheel
   , preventUpAndDownArrow
   , dialogSectionHeading
+  , dialogSubSectionHeading
   , inputIsDirty
   ) where
 
@@ -143,3 +144,6 @@ preventScrollWheel raw = liftJSM $ do
 
 dialogSectionHeading :: DomBuilder t m => CssClass -> Text -> m ()
 dialogSectionHeading cls = elClass "h2" (renderClass $ "heading heading_type_h2" <> cls) . text
+
+dialogSubSectionHeading :: DomBuilder t m => CssClass -> Text -> m ()
+dialogSubSectionHeading cls = elClass "h4" (renderClass $ "heading heading_type_h4" <> cls) . text

@@ -909,7 +909,7 @@ uiSenderCapabilities m mCaps = do
       Nothing -> do
         el "thead" $ el "tr" $ do
           elClass "th" "table__heading table__cell_padded" $ text "Capability"
-          elClass "th" "table__heading table__cell_padded" $ text "Signer"
+          elClass "th" "table__heading table__cell_padded" $ text "Signing Key"
         el "tbody" $ do
           gas <- capabilityInputRow (Just defaultGASCapability) (keyPairDropdown never)
           (rest, restCount) <- capabilityInputRows eAddCap (keyPairDropdown eApplyToAll)
