@@ -17,6 +17,7 @@ import Reflex.Dom
 import Pact.Types.Pretty  (renderCompactText)
 
 import Frontend.Foundation hiding (Arg)
+import Frontend.ModuleExplorer.ModuleRef
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.Wallet
@@ -73,8 +74,12 @@ inputToken model _ = Workflow $ do
     dmFung <- divClass "group" $ fmap snd $ uiTokenInput False Nothing
     eventEv <- networkView $ model ^. wallet_tokenList <&> \ne -> do
       clicks <- forM (NE.toList ne) $ \token -> do
-        (e, _) <- el' "p" $ text $ renderCompactText token
-        pure $ token <$ domEvent Click e
+        (e, _) <- accordionItem' False "segment segment_type_secondary"
+          (do
+            text $ _mnName token
+            deleteButtonNaked $ def & uiButtonCfg_class .~ "accordion__title-button")
+          (text $ renderCompactText token)
+        pure $ token <$ e
       pure $ leftmost clicks
     clickEv <- switchHold never eventEv
     pure (dmFung, clickEv)

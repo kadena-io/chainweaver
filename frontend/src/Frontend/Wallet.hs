@@ -238,9 +238,7 @@ makeWallet mChangePassword model conf = do
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
   let
-    testCoinList = map (\i -> ModuleName (Text.pack $ show i) Nothing) [1..10]
-    coinModule = ModuleName "coin" Nothing
-    coinList = coinModule :| testCoinList
+    coinList = ModuleName "coin" Nothing :| []
       --[ModuleName "fungible-crosschain-test" $ Just $ NamespaceName "free"]
   initialTokens <- fromMaybe coinList <$> loadTokens
   let

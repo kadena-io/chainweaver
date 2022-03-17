@@ -15,7 +15,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
-import Data.Text (Text)
+import Data.Text (Text, pack)
 
 import Pact.Types.Names (ModuleName(..))
 
@@ -90,7 +90,7 @@ upgradeFromV0 v0 = do
     , newNetworks
     ]
   where
-    tokens = ModuleName "coin" Nothing :| []
+    tokens = ModuleName "coin" Nothing :| map (\i -> ModuleName (pack $ show i) Nothing) [1..10]
     oldKeysList = maybe [] (IntMap.toList . runIdentity) (DMap.lookup V0.StoreWallet_Keys v0)
 
     -- We have to walk through the slightly different encoding of the Network information.
