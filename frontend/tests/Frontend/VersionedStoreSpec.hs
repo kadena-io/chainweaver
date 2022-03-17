@@ -209,6 +209,9 @@ expectedAccounts =
     , (mkNetworkName "testnet", testnetmap)
     ]
 
+expectedTokens :: TokenStorage
+expectedTokens = ModuleName "coin" Nothing :| []
+
 testVersioner
   :: ( HasCrypto TestPrv m
      , HasStorage m
@@ -241,7 +244,7 @@ test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
   step "...test data loaded"
 
   step "Running versioner upgrade..."
-  (sn, pm, ns, sf, ks, as) <- flip runInMemoryStorage ims $ do
+  (sn, pm, ns, sf, ks, as, ts) <- flip runInMemoryStorage ims $ do
     _versionedStorage_upgradeStorage v logTransactionStdout
     sn <- getItemStorage localStorage V1.StoreFrontend_Network_SelectedNetwork
     pm <- getItemStorage localStorage V1.StoreFrontend_Network_PublicMeta
@@ -249,7 +252,8 @@ test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
     sf <- getItemStorage localStorage V1.StoreFrontend_ModuleExplorer_SessionFile
     ks <- getItemStorage localStorage (V1.StoreFrontend_Wallet_Keys @TestPrv)
     as <- getItemStorage localStorage V1.StoreFrontend_Wallet_Accounts
-    pure (sn, pm, ns, sf, ks, as)
+    ts <- getItemStorage localStorage V1.StoreFrontend_Wallet_Tokens
+    pure (sn, pm, ns, sf, ks, as, ts)
   step "...versioner upgrade finished"
 
   step "Checking version refs match..."
@@ -278,6 +282,7 @@ test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
     , "StoreFrontend_Network_Networks"
     , "StoreFrontend_Network_SelectedNetwork"
     , "StoreFrontend_Wallet_Accounts"
+    , "StoreFrontend_Wallet_Tokens"
     , "StoreFrontend_Wallet_Keys"
     ]
   skeys @?= []
@@ -286,6 +291,8 @@ test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
   ks @?~ Just expectedKeys
   step "Checking expected accounts"
   as @?~ Just expectedAccounts
+  step "Checking expected tokens"
+  as @?~ Just expectedTokens
 
   pure ()
 

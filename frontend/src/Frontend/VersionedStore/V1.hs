@@ -11,13 +11,13 @@ import Data.Dependent.Sum (DSum(..))
 import qualified Data.Dependent.Map as DMap
 import Data.Functor.Identity (Identity(Identity), runIdentity)
 import qualified Data.IntMap as IntMap
-import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 
-import Pact.Types.Names (ModuleName)
+import Pact.Types.Names (ModuleName(..))
 
 import Common.Foundation
 import Common.Wallet
@@ -86,9 +86,11 @@ upgradeFromV0 v0 = do
 
     , Just (StoreFrontend_Wallet_Keys :=> Identity newKeys)
     , Just (StoreFrontend_Wallet_Accounts :=> Identity newAccountStorage)
+    , Just (StoreFrontend_Wallet_Tokens :=> Identity tokens)
     , newNetworks
     ]
   where
+    tokens = ModuleName "coin" Nothing :| []
     oldKeysList = maybe [] (IntMap.toList . runIdentity) (DMap.lookup V0.StoreWallet_Keys v0)
 
     -- We have to walk through the slightly different encoding of the Network information.
@@ -148,6 +150,7 @@ instance ArgDict c (StoreFrontend key) where
   type ConstraintsFor (StoreFrontend key) c
     = ( c (KeyStorage key)
       , c AccountStorage
+      , c TokenStorage
       , c PublicMeta
       , c (Map NetworkName [NodeRef])
       , c NetworkName
@@ -159,6 +162,7 @@ instance ArgDict c (StoreFrontend key) where
   argDict = \case
     StoreFrontend_Wallet_Keys {} -> Dict
     StoreFrontend_Wallet_Accounts {} -> Dict
+    StoreFrontend_Wallet_Tokens {} -> Dict
     StoreFrontend_Network_PublicMeta {} -> Dict
     StoreFrontend_Network_Networks {} -> Dict
     StoreFrontend_Network_SelectedNetwork {} -> Dict
