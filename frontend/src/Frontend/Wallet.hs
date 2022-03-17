@@ -239,16 +239,14 @@ makeWallet mChangePassword model conf = do
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
   let
     testCoinList = map (\i -> ModuleName (Text.pack $ show i) Nothing) [1..10]
-    coinList = ModuleName "coin" Nothing :| testCoinList
+    coinModule = ModuleName "coin" Nothing
+    coinList = coinModule :| testCoinList
       --[ModuleName "fungible-crosschain-test" $ Just $ NamespaceName "free"]
   initialTokens <- fromMaybe coinList <$> loadTokens
   let
-    myFilter _ (t :| []) = t :| []
-    myFilter f (t :| ts@(t':ts')) =
-      if f t
-        then t :| filter f ts
-        else t' :| ts'
-  tokens <- foldDyn (\d tokens -> myFilter (/= d) tokens) initialTokens $ _walletCfg_delModule conf
+    -- Do not filter the first element, it is the "coin" token, it must NOT be deleted
+    restFilter f (t :| ts) = t :| filter f ts
+  tokens <- foldDyn (\d tokens -> restFilter (/= d) tokens) initialTokens $ _walletCfg_delModule conf
 
   rec
     onNewKey <- performEvent $ leftmost

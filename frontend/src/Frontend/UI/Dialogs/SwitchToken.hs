@@ -8,6 +8,7 @@ module Frontend.UI.Dialogs.SwitchToken
 import Control.Lens hiding (failover)
 import Control.Error (hush)
 import Control.Monad (forM)
+import Data.Bifunctor (first)
 import Data.Either (rights)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
@@ -34,15 +35,8 @@ uiSwitchToken model onCloseExternal = do
   (conf, closes) <- fmap splitDynPure $ workflow $
     inputToken model onCloseExternal
   mConf <- flatten =<< tagOnPostBuild conf
-  eventEv <- networkView $ model ^. wallet_tokenList <&> \ne -> do
-    clicks <- forM (NE.toList ne) $ \token -> do
-      (e, _) <- el' "p" $ text $ T.pack $ show $ renderCompactText token
-      pure $ token <$ domEvent Click e
-    pure $ leftmost clicks
-  -- el "h1" $ dynText $ T.pack . show . map renderCompactText . NE.toList <$> model ^. wallet_tokenList
-  clickEv <- switchHold never eventEv
   let close = switch $ current closes
-  pure (mConf & walletCfg_delModule .~ clickEv, close)
+  pure (mConf, close)
 
 -- | Allow the user to input a new fungible
 inputToken
@@ -56,7 +50,7 @@ inputToken
   -> Workflow t m (mConf, Event t ())
 inputToken model _ = Workflow $ do
   close <- modalHeader $ text "Switch Token"
-  dmFung <- modalMain $ do
+  (dmFung, clickEv) <- modalMain $ do
     tokenList <- sample $ current $ model ^. wallet_tokenList
     currentFung <- sample $ current $ model ^. wallet_fungible
 
@@ -76,12 +70,19 @@ inputToken model _ = Workflow $ do
 --             [ "class" =: "input_width_full"
 --             , "placeholder" =: "Add node"
 --             ]
-    divClass "group" $ fmap snd $ uiTokenInput False Nothing
+    dmFung <- divClass "group" $ fmap snd $ uiTokenInput False Nothing
+    eventEv <- networkView $ model ^. wallet_tokenList <&> \ne -> do
+      clicks <- forM (NE.toList ne) $ \token -> do
+        (e, _) <- el' "p" $ text $ renderCompactText token
+        pure $ token <$ domEvent Click e
+      pure $ leftmost clicks
+    clickEv <- switchHold never eventEv
+    pure (dmFung, clickEv)
   done <- modalFooter $ do
     confirmButton def "Done"
   let 
     fungE = tagMaybe (hush <$> current dmFung) done
-    conf = mempty & walletCfg_fungibleModule .~ fungE
+    conf = mempty & walletCfg_fungibleModule .~ fungE & walletCfg_delModule .~ clickEv
   pure ( (conf, done <> close)
        , never
        )
