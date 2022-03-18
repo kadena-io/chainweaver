@@ -11,11 +11,12 @@ import Data.Aeson (decodeFileStrict)
 import qualified Data.IntMap as IntMap
 import Data.IORef (readIORef)
 import Data.List (sort)
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Proxy (Proxy(Proxy))
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import Pact.Types.Util (ParseText, fromText')
 import Pact.Types.Command (RequestKey(..))
 import Pact.Types.ChainMeta (PublicMeta (..))
@@ -37,6 +38,7 @@ import Frontend.Storage
 import Frontend.Storage.InMemoryStorage
 
 import Pact.Server.ApiClient (logTransactionStdout)
+import Pact.Types.Names (ModuleName(..))
 
 import qualified Frontend.VersionedStore.V0 as V0
 import qualified Frontend.VersionedStore.V0.Wallet as V0
@@ -209,8 +211,10 @@ expectedAccounts =
     , (mkNetworkName "testnet", testnetmap)
     ]
 
+-- This has been copied over from V1.hs, line 93. The "coin" token is required,
+-- but the additional 10 tokens have been kept for just UI demos.
 expectedTokens :: TokenStorage
-expectedTokens = ModuleName "coin" Nothing :| []
+expectedTokens = ModuleName "coin" Nothing :| map (\i -> ModuleName (pack $ show i) Nothing) [1..10]
 
 testVersioner
   :: ( HasCrypto TestPrv m
@@ -282,8 +286,8 @@ test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
     , "StoreFrontend_Network_Networks"
     , "StoreFrontend_Network_SelectedNetwork"
     , "StoreFrontend_Wallet_Accounts"
-    , "StoreFrontend_Wallet_Tokens"
     , "StoreFrontend_Wallet_Keys"
+    , "StoreFrontend_Wallet_Tokens"
     ]
   skeys @?= []
 
@@ -292,7 +296,7 @@ test_v0ToV1Upgrade = testCaseSteps "V0 to V1 Upgrade" $ \step -> do
   step "Checking expected accounts"
   as @?~ Just expectedAccounts
   step "Checking expected tokens"
-  as @?~ Just expectedTokens
+  ts @?~ Just expectedTokens
 
   pure ()
 
