@@ -71,7 +71,9 @@ inputToken model _ = Workflow $ do
 --             [ "class" =: "input_width_full"
 --             , "placeholder" =: "Add node"
 --             ]
-    dmFung <- divClass "group" $ fmap snd $ uiTokenInput False Nothing
+    let
+      alwaysPasses acc = pure $ Success . flip ModuleName Nothing <$> acc
+    dmFung <- divClass "group" $ fmap snd $ uiTextInputAsync "Enter token" True (Nothing, PopoverState_Disabled) never alwaysPasses
     eventEv <- networkView $ model ^. wallet_tokenList <&> \ne -> do
       clicks <- forM (NE.toList ne) $ \token -> do
         (e, _) <- accordionItem' False "segment segment_type_secondary"
@@ -86,8 +88,8 @@ inputToken model _ = Workflow $ do
   done <- modalFooter $ do
     confirmButton def "Done"
   let 
-    fungE = tagMaybe (hush <$> current dmFung) done
-    conf = mempty & walletCfg_fungibleModule .~ fungE & walletCfg_delModule .~ clickEv
+    fungE = tagMaybe (current dmFung) done
+    conf = mempty & walletCfg_fungibleModule .~ fungE & walletCfg_delModule .~ clickEv & walletCfg_addModule .~ (fmapMaybe id $ updated dmFung)
   pure ( (conf, done <> close)
        , never
        )

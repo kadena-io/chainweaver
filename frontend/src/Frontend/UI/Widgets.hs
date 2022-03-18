@@ -1313,7 +1313,6 @@ data PopoverState
   | PopoverState_Warning Text
   | PopoverState_Loading
   | PopoverState_Disabled
-  | PopoverState_Loading
   deriving (Eq, Show)
 
 uiInputWithPopover
@@ -1389,8 +1388,6 @@ uiInputWithPopoverWithInitState body getStateBorderTarget mkMsg cfg = divClass "
     onShift f e (popoverBlurCls -> Just cls) = liftJSM $ f cls e
     onShift _ _ _ = pure ()
 
-    popoverLoader cls =
-      elAttr "img" ("class" =: ("fa fa-warning popover__icon " <> cls) <> "src" =: static @"img/two-arrows-small.gif") blank
     popoverIcon cls =
       elClass "i" ("fa fa-warning popover__icon " <> cls) blank
 

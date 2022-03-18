@@ -114,8 +114,10 @@ data WalletCfg key t = WalletCfg
   -- immediately stored with all info we need to retry.
   , _walletCfg_updateAccountNotes :: Event t (NetworkName, AccountName, Maybe ChainId, Maybe AccountNotes)
   , _walletCfg_fungibleModule :: Event t ModuleName
-  -- ^ Remove a token from the wallet
   , _walletCfg_delModule :: Event t ModuleName
+  -- ^ Remove a token from the wallet
+  , _walletCfg_addModule :: Event t ModuleName
+  -- ^ Add a token to the wallet
   }
   deriving Generic
 
@@ -244,7 +246,14 @@ makeWallet mChangePassword model conf = do
   let
     -- Do not filter the first element, it is the "coin" token, it must NOT be deleted
     restFilter f (t :| ts) = t :| filter f ts
-  tokens <- foldDyn (\d tokens -> restFilter (/= d) tokens) initialTokens $ _walletCfg_delModule conf
+    addToken newToken (t :| ts) = t :| (newToken : ts)
+    processUserAction action tokens = case action of
+      Left token -> restFilter (/= token) tokens
+      Right token -> addToken token tokens
+  tokens <- foldDyn processUserAction initialTokens $ leftmost
+    [ Left <$> _walletCfg_delModule conf
+    , Right <$> _walletCfg_addModule conf
+    ]
 
   rec
     onNewKey <- performEvent $ leftmost
@@ -538,10 +547,14 @@ instance Reflex t => Semigroup (WalletCfg key t) where
       [ _walletCfg_delModule c1
       , _walletCfg_delModule c2
       ]
+    , _walletCfg_addModule = leftmost
+      [ _walletCfg_addModule c1
+      , _walletCfg_addModule c2
+      ]
     }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never never never never never never
+  mempty = WalletCfg never never never never never never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -555,6 +568,7 @@ instance Flattenable (WalletCfg key t) t where
       <*> doSwitch never (_walletCfg_updateAccountNotes <$> ev)
       <*> doSwitch never (_walletCfg_fungibleModule <$> ev)
       <*> doSwitch never (_walletCfg_delModule <$> ev)
+      <*> doSwitch never (_walletCfg_addModule <$> ev)
 
 -- instance Reflex t => Semigroup (Wallet key t) where
 --   wa <> wb = Wallet
