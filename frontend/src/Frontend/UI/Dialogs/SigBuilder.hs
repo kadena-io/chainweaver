@@ -45,6 +45,7 @@ import           Pact.Types.Names (QualifiedName(..))
 import           Pact.Types.Exp (Literal(..))
 import           Pact.Types.Util (asString)
 import           Pact.Types.Pretty
+import           Pact.Parse (ParsedInteger(..))
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom hiding (Key, Command)
@@ -357,6 +358,22 @@ sigBuilderTabs tabEv = do
     displaySigBuilderTab SigBuilderTab_Details = text "Details"
     displaySigBuilderTab SigBuilderTab_Summary = text "Summary"
 
+signersPartitonDisplay
+  :: MonadWidget t m
+  => Text
+  -> ([Signer] -> m [Maybe (Dynamic t (PublicKeyHex, Maybe UserSig))])
+  -> [Signer]
+  -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
+signersPartitonDisplay label widget signers =
+  divClass "signer__group" $
+   ifEmptyBlankSigner signers $ do
+     dialogSectionHeading mempty label
+     fmap catMaybes $ widget signers
+  where ifEmptyBlankSigner l w =
+          if l == []
+             then blank >> pure []
+             else w
+
 showSigsWidget
   :: (MonadWidget t m, HasCrypto key m)
   => Payload PublicMeta Text
@@ -366,46 +383,43 @@ showSigsWidget
   -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
 showSigsWidget p cwKeys sigs sd = do
   let
-    signers = p^.pSigners
-    orderedSigs = catMaybes $ ffor signers $ \s ->
+    orderedSigs = catMaybes $ ffor (p^.pSigners) $ \s ->
       ffor (lookup (PublicKeyHex $ _siPubKey s) sigs) $ \a-> (PublicKeyHex $ _siPubKey s, s, a)
     missingSigs = filter (\(_, _, sig) -> isNothing sig) orderedSigs
-    (unscoped, scoped) = partition isUnscoped $ view _2 <$> missingSigs
+
     -- CwSigners we only need the signer structure;
     -- ExternalSigners we need a (pkh, Signer) tuple to make lookup more efficient
     -- when a new signature is added
-    (cwSigners, externalSigners) = first (fmap (view _2)) $ partition isCWSigner missingSigs
-    externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigners
+    (cwSigs, externalSigs) = partition isCWSigner missingSigs
+    (cwUnscoped, cwScoped) = partition isUnscoped $ view _2 <$> cwSigs
+    cwSigners = cwScoped <> cwUnscoped
+    externalLookup = fmap (\(a, b, _) -> (a, b)) externalSigs
   hashWidget sdHash
   rec showTransactionSummary (signersToSummary <$> dSigners) p
-      dUnscoped <- ifEmptyBlankSigner unscoped $ do
-        dialogSectionHeading mempty "Unscoped Signers"
-        divClass "group" $ do
-          fmap catMaybes $ mapM unscopedSignerRow unscoped
+      --TODO: Specialize the function for ones with no opitinal sig
+      void $ signersPartitonDisplay "My Unscoped Signers" unscopedSignerGroup cwUnscoped
+      void $ signersPartitonDisplay "My Scoped Signers" (mapM scopedSignerRow) cwScoped
 
-      dScoped <- ifEmptyBlankSigner scoped $ do
-        dialogSectionHeading mempty "Scoped Signers"
-        fmap catMaybes $ mapM scopedSignerRow scoped
-      let sigsOrKeys = dScoped <> dUnscoped
-          sigsOrKeys' = sequence sigsOrKeys
+      keysetOpen <- toggle False clk
+      (clk,(_,dExternal)) <- controlledAccordionItem keysetOpen mempty
+        (accordionHeaderBtn "External Signatures and QR Codes") $ do
+          sigBuilderAdvancedTab sd externalSigs scopedSignerRow
+          -- signersPartitonDisplay "External Signatures" (mapM scopedSignerRow) $ view _2 <$> externalSigs
+
+      -- dExternal <- signersPartitonDisplay "External Signatures" (mapM scopedSignerRow) $ view _2 <$> externalSigs
+
       -- This constructs the entire list of all signers going to be signed each time a new signer is
       -- added.
       dSigners <- foldDyn ($) cwSigners $ leftmost
-        [ ffor (updated sigsOrKeys') $ \new _ ->
+        [ ffor (updated $ sequence dExternal) $ \new _ ->
             let newSigners = catMaybes -- lookups shouldn't fail but we use this to get rid of the maybes
                   $ fmap (`lookup` externalLookup) -- use the pkh to get the official Signer structure
                   $ fmap fst -- we only care about the pubkey, not the sig
                   $ ffilter (isJust . snd) new -- get rid of unsigned elems
              in cwSigners <> newSigners
         ]
---TODO: Use ghcjs-based qrcode pkg
-#if !defined(ghcjs_HOST_OS)
-  dialogSectionHeading mempty "QR Codes"
-  qrCodesWidget sd
-#else
-  blank
-#endif
-  pure sigsOrKeys
+  pure dExternal
+
   where
     sdHash = toUntypedHash $ _sigDataHash sd
     signersToSummary signers =
@@ -413,7 +427,7 @@ showSigsWidget p cwKeys sigs sd = do
           pm = p ^. pMeta
           totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
           gas = if paysGas then Just totalGas else Nothing
-       in TransactionSummary trans gas unscoped
+       in TransactionSummary trans gas unscoped $ length signers
     go signer (tokenMap, doesPayGas, unscopedCounter) =
       let capList = signer^.siCapList
           tokenTransfers = mapMaybe parseFungibleTransferCap capList
@@ -424,7 +438,6 @@ showSigsWidget p cwKeys sigs sd = do
     cwKeysPKH = PublicKeyHex . keyToText <$> cwKeys
     isCWSigner (pkh, _, _) = pkh `elem` cwKeysPKH
     isUnscoped (Signer _ _ _ capList) = capList == []
-    ifEmptyBlankSigner l w = if l == [] then (blank >> pure []) else w
     unOwnedSigningInput s =
       let mPub = hush $ parsePublicKey $ _siPubKey s
        in case mPub of
@@ -434,16 +447,16 @@ showSigsWidget p cwKeys sigs sd = do
                 then blank >> pure Nothing
                 else fmap Just $ uiSigningInput sdHash pub
 
-    unscopedSignerRow s = do
+    unscopedSignerGroup signers = divClass "group" $ forM signers $ \s -> do
       divClass "signer__pubkey" $ text $ _siPubKey s
-      unOwnedSigningInput s
+      pure Nothing
 
     scopedSignerRow signer = do
-      signerSection True (PublicKeyHex $ _siPubKey signer) $
+      signerSection True (PublicKeyHex $ _siPubKey signer) $ do
         capListWidget $ _siCapList signer
-      unOwnedSigningInput signer
+        unOwnedSigningInput signer
 
-signerSection :: MonadWidget t m => Bool -> PublicKeyHex -> m () -> m ()
+signerSection :: MonadWidget t m => Bool -> PublicKeyHex -> m a -> m a
 signerSection initToggleState pkh capListWidget =do
     visible <- divClass "group signer__header" $ do
       let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
@@ -455,29 +468,34 @@ signerSection initToggleState pkh capListWidget =do
     elDynAttr "div" (ffor visible $ bool ("hidden"=:mempty) ("class" =: "group signer__capList") )$
       capListWidget
 
-data SBTransferDetails
-  = SBTransferDetails_HashQR
-  | SBTransferDetails_FullQR
+data SigBuilderAdvancedTab
+  = SigBuilderAdvancedTab_ExternalSigs
+  | SigBuilderAdvancedTab_HashQR
+  | SigBuilderAdvancedTab_FullQR
   deriving (Eq,Ord,Show,Read,Enum,Bounded)
 
-showSBTransferDetailsTabName :: SBTransferDetails -> Text
-showSBTransferDetailsTabName = \case
-  SBTransferDetails_HashQR -> "Hash QR Code"
-  SBTransferDetails_FullQR -> "Full Tx QR Code"
+showSBTabName :: SigBuilderAdvancedTab -> Text
+showSBTabName = \case
+  SigBuilderAdvancedTab_HashQR -> "Hash QR Code"
+  SigBuilderAdvancedTab_FullQR -> "Full Tx QR Code"
+  SigBuilderAdvancedTab_ExternalSigs -> "External Signatures"
 
-qrCodesWidget :: MonadWidget t m => SigData Text -> m ()
-qrCodesWidget sd = do
+-- sigBuilderAdvancedTab :: MonadWidget t m => SigData Text -> m ()
+sigBuilderAdvancedTab sd externalSigs signerRow = do
   divClass "tabset" $ mdo
-    curSelection <- holdDyn SBTransferDetails_HashQR onTabClick
+    curSelection <- holdDyn SigBuilderAdvancedTab_ExternalSigs onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
       { _tabBarCfg_tabs = [minBound .. maxBound]
-      , _tabBarCfg_mkLabel = const $ text . showSBTransferDetailsTabName
+      , _tabBarCfg_mkLabel = const $ text . showSBTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
       , _tabBarCfg_type = TabBarType_Primary
       }
+    externalSigs' <- tabPane mempty curSelection SigBuilderAdvancedTab_ExternalSigs $
+      signersPartitonDisplay "External Signatures" (mapM signerRow) $ view _2 <$> externalSigs
+
 #if !defined(ghcjs_HOST_OS)
-    tabPane mempty curSelection SBTransferDetails_HashQR $ do
+    tabPane mempty curSelection SigBuilderAdvancedTab_HashQR $ do
       let hashText = hashToText $ toUntypedHash $ _sigDataHash sd
           qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI hashText
           img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 6) qrImage
@@ -488,14 +506,13 @@ qrCodesWidget sd = do
         ]
       el "br" blank
       elAttr "img" ("src" =: LT.toStrict img) blank
-    tabPane mempty curSelection SBTransferDetails_FullQR $ do
+    tabPane mempty curSelection SigBuilderAdvancedTab_FullQR $ do
       let yamlText = T.decodeUtf8 $ Y.encode1Strict sd
           qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI yamlText
           img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) qrImage
       elAttr "img" ("src" =: LT.toStrict img) blank
-#else
-    blank
 #endif
+    pure externalSigs'
 
 parseFungibleTransferCap :: SigCapability -> Maybe (Text, Decimal)
 parseFungibleTransferCap cap = transferCap cap
@@ -514,7 +531,8 @@ parseFungibleTransferCap cap = transferCap cap
 data TransactionSummary = TransactionSummary
   { _ts_tokenTransfers :: Map Text Decimal
   , _ts_maxGas :: Maybe GasPrice -- Checks for GAS cap -- and then uses meta to calc
-  , _ts_numUnscoped :: Int
+  , _ts_numUnscoped :: Int -- Unscoped that are BEING SIGNED FOR
+  , _ts_sigsAdded :: Int
   } deriving (Show, Eq)
 
 showTransactionSummary
@@ -528,6 +546,7 @@ showTransactionSummary dSummary p = do
     let tokens = _ts_tokenTransfers summary
         kda = Map.lookup "coin" tokens
         tokens' = Map.delete "coin" tokens
+    mkLabeledClsInput True "On Chain" $ const $ text $ renderCompactText $ p^.pMeta.pmChainId
     mkLabeledClsInput True "Tx Type" $ const $ text $ prpc $ p^.pPayload
     case _ts_maxGas summary of
       Nothing -> blank
@@ -540,8 +559,10 @@ showTransactionSummary dSummary p = do
       void $ mkLabeledClsInput True "Amount (Tokens)" $ const $ el "div" $
         forM_ (Map.toList tokens') $ \(name, amount) ->
           el "p" $ text $ showWithDecimal amount <> " " <> name
+    void $ mkLabeledClsInput True "Supplied Signatures" $
+      const $ text $ tshow $ _ts_sigsAdded summary
     if _ts_numUnscoped summary == 0 then blank else
-      void $ mkLabeledClsInput True "Unscoped Sigs" $
+      void $ mkLabeledClsInput True "Unscoped Sigs Added" $
         const $ text $ tshow $ _ts_numUnscoped summary
   where
     prpc (Exec _) = "Exec"
@@ -704,7 +725,7 @@ sigBuilderDetailsUI
   -> Maybe Text
   -> m ()
 sigBuilderDetailsUI p wrapperCls mCls = divClass wrapperCls $ do
-  txMetaWidget (p^.pMeta) (p^.pNetworkId) mCls
+  txMetaWidget (p^.pMeta) (p^.pNetworkId) (p^.pNonce) mCls
   pactRpcWidget  (_pPayload p) mCls
   signerWidget (p^.pSigners) mCls
   pure ()
@@ -713,10 +734,11 @@ txMetaWidget
   :: MonadWidget t m
   => PublicMeta
   -> Maybe NetworkId
+  -> Text
   -> Maybe Text
   -> m ()
-txMetaWidget pm mNet mCls = do
-  dialogSectionHeading mempty "Transaction Metadata"
+txMetaWidget pm mNet nonce mCls = do
+  dialogSectionHeading mempty "Transaction Metadata & Information"
   _ <- divClass (maybe "group segment" ("group segment " <>) mCls) $ do
     case mNet of
       Nothing -> blank
@@ -728,6 +750,13 @@ txMetaWidget pm mNet mCls = do
     mkLabeledClsInput True "Gas Limit" $ \_ -> text $ renderCompactText $ pm^.pmGasLimit
     let totalGas = fromIntegral (_pmGasLimit pm) * _pmGasPrice pm
     mkLabeledClsInput True "Max Gas Cost" $ \_ -> text $ renderCompactText totalGas <> " KDA"
+    let (TxCreationTime ct) = pm^.pmCreationTime
+    mkLabeledClsInput True "Creation Time" $ \_ -> text $ renderCompactText ct
+    let prettyTTL (TTLSeconds (ParsedInteger s)) = tshow s <> case s of
+          1 -> " second"
+          _ -> " seconds"
+    mkLabeledClsInput True "TTL" $ \_ -> text $ prettyTTL $ pm^.pmTTL
+    mkLabeledClsInput True "Nonce" $ \_ -> text nonce
   pure ()
 
 pactRpcWidget

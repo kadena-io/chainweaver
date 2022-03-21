@@ -204,12 +204,8 @@ quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDy
     (reject, sign) <- modalFooter $ (,)
       <$> cancelButton def "Reject"
       <*> confirmButton def "Sign All"
-    let --toSign = fmap _psr_sigData payloadRequests
-        noResponseEv = ffor (leftmost [reject, onClose]) $
+    let noResponseEv = ffor (leftmost [reject, onClose]) $
           const $ Left "QuickSign response rejected"
-    -- quickSignRes <- performEvent $ ffor sign $ const $ fmap QuickSignResponse $
-    --     forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
-    -- res <- writeSigningResponse $ leftmost [ noResponseEv, Right <$> quickSignRes]
     res <- writeSigningResponse noResponseEv
     pure (res, handleSigning payloadRequests writeSigningResponse keysAndNet <$ sign)
   where
