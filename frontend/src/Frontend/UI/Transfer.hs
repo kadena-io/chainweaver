@@ -965,12 +965,6 @@ previewDialog model _netInfo ti payload cmd backW nextW = Workflow $ do
     toChain = _ca_chain $ _ti_toAccount ti
     toAccount = _ca_account $ _ti_toAccount ti
 
-uiPreviewItem :: DomBuilder t m => Text -> m a -> m a
-uiPreviewItem label val =
-  divClass "segment segment_type_tertiary labeled-input-inline" $ do
-    divClass "label labeled-input__label-inline" (text label)
-    divClass "labeled-preview" val
-
 sameChainTransferAndStatus
   :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
   => model

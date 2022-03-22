@@ -200,3 +200,9 @@ uiMandatoryChainSelection options cfg = mdo
       mkOpt cid = (cid, cidText cid)
       cfg2 = cfg & initialAttributes %~ addToClassAttr "select"
   unsafeDropdownFormWidget (fmap mkOpt <$> options) cfg2
+
+uiPreviewItem :: DomBuilder t m => Text -> m a -> m a
+uiPreviewItem label val =
+  divClass "segment segment_type_tertiary labeled-input-inline" $ do
+    divClass "label labeled-input__label-inline" (text label)
+    divClass "labeled-preview" val
