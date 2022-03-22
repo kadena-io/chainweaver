@@ -63,6 +63,7 @@ import           Data.List                   (sortOn)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
+import           GHCJS.DOM.XMLHttpRequest    (setTimeout)
 import           Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 import           Reflex.Dom.Class            (HasJSContext (..))
 import           Reflex.Dom.Xhr
@@ -295,7 +296,7 @@ newXMLHttpRequestWithErrorSane
     -- case of error.
     -> m ()
 newXMLHttpRequestWithErrorSane req cb =
-    void (newXMLHttpRequestWithError req cb) `catch` handleException
+    void (newXMLHttpRequestWithError req cb >>= \xhr -> setTimeout xhr 2000) `catch` handleException
   where
     handleException :: XhrException -> m ()
     handleException e = liftJSM $ cb $ Left e
