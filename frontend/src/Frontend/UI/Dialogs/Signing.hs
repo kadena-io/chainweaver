@@ -161,7 +161,7 @@ uiQuickSign ideL writeSigningResponse qsr _onCloseExternal = (mempty, ) <$> do
         flip PayloadSigningRequest p $ payloadToSigData p txt
   if _quickSignRequest_commands qsr == []
      then writeSigningResponse =<< failWith "QuickSign request was empty" ""
-     else case partitionEithers $ fmap (toPayReqOrErr . _csr_cmd) $ _quickSignRequest_commands qsr of
+     else case partitionEithers $ fmap (toPayReqOrErr . _csd_cmd) $ _quickSignRequest_commands qsr of
        ([], payloads) ->
          quickSignModal ideL writeSigningResponse payloads
        (es, _) -> writeSigningResponse =<<
@@ -247,7 +247,7 @@ handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
     forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
   -- TODO: [SigData] -> QuickSignResponse conversion needs to be refactored to be cleaner
   let quickSignRes' = ffor quickSignRes $ \qsList -> QuickSignResponse $ ffor qsList $
-        \(SigData _ sl (Just a)) -> CommandSigRequest (SignatureList sl) a
+        \(SigData _ sl (Just a)) -> CommandSigData (SignatureList sl) a
   res <- writeSigningResponse $ Right <$> quickSignRes'
   pure (res, never)
 
