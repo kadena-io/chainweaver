@@ -267,7 +267,7 @@ summarizeTransactions payloadReqs walletState = do
   mapM_ signerCapsWidget $ Map.toList signerMap
   pure ()
   where
-    signerCapsWidget (pkh, capList) = signerSection False pkh $ capListWidgetWithHash capList
+    signerCapsWidget (pkh, capList) = signerSection True pkh $ capListWidgetWithHash capList
 
 capListWidgetWithHash
   :: MonadWidget t m
@@ -358,7 +358,7 @@ impactSummary
   -> Set PublicKeyHex
   -> m ()
 impactSummary payloadReqs mNetId signerSet = do
-  let signingImpact = foldr scrapePayload def $ _psr_payload <$> payloadReqs
+  let signingImpact = foldr scrapePayloadFold def $ _psr_payload <$> payloadReqs
   dialogSectionHeading mempty "Impact Summary"
   divClass "group" $ do
     maybe blank (mkCategory "Network" . text . textNetworkName) mNetId
@@ -375,20 +375,20 @@ impactSummary payloadReqs mNetId signerSet = do
       0 -> blank
       price -> mkCategory "Max Gas Cost" $ text $ renderCompactText price <> " KDA"
     mkCategory "Number of Requests" $ text $ tshow $ length payloadReqs
-    mkCategory "Number of Signatures" $ text $ tshow $ _qss_numSigs signingImpact
+    mkCategory "Signatures Added" $ text $ tshow $ _qss_numSigs signingImpact
     let multipleChains = 1 < (Set.size $ _qss_chainsSigned signingImpact)
         chainHeader = bool "Via Chain" "Via Chains" multipleChains
     mkCategory chainHeader $ text $ T.intercalate ", " $ fmap renderCompactText $
         sortChainIds $ Set.toList $ _qss_chainsSigned signingImpact
     let unscoped = _qss_unscoped signingImpact
     if unscoped == 0 then blank else
-      mkCategory "Unscoped Signers" $ text $ tshow unscoped
+      mkCategory "Unscoped Sigs Added" $ text $ tshow unscoped
   where
     mkCategory header content =
       void $ mkLabeledClsInput True header $ const content
     isSigning = flip Set.member signerSet . PublicKeyHex . _siPubKey
-    scrapePayload :: Payload PublicMeta Text -> QuickSignSummary -> QuickSignSummary
-    scrapePayload p qss =
+    scrapePayloadFold :: Payload PublicMeta Text -> QuickSignSummary -> QuickSignSummary
+    scrapePayloadFold p qss =
       let signers = filter isSigning $ p^.pSigners
           tokenMap = _qss_tokens qss
           (tokenMap', unscoped, potentiallyPaysGas) =
