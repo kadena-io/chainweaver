@@ -243,7 +243,7 @@ handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
   pb <- delay 0.2 =<< getPostBuild
   modalMain $ text "Signing ..."
   let toSign = fmap _psr_sigData payloadRequests
-  quickSignRes <- performEvent $ ffor pb $ const $ -- fmap QuickSignResponse $
+  quickSignRes <- performEvent $ ffor pb $ const $
     -- TODO: ForkIO and have an event for each payload in addition to the final event. The list of
     -- events can be used to update the loading screen with: "x / y signatures left"
     forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
@@ -333,7 +333,7 @@ quickSignTransactionDetails payloadReqs = do
   let payloadsAndMeta = ffor payloadReqs $ \(PayloadSigningRequest (SigData hash sigList _) p) ->
         (hash, SignatureList sigList, p)
   dialogSectionHeading mempty $ "QuickSign Payloads ( " <> (tshow $ length payloadReqs) <> " total )"
-  sequence_ $ ffor payloadsAndMeta $ \a -> txRow a False
+  sequence_ $ ffor payloadsAndMeta $ \a -> txRow a True
   where
     txRow (txId, sigList, p) startExpanded = divClass "payload__row" $ do
       visible <- divClass "group payload__header" $ do
