@@ -157,16 +157,18 @@ uiQuickSign
   -> Event t ()
   -> m (mConf, Event t ())
 uiQuickSign ideL writeSigningResponse qsr _onCloseExternal = (mempty, ) <$> do
-  let toPayReqOrErr txt = ffor (eitherDecodeStrict $ encodeUtf8 txt) $ \p ->
-        flip PayloadSigningRequest p $ payloadToSigData p txt
   if _quickSignRequest_commands qsr == []
      then writeSigningResponse =<< failWith "QuickSign request was empty" ""
-     else case partitionEithers $ fmap (toPayReqOrErr . _csd_cmd) $ _quickSignRequest_commands qsr of
+     else case partitionEithers $ fmap csdToSigData $ _quickSignRequest_commands qsr of
        ([], payloads) ->
          quickSignModal ideL writeSigningResponse payloads
        (es, _) -> writeSigningResponse =<<
          failWith ("QuickSign request contained invalid commands:\n" <> T.unlines (map T.pack es)) ""
   where
+    csdToSigData (CommandSigData sl txt) =
+      ffor (eitherDecodeStrict $ encodeUtf8 txt) $ \p ->
+        let sd = payloadToSigData p txt
+         in flip PayloadSigningRequest p $ sd { _sigDataSigs = unSignatureList sl }
 
 failWith :: MonadWidget t m => Text -> Text -> m (Event t (Either Text QuickSignResponse))
 failWith msgHeader msg = do
@@ -264,24 +266,33 @@ summarizeTransactions payloadReqs walletState = do
       mNetId = _srws_currentNetwork walletState
   impactSummary payloadReqs mNetId $ Set.fromList $ Map.keys signerMap
   dialogSectionHeading mempty "My Signers"
-  mapM_ signerCapsWidget $ Map.toList signerMap
+  forM_ (Map.toList signerMap) $ \(pkh, txList) ->
+    signerSection True pkh $ capListWidgetWithHash txList
   pure ()
-  where
-    signerCapsWidget (pkh, capList) = signerSection True pkh $ capListWidgetWithHash capList
 
 capListWidgetWithHash
   :: MonadWidget t m
-  => [(Text, ChainId, [SigCapability])]
+  => [(Text, ChainId, [SigCapability], Maybe UserSig)]
   -> m ()
 --TODO: This case should never return
 capListWidgetWithHash [] = text "Unscoped Signer"
 capListWidgetWithHash cl = do
-  forM_ cl $ \(hash, cid, txCapList) -> do
+  forM_ cl $ \(hash, cid, txCapList, mSig) -> do
     let capLines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] txCapList
         txt = if txCapList == [] then "Unscoped Signer" else T.init $ T.init $ T.unlines capLines
         --TODO: This is pretty lazy -- clean it up before final version
         rows = tshow $ 2 * length capLines
     elClass "h4" "heading heading_type_h4" $ text $ "Tx ID: " <> hash
+    case mSig of
+      Nothing -> blank
+      Just (UserSig sig) -> do
+        elClass "h4" "heading heading_type_h4" $ text $ "Provided Signature: "
+        void $ uiTextAreaElement $ def
+          & textAreaElementConfig_initialValue .~ sig
+          & initialAttributes .~ fold
+            [ "disabled" =: "true"
+            , "style" =: "color: black; width: 100%; height: auto;"
+            ]
     elClass "h4" "heading heading_type_h4" $ text $ "On Chain: " <> tshow cid
     _ <- uiTextAreaElement $ def
       & textAreaElementConfig_initialValue .~ txt
@@ -295,20 +306,22 @@ capListWidgetWithHash cl = do
 accumulateCWSigners
   :: [PayloadSigningRequest]
   -> Set PublicKeyHex
-  -> Map PublicKeyHex [(Text, ChainId, [SigCapability])]
+  -> Map PublicKeyHex [(Text, ChainId, [SigCapability], Maybe UserSig)]
 accumulateCWSigners payloads cwKeyset = foldr
-  (\(hash, cid, signers) signerMap -> foldr (go hash cid) signerMap signers) mempty $
+  (\(hash, cid, signers, sigList) signerMap -> foldr (go hash cid sigList) signerMap signers) mempty $
     getSigner <$> payloads
   where
     getSigner p =
       let hash = renderCompactText $ _sigDataHash $ _psr_sigData p
           chain = view (pMeta.pmChainId) $ _psr_payload p
-          capList = _pSigners $ _psr_payload p
-      in (hash, chain, capList)
-    go hash cid signer accum = let pkh = PublicKeyHex $ _siPubKey signer in
+          signers = _pSigners $ _psr_payload p
+          sigList = _sigDataSigs $ _psr_sigData p
+      in (hash, chain, signers, sigList)
+    go hash cid sigList signer accum =
+      let pkh = PublicKeyHex $ _siPubKey signer in
        if Set.notMember pkh cwKeyset
          then accum
-         else Map.insertWith (<>) pkh [(hash, cid, _siCapList signer)] accum
+         else Map.insertWith (<>) pkh [(hash, cid, _siCapList signer, join $ lookup pkh sigList)] accum
 
 
 -- | Details page for quicksign transactions
@@ -317,11 +330,12 @@ quickSignTransactionDetails
   => [PayloadSigningRequest]
   -> m ()
 quickSignTransactionDetails payloadReqs = do
-  let payloads = fmap (_sigDataHash . _psr_sigData &&& _psr_payload) payloadReqs
+  let payloadsAndMeta = ffor payloadReqs $ \(PayloadSigningRequest (SigData hash sigList _) p) ->
+        (hash, SignatureList sigList, p)
   dialogSectionHeading mempty $ "QuickSign Payloads ( " <> (tshow $ length payloadReqs) <> " total )"
-  sequence_ $ ffor payloads $ \p -> txRow p False
+  sequence_ $ ffor payloadsAndMeta $ \a -> txRow a False
   where
-    txRow (txId, p) startExpanded = divClass "payload__row" $ do
+    txRow (txId, sigList, p) startExpanded = divClass "payload__row" $ do
       visible <- divClass "group payload__header" $ do
         let accordionCell o = (if o then "" else "accordion-collapsed ") <> "payload__accordion "
         rec
@@ -332,7 +346,7 @@ quickSignTransactionDetails payloadReqs = do
       dyn_ $ ffor visible $ \case
         False -> blank
         True -> divClass "payload__background-wrapper" $
-                  sigBuilderDetailsUI p "payload__info" $ Just "qs-wrapper"
+                  sigBuilderDetailsUI p sigList  "payload__info" $ Just "qs-wrapper"
 
 data QuickSignSummary = QuickSignSummary
   { _qss_numSigs       :: Int
