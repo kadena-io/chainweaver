@@ -120,29 +120,26 @@ nodeVersion ni = case _nodeInfo_type ni of
 
 -- | Retrive the `NodeInfo` for a given host by quering its API.
 discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m, HasJSContext m) => NodeRef -> m (Either Text NodeInfo)
-discoverNode (NodeRef auth) = do
-    chainwebResponseHttps <- discoverChainwebNode httpsUri
-    pactResponseHttps     <- discoverPactNode httpsUri
-    chainwebResponseHttp  <- discoverChainwebNode httpUri
-    pactResponseHttp      <- discoverPactNode httpUri
-
-    let allResponses = [chainwebResponseHttps, pactResponseHttps,
-                        chainwebResponseHttp, pactResponseHttp]
-
-    case rights allResponses of
-      [] ->
-        -- Since we didn't get a right response, we'll combine all the error messages
-        pure $ Left $ T.unlines $ lefts allResponses
-      (x:_) ->
-        -- We take the first good answer
-        pure (Right x)
-
+discoverNode (NodeRef auth) = go ["Error in discoverNode:"] discoveryFuncs
   where
+    discoveryFuncs =
+      [ discoverPactNode httpUri
+      , discoverChainwebNode httpsUri
+      , discoverChainwebNode httpUri
+      , discoverPactNode httpsUri
+      ]
+
+    go es [] = pure $ Left $ T.unlines es
+    go es (x:xs) = do
+      res <- x
+      case res of
+        Right a -> pure $ Right a
+        Left e -> go (es ++ [e]) xs
+
     httpsUri = uriFromSchemeAuth [URI.scheme|https|]
     httpUri = uriFromSchemeAuth [URI.scheme|http|]
 
     uriFromSchemeAuth scheme =  NodeUri scheme auth
-
 
 -- | The node this node info is for.
 nodeInfoRef :: NodeInfo -> NodeRef
