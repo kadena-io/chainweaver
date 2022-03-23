@@ -46,6 +46,7 @@ import           Pact.Types.Exp (Literal(..))
 import           Pact.Types.Util (asString)
 import           Pact.Types.Pretty
 import           Pact.Parse (ParsedInteger(..))
+import           Kadena.SigningTypes
 ------------------------------------------------------------------------------
 import           Reflex
 import           Reflex.Dom hiding (Key, Command)
@@ -291,7 +292,9 @@ checkAndSummarize model srws (psr:rest) =
     checkMissingSigs next = let sigs = fmap snd $ _sigDataSigs sigData in
       case (length $ catMaybes sigs) == length sigs of
         False -> next
-        True -> flip errorDialog backW $ text "Everything has been signed. There is nothing to add"
+        True -> let warnMsg = "Everything has been signed. There is nothing to add" in
+          warningDialog warnMsg backW next
+
 
 
 --------------------------------------------------------------------------------
@@ -317,7 +320,7 @@ approveSigDialog model srws psr = Workflow $ do
       SigBuilderTab_Summary ->
         updated . sequence <$>
           showSigsWidget p (_keyPair_publicKey <$> _srws_cwKeys srws) sigs sigData
-      SigBuilderTab_Details ->  sigBuilderDetailsUI p "" Nothing >>  ([] <$) <$> getPostBuild
+      SigBuilderTab_Details ->  sigBuilderDetailsUI p (SignatureList sigs) "" Nothing >>  ([] <$) <$> getPostBuild
     switchHoldPromptly never eeSigList
   sigsOrKeys <- holdDyn [] sigsOrKeysE
   (back, sign) <- modalFooter $ (,)
@@ -480,7 +483,12 @@ showSBTabName = \case
   SigBuilderAdvancedTab_FullQR -> "Full Tx QR Code"
   SigBuilderAdvancedTab_ExternalSigs -> "External Signatures"
 
--- sigBuilderAdvancedTab :: MonadWidget t m => SigData Text -> m ()
+sigBuilderAdvancedTab
+  :: MonadWidget t m
+  => SigData Text
+  -> [(PublicKeyHex, Signer, Maybe UserSig)]
+  -> (Signer -> m (Maybe (Dynamic t (PublicKeyHex, Maybe UserSig))))
+  -> m [Dynamic t (PublicKeyHex, Maybe UserSig)]
 sigBuilderAdvancedTab sd externalSigs signerRow = do
   divClass "tabset" $ mdo
     curSelection <- holdDyn SigBuilderAdvancedTab_ExternalSigs onTabClick
@@ -492,7 +500,9 @@ sigBuilderAdvancedTab sd externalSigs signerRow = do
       , _tabBarCfg_type = TabBarType_Primary
       }
     externalSigs' <- tabPane mempty curSelection SigBuilderAdvancedTab_ExternalSigs $
-      signersPartitonDisplay "External Signatures" (mapM signerRow) $ view _2 <$> externalSigs
+      case externalSigs of
+        [] -> text "No External Signatures required" >> pure []
+        _ -> signersPartitonDisplay "External Signatures" (mapM signerRow) $ view _2 <$> externalSigs
 
 #if !defined(ghcjs_HOST_OS)
     tabPane mempty curSelection SigBuilderAdvancedTab_HashQR $ do
@@ -721,13 +731,14 @@ transferAndStatus model (sender, cid) cmd nodeInfos = Workflow $ do
 sigBuilderDetailsUI
   :: MonadWidget t m
   => Payload PublicMeta Text
+  -> SignatureList
   -> Text
   -> Maybe Text
   -> m ()
-sigBuilderDetailsUI p wrapperCls mCls = divClass wrapperCls $ do
+sigBuilderDetailsUI p sigList wrapperCls mCls = divClass wrapperCls $ do
   txMetaWidget (p^.pMeta) (p^.pNetworkId) (p^.pNonce) mCls
   pactRpcWidget  (_pPayload p) mCls
-  signerWidget (p^.pSigners) mCls
+  signerWidget sigList (p^.pSigners) mCls
   pure ()
 
 txMetaWidget
@@ -806,15 +817,27 @@ pactRpcWidget (Continuation c) mCls = do
 
 signerWidget
   :: (MonadWidget t m)
-  => [Signer]
+  => SignatureList
+  -> [Signer]
   -> Maybe Text
   -> m ()
-signerWidget signers mCls= do
+signerWidget (SignatureList sigList) signers mCls= do
   dialogSectionHeading mempty "Signers"
   forM_ signers $ \s ->
     divClass (maybe "group segment" ("group segment " <>) mCls) $ do
       mkLabeledClsInput True "Key:" $ \_ -> text (renderCompactText $ s ^.siPubKey)
       mkLabeledClsInput True "Caps:" $ \_ -> capListWidget $ s^.siCapList
+      case lookup (PublicKeyHex $ s^.siPubKey) sigList of
+        Nothing -> blank
+        Just (Nothing) -> blank
+        Just (Just (UserSig sig)) ->
+          mkLabeledClsInput True "Siganture:" $ \_ ->
+            void $ uiTextAreaElement $ def
+              & textAreaElementConfig_initialValue .~ sig
+              & initialAttributes .~ fold
+                [ "disabled" =: ""
+                , "style" =: "color: black; width: 100%; height: auto;"
+                ]
 
 capListWidget :: MonadWidget t m => [SigCapability] -> m ()
 capListWidget [] = text "Unscoped Signer"

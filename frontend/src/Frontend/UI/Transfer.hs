@@ -67,7 +67,7 @@ import qualified Codec.QRCode.JuicyPixels as QR
 import qualified Data.YAML.Aeson as Y
 
 import           Pact.Types.SigData
-import           Kadena.SigningApi (AccountName(..))
+import           Kadena.SigningTypes (AccountName(..))
 import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api

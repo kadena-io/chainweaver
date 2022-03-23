@@ -12,7 +12,7 @@ import           Data.Text (Text)
 import qualified Data.Text.Lazy as LT
 import qualified Data.Text.Lazy.Builder as LTB
 import           Pact.Types.ChainId
-import           Kadena.SigningApi (AccountName(..))
+import           Kadena.SigningTypes (AccountName(..))
 import           Pact.Types.Term (KeySet (..))
 
 data TxBuilder = TxBuilder
