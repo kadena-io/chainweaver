@@ -29,7 +29,6 @@ import qualified Data.YAML.Aeson as Y
 
 import           Pact.Types.SigData
 import           Pact.Types.ChainMeta
-import qualified Pact.Types.Command as Pact
 import           Pact.Types.Command
 import qualified Pact.Types.Hash as Pact
 import           Pact.Types.Scheme
@@ -71,8 +70,8 @@ uiSignatures keyStorage payload signers = do
 
   dialogSectionHeading mempty $ if sigsNeeded > 0 then "External Signatures" else "No external signatures needed"
 
-  let sig s = do
-        let pubKeyText = _siPubKey s
+  let sig signer = do
+        let pubKeyText = _siPubKey signer
             pubKey = pkt2pk pubKeyText
         case Map.lookup pubKey cwKeyMap of
           Just (Just priv) -> do
@@ -90,13 +89,13 @@ uiSignatures keyStorage payload signers = do
     forM signers $ \s -> do
       sig s
 
-  let sigs = distributeListOverDynPure ddsigs
+  let sigs = distributeListOverDyn ddsigs
   let addSigs ss = sd { _sigDataSigs = ss }
   let signedCmd = addSigs <$> sigs
 
   rec
     keysetOpen <- toggle False clk
-    (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty
+    (clk,(_,_k)) <- controlledAccordionItem keysetOpen mempty
       (accordionHeaderBtn "Advanced Details and Signing Data") $ do
         viewSigData signedCmd
 
@@ -180,7 +179,6 @@ uiSigningInput
   -> PublicKey
   -> m (Dynamic t (PublicKeyHex, Maybe UserSig))
 uiSigningInput hash pubKey = do
-  let hashBytes = Pact.unHash hash
   let
     inp cfg = do
       ie <- mkLabeledInput False mempty uiInputElement cfg
@@ -206,7 +204,7 @@ uiSigningInput hash pubKey = do
     showPopover (_, (_, onInput)) = pure $
       either mkErr (const PopoverState_Disabled) <$> onInput
 
-  (inputE, (dE, onE)) <- uiInputWithPopover
+  (_inputE, (dE, _onE)) <- uiInputWithPopover
     inp
     (_inputElement_raw . fst)
     showPopover
@@ -215,7 +213,7 @@ uiSigningInput hash pubKey = do
   pure $ (PublicKeyHex $ keyToText pubKey,) . hush <$> dE
 
 checkSigOrKey
-  :: forall key m t.
+  :: forall key m.
      ( MonadJSM m
      , HasCrypto key m
      )
@@ -233,7 +231,7 @@ checkSigOrKey hash pubKey userInput = do
             Just (PrivateKey privKey) -> do
               let pactKey = PactKey ED25519 pubKey privKey
               cryptoSignWithPactKeyEither hashBytes pactKey >>= \case
-                Left e -> pure $ Left $ "Wrong key"
+                Left _ -> pure $ Left $ "Wrong key"
                 Right sig -> do
                   valid <- cryptoVerify hashBytes sig pubKey
                   if valid
@@ -241,7 +239,7 @@ checkSigOrKey hash pubKey userInput = do
                     else pure $ Left $ "Key does not generate a valid signature"
         tryAsSig t = do
           case parseSignature t of
-            Left e -> do
+            Left _ -> do
               pure $ Left $ "Error parsing signature"
             Right sig -> do
               --pure $ Right sig
