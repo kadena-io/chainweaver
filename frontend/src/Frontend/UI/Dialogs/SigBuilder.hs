@@ -292,7 +292,9 @@ checkAndSummarize model srws (psr:rest) =
     checkMissingSigs next = let sigs = fmap snd $ _sigDataSigs sigData in
       case (length $ catMaybes sigs) == length sigs of
         False -> next
-        True -> flip errorDialog backW $ text "Everything has been signed. There is nothing to add"
+        True -> let warnMsg = "Everything has been signed. There is nothing to add" in
+          warningDialog warnMsg backW next
+
 
 
 --------------------------------------------------------------------------------
