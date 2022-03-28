@@ -25,13 +25,11 @@ module Frontend.UI.TabBar
     MkTabLabel
   , TabBarType (..)
   , TabBarCfg (..)
-  , TabBarDynCfg (..)
   , HasTabBarCfg (..)
   , TabBar (..)
   , HasTabBar (..)
     -- * Creation
   , makeTabBar
-  , makeTabBarDyn
   ) where
 
 ------------------------------------------------------------------------------
@@ -53,9 +51,9 @@ data TabBarType
   | TabBarType_Secondary
 
 
--- | Tab bar configuration.
+-- | Tab bar configuration, with dynamic tabs
 data TabBarCfg t m tab = TabBarCfg
-    { _tabBarCfg_tabs :: [tab] -- ^ The available tabs
+    { _tabBarCfg_tabs :: Dynamic t [tab] -- ^ The available tabs, can change with time
     , _tabBarCfg_mkLabel :: MkTabLabel t m tab -- ^ Function for printing labels for the tabs.
     , _tabBarCfg_selectedTab :: MDynamic t tab -- ^ The currently selected tab.
     , _tabBarCfg_classes :: CssClass -- ^ Additional CSS classes for this widget.
@@ -63,17 +61,6 @@ data TabBarCfg t m tab = TabBarCfg
     }
 
 makePactLenses ''TabBarCfg
-
--- | Tab bar configuration, with dynamic tabs
-data TabBarDynCfg t m tab = TabBarDynCfg
-    { _tabBarDynCfg_tabs :: Dynamic t [tab] -- ^ The available tabs, can change with time
-    , _tabBarDynCfg_mkLabel :: MkTabLabel t m tab -- ^ Function for printing labels for the tabs.
-    , _tabBarDynCfg_selectedTab :: MDynamic t tab -- ^ The currently selected tab.
-    , _tabBarDynCfg_classes :: CssClass -- ^ Additional CSS classes for this widget.
-    , _tabBarDynCfg_type :: TabBarType -- ^ What style to use.
-    }
-
-makePactLenses ''TabBarDynCfg
 
 -- Not very useful for this config:
 {- instance (Reflex t, DomBuilder t m) => Default (TabBarCfg t m tab) where -}
@@ -94,7 +81,7 @@ makePactLenses ''TabBar
 
 
 makeTabBar
-  :: (DomBuilder t m, PostBuild t m, Eq tab)
+  :: (DomBuilder t m, PostBuild t m, MonadHold t m, Eq tab)
   => TabBarCfg t m tab
   -> m (TabBar t tab)
 makeTabBar cfg = do
@@ -105,8 +92,9 @@ makeTabBar cfg = do
         TabBarType_Secondary -> "tab-nav_type_secondary"
 
   elKlass "div" ("tab-nav" <> typeCls <> _tabBarCfg_classes cfg) $ do
-    selEvs <- traverse (tabSelector cfg) $ _tabBarCfg_tabs cfg
-    pure $ TabBar $ leftmost selEvs
+    eventListEv <- networkView $ traverse (tabSelector cfg) <$> _tabBarCfg_tabs cfg
+    selEvs <- switchHold never $ leftmost <$> eventListEv
+    pure $ TabBar selEvs
 
 
 tabSelector
@@ -123,42 +111,6 @@ tabSelector cfg ourTab = do
 
     f sel = baseCfg <> if sel then "tab-nav__button_active" else mempty
     isSelected = (Just ourTab ==) <$> _tabBarCfg_selectedTab cfg
-
-  onClick <- uiButtonDyn (def & uiButtonCfg_class .~ fmap f isSelected) $
-    renderLabel isSelected ourTab
-  pure $ ourTab <$ onClick
-
-makeTabBarDyn
-  :: (DomBuilder t m, PostBuild t m, MonadHold t m, Eq tab)
-  => TabBarDynCfg t m tab
-  -> m (TabBar t tab)
-makeTabBarDyn cfg = do
-  let
-    typeCls =
-      case _tabBarDynCfg_type cfg of
-        TabBarType_Primary   -> "tab-nav_type_primary"
-        TabBarType_Secondary -> "tab-nav_type_secondary"
-
-  elKlass "div" ("tab-nav" <> typeCls <> _tabBarDynCfg_classes cfg) $ do
-    eventListEv <- networkView $ traverse (tabSelectorDyn cfg) <$> _tabBarDynCfg_tabs cfg
-    selEvs <- switchHold never $ leftmost <$> eventListEv
-    pure $ TabBar selEvs
-
-
-tabSelectorDyn
-  :: (PostBuild t m, DomBuilder t m, Eq tab)
-  => TabBarDynCfg t m tab -> tab -> m (Event t tab)
-tabSelectorDyn cfg ourTab = do
-  let
-    baseCfg = "tab-nav__button" <>
-      case _tabBarDynCfg_type cfg of
-        TabBarType_Primary   -> "tab-nav__button_type_primary"
-        TabBarType_Secondary -> "tab-nav__button_type_secondary"
-
-    renderLabel = _tabBarDynCfg_mkLabel cfg
-
-    f sel = baseCfg <> if sel then "tab-nav__button_active" else mempty
-    isSelected = (Just ourTab ==) <$> _tabBarDynCfg_selectedTab cfg
 
   onClick <- uiButtonDyn (def & uiButtonCfg_class .~ fmap f isSelected) $
     renderLabel isSelected ourTab

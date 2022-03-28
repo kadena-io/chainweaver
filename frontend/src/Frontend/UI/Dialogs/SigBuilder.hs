@@ -330,7 +330,7 @@ sigBuilderSummaryTabs tabEv = do
       , const . Just <$> tabEv
       ]
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [SigBuilderTab_Summary, SigBuilderTab_Details]
+      { _tabBarCfg_tabs = constDyn [SigBuilderTab_Summary, SigBuilderTab_Details]
       , _tabBarCfg_mkLabel = \_ -> displaySigBuilderTab
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
@@ -503,7 +503,7 @@ signatureDetails sd = do
   divClass "tabset" $ mdo
     curSelection <- holdDyn SigDetails_Yaml onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [minBound .. maxBound]
+      { _tabBarCfg_tabs = constDyn [minBound .. maxBound]
       , _tabBarCfg_mkLabel = const $ text . showSigDetailsTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty

@@ -1194,7 +1194,7 @@ makeTabs initData tabEv = do
       , const . Just <$> tabEv
       ]
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [SendModalTab_Configuration, SendModalTab_Sign]
+      { _tabBarCfg_tabs = constDyn [SendModalTab_Configuration, SendModalTab_Sign]
       , _tabBarCfg_mkLabel = \_ -> displaySendModalTab
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty

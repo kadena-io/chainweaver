@@ -1546,7 +1546,7 @@ transferDetails signedCmd = do
     divClass "tabset" $ mdo
       curSelection <- holdDyn TransferDetails_Json onTabClick
       (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-        { _tabBarCfg_tabs = [minBound .. maxBound]
+        { _tabBarCfg_tabs = constDyn [minBound .. maxBound]
         , _tabBarCfg_mkLabel = const $ text . showTransferDetailsTabName
         , _tabBarCfg_selectedTab = Just <$> curSelection
         , _tabBarCfg_classes = mempty
@@ -1712,14 +1712,14 @@ transferTabs tabEv shouldWarningTabBeShownDyn = do
       [ const . Just <$> onTabClick
       , const . Just <$> tabEv
       ]
-    (TabBar onTabClick) <- makeTabBarDyn $ TabBarDynCfg
-      { _tabBarDynCfg_tabs = shouldWarningTabBeShownDyn <&> \shouldWarningTabBeShown ->
+    (TabBar onTabClick) <- makeTabBar $ TabBarCfg
+      { _tabBarCfg_tabs = shouldWarningTabBeShownDyn <&> \shouldWarningTabBeShown ->
         if shouldWarningTabBeShown
           then [TransferTab_Metadata, TransferTab_MaxTransactionWarning, TransferTab_Signatures]
           else [TransferTab_Metadata, TransferTab_Signatures]
-      , _tabBarDynCfg_mkLabel = \_ -> displayTransferTab
-      , _tabBarDynCfg_selectedTab = Just <$> curSelection
-      , _tabBarDynCfg_classes = mempty
-      , _tabBarDynCfg_type = TabBarType_Secondary
+      , _tabBarCfg_mkLabel = \_ -> displayTransferTab
+      , _tabBarCfg_selectedTab = Just <$> curSelection
+      , _tabBarCfg_classes = mempty
+      , _tabBarCfg_type = TabBarType_Secondary
       }
   pure (curSelection, done)

@@ -100,7 +100,7 @@ uiJsonDataSetFocus
 uiJsonDataSetFocus onKeysetCreate onRawInputCreate w d = divClass "tabset" $ mdo
     curSelection <- holdDyn JsonDataView_Keysets onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [minBound .. maxBound]
+      { _tabBarCfg_tabs = constDyn [minBound .. maxBound]
       , _tabBarCfg_mkLabel = const $ text . showJsonTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty

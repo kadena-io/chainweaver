@@ -59,7 +59,7 @@ rightTabBar
 rightTabBar cls ideL = elDynKlass "div" (cls <> "pane") $ do
   let curSelection = _ide_envSelection ideL
   (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-    { _tabBarCfg_tabs = [minBound .. maxBound]
+    { _tabBarCfg_tabs = constDyn [minBound .. maxBound]
     , _tabBarCfg_mkLabel = const $ text . selectionToText
     , _tabBarCfg_selectedTab = Just <$> curSelection
     , _tabBarCfg_classes = mempty

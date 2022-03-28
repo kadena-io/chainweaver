@@ -318,7 +318,7 @@ buildDeployTabs mUserTabName includePreviewTab controls = mdo
     , controls
     ]
   (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-    { _tabBarCfg_tabs = availableTabs
+    { _tabBarCfg_tabs = constDyn availableTabs
     , _tabBarCfg_mkLabel = const $ text . showSettingsTabName
     , _tabBarCfg_selectedTab = Just <$> curSelection
     , _tabBarCfg_classes = mempty
