@@ -709,6 +709,11 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
                   crossChainTransferAndStatus model netInfo ti sc gp ss meta'
         pure ((conf, close <> cancel), nextScreen)
   where
+    boldNumberWithLabel lbl numDyn = do
+      elAttr "div" ("style" =: "display: flex;") $ do
+        elAttr "span" ("style" =: "width: 30%;") $ text lbl
+        elAttr "span" ("style" =: "width: 100px; text-align: right;") $
+          el "b" $ dynText $ T.pack . show <$> numDyn
     shouldWarningTabBeShown currentTi currentMeta =
       _ti_maxAmount currentTi && Just (_ca_account $ _ti_fromAccount currentTi) == _transferMeta_senderAccount currentMeta
     mainSection currentTab = elClass "div" "modal__main" $ do
@@ -716,10 +721,9 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
         transferMetadata model netInfo fks tks ti ty
       void $ tabPane mempty currentTab TransferTab_MaxTransactionWarning $ do
         el "h2" $ text "You have asked for a max transfer but used the same account to pay gas. As such, the amount being transferred has changed."
-        el "div" $ do
-          el "span" $ text "Amount being transferred (after deducting gas): "
-          el "span" $
-            el "b" $ dynText $ T.pack . show . _ti_amount <$> tiDyn
+        boldNumberWithLabel "Original amount: " (constDyn $ _ti_amount ti)
+        boldNumberWithLabel "Gas fees: " $ tiDyn <&> \ti' -> _ti_amount ti - _ti_amount ti'
+        boldNumberWithLabel "Amount being transferred (after deducting gas): " $ _ti_amount <$> tiDyn
       let payload = (\transferInfo m -> buildUnsignedCmd netInfo transferInfo ty m) <$> tiDyn <*> meta
       edSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
         networkView $ transferSigs
