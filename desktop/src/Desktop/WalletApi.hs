@@ -16,10 +16,10 @@ import Control.Monad.Except (throwError)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Proxy (Proxy(..))
 import qualified Data.Text.Encoding as T
-import Kadena.SigningApi (SigningRequest, SigningResponse, V1SigningApi)
+import Kadena.SigningApi
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Middleware.Cors as Wai
-import Servant (serve, (:>))
+import Servant
 import qualified Servant.Server as Servant
 
 import Frontend.AppCfg
@@ -28,7 +28,9 @@ walletServer
   :: MonadIO m
   => IO ()
   -> IO ()
-  -> m (MVarHandler SigningRequest SigningResponse)
+  -> m ( MVarHandler SigningRequest SigningResponse
+       , MVarHandler QuickSignRequest QuickSignResponse
+       )
   -- Commented much of the old functionality out (vs. removing it) since we intend to revisit it in the near future
   -- -> m ( MVarHandler SigningRequest SigningResponse
   --      , MVarHandler () [PublicKey]
@@ -37,18 +39,20 @@ walletServer
 walletServer moveToForeground moveToBackground = do
   signingLock <- liftIO newEmptyMVar -- Only allow one signing request to be served at once
   h@(MVarHandler signingRequestMVar signingResponseMVar) <- liftIO newMVarHandler
+  qs@(MVarHandler quickSignRequestMVar quickSignResponseMVar) <- liftIO newMVarHandler
   -- keysHandler <- liftIO newMVarHandler
   -- accountsHandler <- liftIO newMVarHandler
   let
     runSign obj = mkServantHandler <=< liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
         putMVar signingRequestMVar obj -- handoff to app
         bracket moveToForeground (const $ moveToBackground) (\_ -> takeMVar signingResponseMVar)
-
+    runQuickSign obj = mkServantHandler <=< liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
+        putMVar quickSignRequestMVar obj -- handoff to app
+        bracket moveToForeground (const $ moveToBackground) (\_ -> takeMVar quickSignResponseMVar)
     -- runMVarHandler (MVarHandler req resp) = do
     --   mkServantHandler <=< liftIO $ do
     --     putMVar req ()
     --     takeMVar resp
-
     mkServantHandler = \case
       Left e -> throwError $ Servant.err409 { Servant.errBody = LBS.fromStrict $ T.encodeUtf8 e }
       Right v -> pure v
@@ -58,11 +62,11 @@ walletServer moveToForeground moveToBackground = do
       { Wai.corsRequestHeaders = Wai.simpleHeaders }
     apiServer
       = Warp.runSettings s $ Wai.cors laxCors
-      $ Servant.serve walletApi $ runSign   --   :<|> runMVarHandler keysHandler :<|> runMVarHandler accountsHandler
+      $ Servant.serve walletApi $ (runSign :<|> runQuickSign)  --   :<|> runMVarHandler keysHandler :<|> runMVarHandler accountsHandler
 
   liftIO $ void $ Async.async $ apiServer
   -- pure (h, keysHandler, accountsHandler)
-  pure h
+  pure (h, qs)
 
 type WalletAPI = "v1" :> V1WalletAPI
 type V1WalletAPI = V1SigningApi

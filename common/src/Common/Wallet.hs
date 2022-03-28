@@ -22,7 +22,7 @@ module Common.Wallet
   , keyToText
   , parsePublicKey
   , parsePubKeyOrKAccount
-  , accountNameMatchesKeyset 
+  , accountNameMatchesKeyset
   , toPactPublicKey
   , KeyPair(..)
   , AccountName(..)
@@ -100,7 +100,7 @@ import Data.Set (Set)
 import Data.Text (Text)
 import Data.Traversable (for)
 import GHC.Generics (Generic)
-import Kadena.SigningApi (AccountName(..), mkAccountName)
+import Kadena.SigningTypes (AccountName(..), mkAccountName)
 import Pact.Compile (compileExps, mkEmptyInfo)
 import Pact.Parse
 import Pact.Types.Command (RequestKey)
@@ -191,7 +191,7 @@ parsePublicKey = throwDecodingErr . textToKey <=< checkPub . T.strip
 
 -- (Is_k:acc, pubkey)
 parsePubKeyOrKAccount :: AccountName -> (Bool, Either Text PublicKey)
-parsePubKeyOrKAccount (AccountName accName) = 
+parsePubKeyOrKAccount (AccountName accName) =
   second parsePublicKey $ maybe (False, accName) (\k -> (True, k)) $ T.stripPrefix "k:" accName
 
 throwDecodingErr

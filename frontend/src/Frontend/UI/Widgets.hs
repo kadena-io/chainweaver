@@ -1130,13 +1130,13 @@ uiTextInputAsync
   -> Bool                       -- ^ Should the label be inline?
   -> (Maybe Text, PopoverState) -- ^ Initial Value for the input, and initial popover state
   -> Event t (Maybe Text)       -- ^ An event that can be used to set the input's value
-  -> Dynamic t (Event t Text -> m (Event t (ValidationResult Text a)))
-  -- ^ A `Dynamic` of function of validation functions. These functions will receive the user's input as an event.
+  -> (Event t Text -> m (Event t (ValidationResult Text a)))
+  -- ^ The validation function. This function will receive the user's input as an event.
   -> m ( Event t (Maybe a)
        , Dynamic t (Maybe a)
        )
-uiTextInputAsync label inlineLabel (initval, initPopState) onSetName isValidDyn = do
-  (FormWidget v _ _, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState isValidDyn) $ mkCfg initval
+uiTextInputAsync label inlineLabel (initval, initPopState) onSetName isValid = do
+  (FormWidget v _ _, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState isValid) $ mkCfg initval
     & setValue .~ Just onSetName
   pure (updated v, v)
 
@@ -1500,15 +1500,11 @@ textFormWidgetAsync
      , MonadFix m
      )
   => PopoverState
-  -> Dynamic t (Event t Text -> m (Event t (ValidationResult Text a)))
+  -> (Event t Text -> m (Event t (ValidationResult Text a)))
   -> PrimFormWidgetConfig t (Maybe Text)
   -> m (FormWidget t (Maybe a), Event t (Maybe Text))
-textFormWidgetAsync initPopState isValidDyn cfg = mdo
+textFormWidgetAsync initPopState isValid cfg = mdo
   let
-    validate textEv = do
-      eventEv <- networkView $ ($ textEv) <$> isValidDyn
-      switchHold never eventEv
-
     -- Treats Warning and Result types as valid values, errors are treated as invalid
     toValid = \case
       Warning _ a -> Just a
@@ -1541,7 +1537,7 @@ textFormWidgetAsync initPopState isValidDyn cfg = mdo
   let
     inputDyn = value inputE
     inputEv = updated inputDyn
-  resultEv <- validate inputEv
+  resultEv <- isValid inputEv
   validDyn <- holdDyn Nothing $ toValid <$> resultEv
   let w = FormWidget
             validDyn
