@@ -1162,12 +1162,12 @@ gasPayersSection model netInfo fks tks ti = do
     (dgp1, mdmgp2) <- if fromChain == toChain
       then do
         (_,dgp1) <- uiTextInputAsync "Gas Paying Account" True initValues
-                                       never (constDyn goodGasPayer)
+                                       never goodGasPayer
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
         (_,dgp1) <- uiTextInputAsync (mkLabel fromChain) True initValues
-                                       never (constDyn goodGasPayer)
+                                       never goodGasPayer
         (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True (Just defaultDestGasPayer) never noValidation
         pure $ (dgp1, Just dgp2)
     let

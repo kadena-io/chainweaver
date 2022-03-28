@@ -493,7 +493,7 @@ sigBuilderAdvancedTab sd externalSigs signerRow = do
   divClass "tabset" $ mdo
     curSelection <- holdDyn SigBuilderAdvancedTab_ExternalSigs onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = [minBound .. maxBound]
+      { _tabBarCfg_tabs = constDyn [minBound .. maxBound]
       , _tabBarCfg_mkLabel = const $ text . showSBTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
