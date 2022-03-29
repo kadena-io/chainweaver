@@ -1,0 +1,22 @@
+cabal-version:       >=1.10
+
+name:                wallet-connect
+version:             0.1.0.0
+build-type:          Simple
+
+library
+  hs-source-dirs: src
+  build-depends: base >=4.12 && <5
+               , aeson
+               , containers
+               , jsaddle
+               , lens
+               , reflex
+               , split
+               , text
+                     
+  exposed-modules:
+    WalletConnect.Common
+    WalletConnect.Wallet
+    WalletConnect.Internal
+  default-language:    Haskell2010
