@@ -81,6 +81,7 @@ library
     , reflex-dom
     , reflex-dom-ace
     , reflex-dom-contrib
+    , reflex-notifications
     , safe
     , scientific
     , servant
