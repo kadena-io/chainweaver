@@ -12,7 +12,6 @@
 -- | Wallet setup screens
 module Frontend.Setup.Browser (runSetup, bipWalletBrowser) where
 
-import Control.Lens ((<>~), (^.), _1, _2, _3)
 import Control.Monad (guard)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.Trans (lift)
@@ -26,13 +25,13 @@ import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.GADT.Compare.TH
 import Data.GADT.Show.TH
+import Data.Proxy (Proxy(..))
 import Data.Traversable (for)
 import Data.Universe.Some.TH
 import Language.Javascript.JSaddle (MonadJSM)
 import Reflex.Dom.Core hiding (Key)
-import Pact.Server.ApiClient (HasTransactionLogger, askTransactionLogger, _transactionLogger_rotateLogFile)
+import Pact.Server.ApiClient (HasTransactionLogger, TransactionLogger, askTransactionLogger, _transactionLogger_rotateLogFile)
 import Obelisk.Route.Frontend
-import Obelisk.Generated.Static
 import Common.Wallet
 import Common.Route
 import qualified Frontend.App as App (app)
@@ -43,7 +42,9 @@ import Frontend.Crypto.Ed25519
 import Frontend.Crypto.Browser
 import Frontend.Foundation
 import Frontend.Setup.Common
+import Frontend.Setup.ImportExport
 import Frontend.Setup.Password
+import Frontend.Setup.Setup
 import Frontend.Setup.Widgets
 import Frontend.Storage
 import Frontend.UI.Button
@@ -77,72 +78,6 @@ type MkAppCfg t m
   -- ^ Settings
   -> AppCfg PrivateKey t (RoutedT t (R FrontendRoute) (BrowserCryptoT t m))
 
-runSetup
-  :: ( DomBuilder t m
-    , MonadFix m
-    , MonadHold t m
-    , PerformEvent t m
-    , PostBuild t m
-    , TriggerEvent t m
-    , MonadJSM (Performable m)
-    , HasStorage (Performable m)
-    , MonadSample t (Performable m)
-    , DerivableKey key mnemonic
-    )
-  => FileFFI t m
-  -> Bool
-  -> WalletExists
-  -> m (Event t (Either () (key, Password, Bool)))
-runSetup fileFFI showBackOverride walletExists = setupDiv "fullscreen" $ mdo
-  let dCurrentScreen = (^._1) <$> dwf
-
-  eBack <- fmap (domEvent Click . fst) $ elDynClass "div" ((setupClass "back " <>) . hideBack <$> dCurrentScreen) $
-    el' "span" $ do
-      elClass "i" "fa fa-fw fa-chevron-left" $ blank
-      text "Back"
-
-  _ <- dyn_ $ walletSetupRecoverHeader <$> dCurrentScreen
-
-  dwf <- divClass "wrapper" $
-    workflow (splashScreenBrowser eBack)
-
-  pure $ leftmost
-    [ fmap Right $ switchDyn $ (^. _2) <$> dwf
-    , attachWithMaybe (\s () -> Left () <$ guard (s == WalletScreen_SplashScreen)) (current dCurrentScreen) eBack
-    , fmap Left $ switchDyn $ (^. _3) <$> dwf
-    ]
-  where
-    hideBack ws =
-      if not showBackOverride && (ws `elem` [WalletScreen_SplashScreen, WalletScreen_Done]) then
-        setupClass "hide"
-      else
-        setupScreenClass ws
-
-splashScreenBrowser
-  :: (DomBuilder t m, MonadFix m, MonadHold t m, PerformEvent t m
-     , PostBuild t m, MonadJSM (Performable m), TriggerEvent t m, HasStorage (Performable m)
-     , MonadSample t (Performable m), DerivableKey key mnemonic
-     )
-  => Event t ()
-  -> SetupWF key t m
-splashScreenBrowser eBack = selfWF
-  where
-    selfWF = Workflow $ setupDiv "splash" $ do
-      agreed <- splashScreenAgreement
-      let hasAgreed = gate (current agreed)
-          disabledCfg = uiButtonCfg_disabled .~ fmap not agreed
-          restoreCfg = uiButtonCfg_class <>~ "setup__restore-existing-button"
-
-      create <- confirmButton (def & disabledCfg ) "Create a new wallet"
-
-      restoreBipPhrase <- uiButtonDyn (btnCfgSecondary & disabledCfg & restoreCfg)
-        $ text "Restore from recovery phrase"
-
-      finishSetupWF WalletScreen_SplashScreen $ leftmost
-        [ createNewWallet selfWF eBack <$ hasAgreed create
-        , restoreBipWallet selfWF eBack <$ hasAgreed restoreBipPhrase
-        ]
-
 bipWalletBrowser
   :: forall js t m
   .  ( MonadWidget t m
@@ -172,7 +107,9 @@ bipWalletBrowser fileFFI mkAppCfg = do
       -> WalletExists
       -> RoutedT t (R FrontendRoute) m (Event t (DSum LockScreen Identity))
     runSetup0 mPrv walletExists = do
-      keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists
+      let runF k p = runBrowserCryptoT (pure (k, p))
+          importWidgetApis = ImportWidgetApis BIPStorage_RootKey passwordRoundTripTest runF
+      keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists importWidgetApis
       performEvent $ flip push keyAndPass $ \case
         Right (x, Password p, newWallet) -> pure $ Just $ do
           when newWallet $ do
@@ -216,7 +153,7 @@ bipWalletBrowser fileFFI mkAppCfg = do
           (updates, trigger) <- newTriggerEvent
           let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
           App.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $
-            appSettingsBrowser trigger details updates changePasswordBrowserAction
+            appSettingsBrowser txLogger frontendFileFFI trigger details updates changePasswordBrowserAction
 
           setRoute $ landingPageRoute <$ onLogoutConfirm
           pure $ leftmost
@@ -230,20 +167,23 @@ appSettingsBrowser ::
    , HasStorage (Performable m)
    , PerformEvent t m
    , MonadJSM (Performable m)
+   , HasCrypto PrivateKey (Performable m)
    )
-  => ((PrivateKey, Password) -> IO ())
+  => TransactionLogger
+  -> FileFFI t m
+  -> ((PrivateKey, Password) -> IO ())
   -> Dynamic t (Identity (PrivateKey, Password))
   -> Event t (PrivateKey, Password)
   -> (Int -> PrivateKey -> Password -> (Performable m) (Key PrivateKey))
   -> EnabledSettings PrivateKey t m
-appSettingsBrowser newPwdTrigger details keyUpdates changePasswordBrowserAction = EnabledSettings
+appSettingsBrowser txLogger frontendFileFFI newPwdTrigger details keyUpdates changePasswordBrowserAction = EnabledSettings
   { _enabledSettings_changePassword = Just $ ChangePassword
     { _changePassword_requestChange = performEvent . attachWith doChange (current details)
     -- When updating the keys here, we just always regenerate the key from
     -- the new root
     , _changePassword_updateKeys = (keyUpdates, changePasswordBrowserAction)
     }
-  , _enabledSettings_exportWallet = Nothing
+  , _enabledSettings_exportWallet = Just $ mkExportWallet txLogger frontendFileFFI details (Proxy :: Proxy (BIPStorage PrivateKey))
   , _enabledSettings_transactionLog = False
   }
   where
