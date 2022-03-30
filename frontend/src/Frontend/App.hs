@@ -121,12 +121,12 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
               _ -> Nothing
         netCfg <- networkBar ideL sigPopup
         (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
-          switchToken <- uiSwitchTokenButton ideL
+          manageTokens <- uiManageTokensButton ideL
           refreshCfg <- uiWalletRefreshButton
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiAddAccountButton ideL
           xferVisible <- uiTransferButton
-          pure $ (xferVisible, switchToken <> watchCfg <> addCfg <> refreshCfg)
+          pure $ (xferVisible, manageTokens <> watchCfg <> addCfg <> refreshCfg)
         divClass "wallet-scroll-wrapper" $ do
           transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
           accountsCfg <- uiAccountsTable ideL startOpen

@@ -23,7 +23,7 @@ module Frontend.UI.Wallet
   , uiAccountsTable
   , uiAvailableKeys
   , uiWalletRefreshButton
-  , uiSwitchTokenButton
+  , uiManageTokensButton
   , uiWatchRequestButton
   , uiGenerateKeyButton
     -- ** Filters for keys
@@ -64,7 +64,7 @@ import           Frontend.TxBuilder
 import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
-import           Frontend.UI.Dialogs.SwitchToken (uiSwitchToken)
+import           Frontend.UI.Dialogs.ManageTokens (uiManageTokens)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 -- import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.KeysetWidget
@@ -112,7 +112,7 @@ uiWalletRefreshButton = do
   eRefresh <- uiButton headerBtnCfg (text "Refresh")
   pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
 
-uiSwitchTokenButton
+uiManageTokensButton
   :: ( MonadWidget t m
      , Monoid mConf
      , Monoid (ModalCfg mConf t)
@@ -123,9 +123,9 @@ uiSwitchTokenButton
      , HasWallet model key t
      )
   => model -> m mConf
-uiSwitchTokenButton model = do
-  switch <- uiButton headerBtnCfg (text "Switch Token")
-  pure $ mempty & modalCfg_setModal .~ (Just (uiSwitchToken model) <$ switch)
+uiManageTokensButton model = do
+  switch <- uiButton headerBtnCfg (text "Manage Tokens")
+  pure $ mempty & modalCfg_setModal .~ (Just (uiManageTokens model) <$ switch)
 
 uiWatchRequestButton
   :: ( MonadWidget t m

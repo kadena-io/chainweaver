@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Frontend.UI.Dialogs.SwitchToken
-  ( uiSwitchToken
+module Frontend.UI.Dialogs.ManageTokens
+  ( uiManageTokens
   ) where
 
 
@@ -24,7 +24,7 @@ import Frontend.Wallet
 
 
 -- | A modal for watching request keys
-uiSwitchToken
+uiManageTokens
   :: ( Flattenable mConf t
      , Monoid mConf
      , HasWalletCfg mConf key t
@@ -32,7 +32,7 @@ uiSwitchToken
      , MonadWidget t m
      )
   => model -> Event t () -> m (mConf, Event t ())
-uiSwitchToken model onCloseExternal = do
+uiManageTokens model onCloseExternal = do
   (conf, closes) <- fmap splitDynPure $ workflow $
     inputToken model onCloseExternal
   mConf <- flatten =<< tagOnPostBuild conf
@@ -50,7 +50,7 @@ inputToken
   -> Event t () -- ^ Modal was externally closed
   -> Workflow t m (mConf, Event t ())
 inputToken model _ = Workflow $ do
-  close <- modalHeader $ text "Switch Token"
+  close <- modalHeader $ text "Manage Tokens"
   (dmFung, clickEv) <- modalMain $ do
     tokenList <- sample $ current $ model ^. wallet_tokenList
     currentFung <- sample $ current $ model ^. wallet_fungible
