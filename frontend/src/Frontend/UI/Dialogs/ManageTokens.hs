@@ -73,7 +73,7 @@ inputToken model _ = Workflow $ do
 --             ]
     let
       alwaysPasses acc = pure $ Success . flip ModuleName Nothing <$> acc
-    dmFung <- divClass "group" $ fmap snd $ uiTextInputAsync "Enter token" True (Nothing, PopoverState_Disabled) never alwaysPasses
+    dmFung <- divClass "group" $ fmap snd $ uiTextInputAsync "Enter token" True (Nothing, PopoverState_Disabled) never alwaysPasses moduleListId
     eventEv <- networkView $ model ^. wallet_tokenList <&> \ne -> do
       clicks <- forM (NE.toList ne) $ \token -> do
         (e, _) <- accordionItem' False "segment segment_type_secondary"

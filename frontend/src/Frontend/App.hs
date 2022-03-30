@@ -163,6 +163,7 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
 
     accountDatalist ideL
     keyDatalist ideL
+    moduleDatalist ideL
     flatten =<< tagOnPostBuild routedCfg
 
   modalCfg <- showModal ideL

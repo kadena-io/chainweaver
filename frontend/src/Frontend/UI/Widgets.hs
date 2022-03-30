@@ -35,6 +35,8 @@ module Frontend.UI.Widgets
   , keyDatalist
   , accountListId
   , accountDatalist
+  , moduleListId
+  , moduleDatalist
   , uiAccountNameInput
   , uiAccountNameInputNoDropdown
   , accountNameFormWidget
@@ -132,6 +134,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Monoid
 import qualified Data.IntMap as IntMap
 import           Data.Proxy                  (Proxy(..))
+import qualified Data.Set as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
@@ -1092,6 +1095,22 @@ accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
 
 accountListId :: Text
 accountListId = "account-list"
+
+moduleListId :: Text
+moduleListId = "module-list"
+
+-- | Global dom representation of the module list for use in an HTML5 combo
+-- box. This uses and is addressed by an id, so there should only ever be one of
+-- them in the DOM. Currently it's at the very top of the <body> tag.
+moduleDatalist
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     , HasNetwork ide t
+     , HasWallet ide key t
+     )
+  => ide
+  -> m ()
+moduleDatalist ideL =
+  uiDatalist moduleListId $ map renderCompactText . Set.toList . Set.fromList . concat . Map.elems <$> ideL ^. network_modules
 
 uiAccountNameInput
   :: ( DomBuilder t m
