@@ -1137,11 +1137,12 @@ uiTextInputAsync
   -> Event t (Maybe Text)       -- ^ An event that can be used to set the input's value
   -> (Event t Text -> m (Event t (ValidationResult Text a)))
   -- ^ The validation function. This function will receive the user's input as an event.
+  -> Text                       -- ^ The list id for showing a dropdown
   -> m ( Event t (Maybe a)
        , Dynamic t (Maybe a)
        )
-uiTextInputAsync label inlineLabel (initval, initPopState) onSetName isValid = do
-  (FormWidget v _ _, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState isValid) $ mkCfg initval
+uiTextInputAsync label inlineLabel (initval, initPopState) onSetName isValid dropdownListId = do
+  (FormWidget v _ _, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState isValid dropdownListId) $ mkCfg initval
     & setValue .~ Just onSetName
   pure (updated v, v)
 
@@ -1565,9 +1566,10 @@ textFormWidgetAsync
      )
   => PopoverState
   -> (Event t Text -> m (Event t (ValidationResult Text a)))
+  -> Text
   -> PrimFormWidgetConfig t (Maybe Text)
   -> m (FormWidget t (Maybe a), Event t (Maybe Text))
-textFormWidgetAsync initPopState isValid cfg = mdo
+textFormWidgetAsync initPopState isValid dropdownListId cfg = mdo
   let
     -- Treats Warning and Result types as valid values, errors are treated as invalid
     toValid = \case
@@ -1594,7 +1596,7 @@ textFormWidgetAsync initPopState isValid cfg = mdo
 
     uiNameInput cfg = do
       inp <- uiInputElement $ cfg & initialAttributes %~
-               (<> "list" =: accountListId) . addToClassAttr "account-input"
+               (<> "list" =: dropdownListId) . addToClassAttr "account-input"
       pure (inp, _inputElement_raw inp)
 
   (inputE, _) <- uiInputWithPopoverWithInitState uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
