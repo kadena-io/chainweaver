@@ -163,13 +163,13 @@ library
                  , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.Dialogs.ExportWallet
                  , Frontend.UI.Dialogs.LogoutConfirmation
+                 , Frontend.UI.Dialogs.ManageTokens
                  , Frontend.UI.Dialogs.NetworkEdit
                  , Frontend.UI.Dialogs.Receive
                  , Frontend.UI.Dialogs.Receive.Legacy
                  , Frontend.UI.Dialogs.Send
                  , Frontend.UI.Dialogs.Send.ManualTxBuilder
                  , Frontend.UI.Dialogs.Signing
-                 , Frontend.UI.Dialogs.SwitchToken
                  , Frontend.UI.Dialogs.SigBuilder
                  , Frontend.UI.Dialogs.AccountDetails
                  , Frontend.UI.Dialogs.KeyDetails

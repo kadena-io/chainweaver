@@ -117,6 +117,7 @@ uiManageTokensButton
      , Monoid mConf
      , Monoid (ModalCfg mConf t)
      , Flattenable (ModalCfg mConf t) t
+     , HasNetwork model t
      , HasWalletCfg mConf key t
      , HasWalletCfg (ModalCfg mConf t) key t
      , HasModalCfg mConf (Modal mConf m t) t
