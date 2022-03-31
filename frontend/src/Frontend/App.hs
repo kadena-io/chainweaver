@@ -187,17 +187,14 @@ app sidebarExtra fileFFI wcSignReqErrEv appCfg = Store.versionedFrontend (Store.
 
   modalCfg <- showModal ideL
 
-  req <- delay 0 signingReq
-  qreq <- delay 0 quickSignReq
-
   let pubKeys = fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$> ideL ^. wallet_keys
   wcModals <- mapM (handleWalletConnectPairings pubKeys (ideL ^. network_selectedNetwork)) mWalletConnect
 
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
-    onSigningModal = Just . uiSigning ideL <$> req
-    onQuickSignModal = Just . uiQuickSign ideL <$> qreq
+    onSigningModal = Just . uiSigning ideL <$> signingReq
+    onQuickSignModal = Just . uiQuickSign ideL <$> quickSignReq
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
     quickSignModalCfg = mempty & modalCfg_setModal .~ onQuickSignModal
     wcErrModalCfg = mempty & modalCfg_setModal .~ (Just . uiWalletConnectSigReqError <$> wcSignReqErrEv)
