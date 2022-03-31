@@ -164,13 +164,11 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
 
   modalCfg <- showModal ideL
 
-  req <- delay 0 signingReq
-  qreq <- delay 0 quickSignReq
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
-    onSigningModal = Just . uiSigning ideL <$> req
-    onQuickSignModal = Just . uiQuickSign ideL <$> qreq
+    onSigningModal = Just . uiSigning ideL <$> signingReq
+    onQuickSignModal = Just . uiQuickSign ideL <$> quickSignReq
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
     quickSignModalCfg = mempty & modalCfg_setModal .~ onQuickSignModal
 

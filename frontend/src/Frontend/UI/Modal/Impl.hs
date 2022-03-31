@@ -146,9 +146,6 @@ showModal ideL = do
           ]
         lConf = mempty & ideCfg_setModal .~ (LeftmostEv $ Nothing <$ onClose)
 
-      usedModal <- headE $ updated $ _ide_modal ideL
-      jsHackForStopPropagation $ () <$ usedModal
-
       pure $ lConf <> mCfg
   where
     isVisible = isJust <$> _ide_modal ideL
