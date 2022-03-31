@@ -76,6 +76,7 @@ import Frontend.Setup.Setup
 import Frontend.Setup.Widgets
 import Desktop.Storage.File
 import Desktop.WalletApi
+import Frontend.WalletConnect
 
 import Pact.Server.ApiClient (WalletEvent (..), commandLogFilename, _transactionLogger_walletEvent, _transactionLogger_rotateLogFile)
 
@@ -133,7 +134,7 @@ data LockScreen a where
   LockScreen_Restore :: LockScreen Crypto.XPrv -- ^ Root key
   LockScreen_RunSetup :: LockScreen ()
   LockScreen_Locked :: LockScreen Crypto.XPrv -- ^ Root key
-  LockScreen_Unlocked :: LockScreen (Crypto.XPrv, Text) -- ^ The root key and password
+  LockScreen_Unlocked :: LockScreen (Crypto.XPrv, Password) -- ^ The root key and password
 
 type MkAppCfg t m
   =  EnabledSettings Crypto.XPrv t (RoutedT t (R FrontendRoute) (BIPCryptoT t m))
@@ -150,11 +151,10 @@ bipWallet
      , Prerender js t m
      )
   => FileFFI t m
-  -> MVar SigningRequest
-  -> MVar QuickSignRequest
+  -> Event t ()
   -> MkAppCfg t m
   -> RoutedT t (R FrontendRoute) m ()
-bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
+bipWallet fileFFI signingReqEv mkAppCfg = do
   txLogger <- askTransactionLogger
 
   let
@@ -164,12 +164,12 @@ bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
       -> RoutedT t (R FrontendRoute) m (Event t (DSum LockScreen Identity))
     runSetup0 mPrv walletExists = do
       let pwCheck k p= pure $ passwordRoundTripTest k p
-          runF k (Password p) = runBIPCryptoT (pure (k, p))
+          runF k p = runBIPCryptoT (pure (k, p))
           importWidgetApis = ImportWidgetApis BIPStorage_RootKey pwCheck runF
 
       keyAndPass <- runSetup (liftFileFFI lift fileFFI) (isJust mPrv) walletExists importWidgetApis
       performEvent $ flip push keyAndPass $ \case
-        Right (x, Password p, newWallet) -> pure $ Just $ do
+        Right (x, p, newWallet) -> pure $ Just $ do
           setItemStorage localStorage BIPStorage_RootKey x
           when newWallet $ do
             liftIO $ _transactionLogger_rotateLogFile txLogger
@@ -193,7 +193,7 @@ bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
       LockScreen_RunSetup :=> _ -> runSetup0 Nothing WalletExists_No
       -- Wallet exists but the lock screen is active
       LockScreen_Locked :=> Compose root -> do
-        (restore, mLogin) <- lockScreenWidget signingReq quickSignReq $ fmap runIdentity $ current root
+        (restore, mLogin) <- lockScreenWidget signingReqEv (\k p -> pure $ passwordRoundTripTest k p) False $ fmap runIdentity $ current root
         pure $ leftmost
           [ (LockScreen_Restore ==>) . runIdentity <$> current root <@ restore
           , (LockScreen_Unlocked ==>) <$> attach (runIdentity <$> current root) mLogin
@@ -216,7 +216,7 @@ bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
                 { _keyPair_publicKey = pub
                 , _keyPair_privateKey = Just newPrv
                 }
-          Frontend.App.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $ EnabledSettings
+          Frontend.App.app sidebarLogoutLink frontendFileFFI never $ mkAppCfg $ EnabledSettings
             { _enabledSettings_changePassword = Just $ ChangePassword
               { _changePassword_requestChange =
                 let doChange (Identity (oldRoot, _)) (Password oldPass, Password newPass, Password repeatPass)
@@ -226,18 +226,18 @@ bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
                           -- Change password for root key
                           let newRoot = Crypto.xPrvChangePass (T.encodeUtf8 oldPass) (T.encodeUtf8 newPass) oldRoot
                           setItemStorage localStorage BIPStorage_RootKey newRoot
-                          liftIO $ trigger (newRoot, newPass)
+                          liftIO $ trigger (newRoot, Password newPass)
                           pure $ Right ()
                       | otherwise = pure $ Left "Invalid password"
                 in performEvent . attachWith doChange (current details)
               -- When updating the keys here, we just always regenerate the key from
               -- the new root
-              , _changePassword_updateKeys = ((second Password) <$> updates, changePasswordDesktopAction)
+              , _changePassword_updateKeys = (updates, changePasswordDesktopAction)
               }
             , _enabledSettings_exportWallet =
-              let details' = fmap (\(k, p) -> (k, Password p)) <$> details
-              in Just $ mkExportWallet txLogger frontendFileFFI details' (Proxy :: Proxy (BIPStorage Crypto.XPrv))
+              Just $ mkExportWallet txLogger frontendFileFFI details (Proxy :: Proxy (BIPStorage Crypto.XPrv))
             , _enabledSettings_transactionLog = True
+            , _enabledSettings_walletConnect = Nothing
             }
 
           setRoute $ landingPageRoute <$ onLogoutConfirm
@@ -262,21 +262,5 @@ _watchInactivity checkInterval timeout = do
   check <- tickLossyFromPostBuildTime checkInterval
   let checkTime la ti = guard $ addUTCTime timeout la <= _tickInfo_lastUTC ti
   pure $ attachWithMaybe checkTime lastActivity check
-
-lockScreenWidget
-  :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadFix m, MonadHold t m)
-  => MVar SigningRequest -> MVar QuickSignRequest -> Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
-lockScreenWidget signingReq quickSignReq xprv =
-  setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ mdo
-    (restore, pass, eSubmit) <- lockScreen $ (fmap . fmap)  Password isValid
-    sreq <- tryReadMVarTriggerEvent signingReq
-    qsreq <- tryReadMVarTriggerEvent  quickSignReq
-    let req = leftmost [() <$ sreq, () <$ qsreq]
-    widgetHold_ blank $ ffor req $ \_ -> do
-      let line = divClass (setupClass "signing-request") . text
-      line "You have an incoming signing request."
-      line "Unlock your wallet to view and sign the transaction."
-    let isValid = attachWith (\(p, x) _ -> p <$ guard (passwordRoundTripTest x (Password p))) ((,) <$> current pass <*> xprv) eSubmit
-    pure (restore, fmapMaybe id isValid)
 
 deriveGEq ''LockScreen

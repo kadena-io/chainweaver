@@ -12,6 +12,7 @@ import Control.Lens ((^.))
 import Control.Monad (join, void)
 import Control.Monad.Catch
 import Control.Monad.IO.Class
+import Control.Monad.Morph (lift)
 import Data.Coerce (coerce)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
@@ -49,6 +50,7 @@ import Frontend.Foundation
 import Frontend.ModuleExplorer.Impl (loadEditorFromLocalStorage)
 import Frontend.Storage
 import Frontend.Setup.Browser (bipWalletBrowser)
+import Frontend.WalletConnect
 
 main :: IO ()
 main = do
@@ -91,12 +93,13 @@ frontend = Frontend
             , _fileFFI_deliverFile = triggerFileDownload
             }
 
-      bipWalletBrowser fileFFI $ \enabledSettings -> AppCfg
+      (walletConnect, signingHandler, wcSignReqErrEv) <-
+        setupWalletConnect
+      bipWalletBrowser fileFFI walletConnect wcSignReqErrEv $ \enabledSettings -> AppCfg
         { _appCfg_gistEnabled = False
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
-        , _appCfg_quickSignHandler = pure never
-        , _appCfg_signingHandler = pure never
+        , _appCfg_signingHandler = mapRoutedT lift signingHandler
         , _appCfg_enabledSettings = enabledSettings
         , _appCfg_logMessage = errorLevelLogger
         }
@@ -180,6 +183,7 @@ newHead routeText = do
   js (static @"js/nacl-fast.min-v1.0.0.js")
   -- Allows for BIP39-based key generation and encrypted storage of private keys
   js (static @"js/kadena-crypto.js")
+  js (static @"js/wallet-connect/umd/index.min.js")
   (bowser, _) <- js' (static @"js/bowser.min.js")
   pure $ domEvent Load bowser
   where

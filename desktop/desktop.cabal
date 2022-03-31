@@ -55,6 +55,7 @@ library
     , transformers
     , universe-dependent-sum
     , wai-cors
+    , wallet-connect
     , warp
 
   exposed-modules:

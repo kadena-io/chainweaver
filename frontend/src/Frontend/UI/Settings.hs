@@ -24,6 +24,7 @@ import Frontend.UI.Dialogs.NetworkEdit (uiNetworkEdit)
 import Frontend.UI.Dialogs.ChangePassword (uiChangePasswordDialog)
 import Frontend.UI.Dialogs.ExportWallet (uiExportWalletDialog)
 import Frontend.UI.Dialogs.TxLogs (uiTxLogs)
+import Frontend.UI.Dialogs.WalletConnect (uiWalletConnect)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridCell)
 import Frontend.UI.Modal
 
@@ -62,6 +63,8 @@ uiSettings enabledSettings model fileFFI = elClass "div" "icon-grid" $ do
       settingItem "Change Password" (static @"img/lock-light.svg") (uiChangePasswordDialog changePassword)
     , ffor (_enabledSettings_exportWallet enabledSettings) $ \exportWallet-> do
       settingItem "Export Wallet" (static @"img/export.svg") (uiExportWalletDialog exportWallet)
+    , ffor (_enabledSettings_walletConnect enabledSettings) $ \walletConnect -> do
+      settingItem "Wallet Connect" (static @"img/WalletConnect.svg") (uiWalletConnect walletConnect)
     , includeSetting _enabledSettings_transactionLog $ settingItem "Transaction Log" (static @"img/transaction-logs.svg")
         $ uiTxLogs fileFFI
     ]

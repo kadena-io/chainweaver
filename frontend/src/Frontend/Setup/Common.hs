@@ -13,7 +13,7 @@ module Frontend.Setup.Common where
 
 import Control.Lens ((??), (?~), (<>~))
 import Control.Error (hush)
-import Control.Monad (unless, void)
+import Control.Monad (guard, unless, void, when)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe (MaybeT(MaybeT), runMaybeT)
@@ -99,7 +99,7 @@ finishSetupWF ws = pure . (,) (ws, never, never)
 
 lockScreen
   :: (DomBuilder t m, PostBuild t m, MonadIO m, MonadFix m, MonadHold t m)
-  => Event t (Maybe Password) -> m (Event t (), Dynamic t Text, Event t ())
+  => Event t (Maybe Password) -> m (Event t (), Dynamic t Password, Event t ())
 lockScreen isValid = do
   splashLogo
   el "div" $ mdo
@@ -124,7 +124,31 @@ lockScreen isValid = do
         elAttr "img" ("src" =: static @"img/launch_dark.svg" <> "class" =: "button__text-icon") blank
         text "Help"
       uiButton btnCfgSecondary $ text "Restore"
-    pure (restore, value pass, eSubmit)
+    pure (restore, Password <$> value pass, eSubmit)
+
+lockScreenWidget
+  ::
+  (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m,
+   MonadIO m, MonadFix m, MonadHold t m, MonadJSM (Performable m)
+  )
+  => Event t ()
+  -> (key -> Password -> (Performable m) Bool)
+  -> Bool
+  -> Behavior t key
+  -> m (Event t (), Event t Password)
+lockScreenWidget signingReqEv pwCheck isWalletConnect xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ mdo
+  (restore, pass, eSubmit) <- lockScreen isValid
+  when isWalletConnect $ do
+    let line = divClass (setupClass "signing-request") . text
+    line "You are about to do a Wallet Connect pairing."
+    line "Please login to finish doing the pairing, or close this tab if don't intend to proceed with the pairing."
+  widgetHold_ blank $ ffor signingReqEv $ \_ -> do
+    let line = divClass (setupClass "signing-request") . text
+    line "You have an incoming signing request."
+    line "Unlock your wallet to view and sign the transaction."
+  isValid <- performEvent $ ffor (tag ((,) <$> current pass <*> xprv) eSubmit) $ \(p, x) -> do
+    (p <$) . guard <$> pwCheck x p
+  pure (restore, fmapMaybe id isValid)
 
 -- Make this take a list of the current progress instead so we can maintain
 -- the list of how much we have done so far.

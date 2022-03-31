@@ -233,5 +233,5 @@ instance (Prerender js t m, Monad m, Reflex t) => Prerender js t (BIPCryptoT t m
   type Client (BIPCryptoT t m) = BIPCryptoT t (Client m)
   prerender a b = BIPCryptoT $ prerender (unBIPCryptoT a) (unBIPCryptoT b)
 
-runBIPCryptoT :: Behavior t (Crypto.XPrv, Text) -> BIPCryptoT t m a -> m a
-runBIPCryptoT b (BIPCryptoT m) = runReaderT m b
+runBIPCryptoT :: (Reflex t) => Behavior t (Crypto.XPrv, Password) -> BIPCryptoT t m a -> m a
+runBIPCryptoT b (BIPCryptoT m) = runReaderT m ((\(k, Password p) -> (k, p)) <$> b)

@@ -32,6 +32,7 @@ import Language.Javascript.JSaddle (MonadJSM)
 import Reflex.Dom.Core hiding (Key)
 import Pact.Server.ApiClient (HasTransactionLogger, TransactionLogger, askTransactionLogger, _transactionLogger_rotateLogFile)
 import Obelisk.Route.Frontend
+import WalletConnect.Wallet
 import Common.Wallet
 import Common.Route
 import qualified Frontend.App as App (app)
@@ -89,9 +90,11 @@ bipWalletBrowser
      , MonadJSM (Performable m)
      )
   => FileFFI t m
+  -> WalletConnect t
+  -> Event t (Maybe Metadata, String, WalletConnect.Wallet.Request)
   -> MkAppCfg t m
   -> RoutedT t (R FrontendRoute) m ()
-bipWalletBrowser fileFFI mkAppCfg = do
+bipWalletBrowser fileFFI walletConnect wcSignReqErrEv mkAppCfg = do
   txLogger <- askTransactionLogger
   let
     changePasswordBrowserAction i newRoot newPass = do
@@ -137,7 +140,14 @@ bipWalletBrowser fileFFI mkAppCfg = do
       LockScreen_RunSetup :=> _ -> runSetup0 Nothing WalletExists_No
       -- Wallet exists but the lock screen is active
       LockScreen_Locked :=> Compose root -> do
-        (restore, mLogin) <- lockScreenWidget $ fmap runIdentity $ current root
+        isWc <- do
+          curRoute <- sample . current =<< askRoute
+          return $ case curRoute of
+            FrontendRoute_WalletConnect :/ _ -> True
+            _ -> False
+        let signingReqEv = () <$ _walletConnect_requests walletConnect
+        (restore, mLogin) <- lockScreenWidget signingReqEv passwordRoundTripTest
+          isWc $ fmap runIdentity $ current root
         pure $ leftmost
           [ (LockScreen_Restore ==>) . runIdentity <$> current root <@ restore
           , (LockScreen_Unlocked ==>) <$> attach (runIdentity <$> current root) mLogin
@@ -152,8 +162,8 @@ bipWalletBrowser fileFFI mkAppCfg = do
 
           (updates, trigger) <- newTriggerEvent
           let frontendFileFFI = liftFileFFI (lift . lift) fileFFI
-          App.app sidebarLogoutLink frontendFileFFI $ mkAppCfg $
-            appSettingsBrowser txLogger frontendFileFFI trigger details updates changePasswordBrowserAction
+          App.app sidebarLogoutLink frontendFileFFI wcSignReqErrEv $ mkAppCfg $
+            appSettingsBrowser txLogger frontendFileFFI trigger details updates changePasswordBrowserAction walletConnect
 
           setRoute $ landingPageRoute <$ onLogoutConfirm
           pure $ leftmost
@@ -175,8 +185,9 @@ appSettingsBrowser ::
   -> Dynamic t (Identity (PrivateKey, Password))
   -> Event t (PrivateKey, Password)
   -> (Int -> PrivateKey -> Password -> (Performable m) (Key PrivateKey))
+  -> WalletConnect t
   -> EnabledSettings PrivateKey t m
-appSettingsBrowser txLogger frontendFileFFI newPwdTrigger details keyUpdates changePasswordBrowserAction = EnabledSettings
+appSettingsBrowser txLogger frontendFileFFI newPwdTrigger details keyUpdates changePasswordBrowserAction wc = EnabledSettings
   { _enabledSettings_changePassword = Just $ ChangePassword
     { _changePassword_requestChange = performEvent . attachWith doChange (current details)
     -- When updating the keys here, we just always regenerate the key from
@@ -184,6 +195,7 @@ appSettingsBrowser txLogger frontendFileFFI newPwdTrigger details keyUpdates cha
     , _changePassword_updateKeys = (keyUpdates, changePasswordBrowserAction)
     }
   , _enabledSettings_exportWallet = Just $ mkExportWallet txLogger frontendFileFFI details (Proxy :: Proxy (BIPStorage PrivateKey))
+  , _enabledSettings_walletConnect = Just wc
   , _enabledSettings_transactionLog = False
   }
   where
@@ -202,20 +214,6 @@ appSettingsBrowser txLogger frontendFileFFI newPwdTrigger details keyUpdates cha
                 setItemStorage localStorage BIPStorage_RootKey newRoot
                 liftIO $ newPwdTrigger (newRoot, newPass)
                 pure $ Right ()
-
-lockScreenWidget
-  ::
-  (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m,
-   MonadIO m, MonadFix m, MonadHold t m, MonadJSM (Performable m)
-  )
-  => Behavior t PrivateKey -> m (Event t (), Event t Password)
-lockScreenWidget xprv = setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ mdo
-  (restore, pass, eSubmit) <- lockScreen isValid
-  let prvAndPass = (,) <$> xprv <*> (fmap Password $ current pass)
-  isValid <- performEvent $ ffor (attach prvAndPass eSubmit) $ \((xprv', pass'), _) -> do
-    isMatch <- passwordRoundTripTest xprv' pass'
-    pure $ if isMatch then Just pass' else Nothing
-  pure (restore, fmapMaybe id isValid)
 
 -- | Check the validity of the password by signing and verifying a message
 passwordRoundTripTest :: MonadJSM m => PrivateKey -> Password -> m Bool
