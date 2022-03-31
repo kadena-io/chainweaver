@@ -36,6 +36,7 @@ module Frontend.UI.Widgets
   , accountListId
   , accountDatalist
   , moduleListId
+  , moduleListDyn
   , moduleDatalist
   , uiAccountNameInput
   , uiAccountNameInputNoDropdown
@@ -1099,6 +1100,9 @@ accountListId = "account-list"
 moduleListId :: Text
 moduleListId = "module-list"
 
+moduleListDyn :: (Reflex t, HasNetwork ide t) => ide -> Dynamic t [ModuleName]
+moduleListDyn ideL = Set.toList . Set.fromList . concat . Map.elems <$> ideL ^. network_modules
+
 -- | Global dom representation of the module list for use in an HTML5 combo
 -- box. This uses and is addressed by an id, so there should only ever be one of
 -- them in the DOM. Currently it's at the very top of the <body> tag.
@@ -1110,7 +1114,7 @@ moduleDatalist
   => ide
   -> m ()
 moduleDatalist ideL =
-  uiDatalist moduleListId $ map renderCompactText . Set.toList . Set.fromList . concat . Map.elems <$> ideL ^. network_modules
+  uiDatalist moduleListId $ map renderCompactText <$> moduleListDyn ideL
 
 uiAccountNameInput
   :: ( DomBuilder t m
