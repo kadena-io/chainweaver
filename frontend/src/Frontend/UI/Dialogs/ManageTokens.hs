@@ -59,7 +59,7 @@ inputToken model _ = do
   networkView $ model ^. network_modules <&> \moduleMap ->
     if Map.null moduleMap
       then do
-        void $ modalMain $ text "Loading..."
+        void $ modalMain $ text "Loading Tokens..."
         pure mempty
       else do
         (dmFung, clickEv, addEv) <- modalMain $ do
