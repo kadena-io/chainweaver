@@ -143,7 +143,14 @@ doRespond client topic id' result = do
     response <- do
       o <- create
       case result of
-        Left _ -> (o <# "error") ("JSONRPC_REQUEST_METHOD_REJECTED" :: Text)
+        Left _ -> do
+          error <- do
+            o <- create
+            -- JSONRPC_REQUEST_METHOD_REJECTED
+            (o <# "message") ("User rejected the request." :: Text)
+            (o <# "code") (4001 :: Int) -- 4000 (EIP-1193)
+            pure o
+          (o <# "error") error
         Right v -> (o <# "result") v
       (o <# "jsonrpc") ("2.0" :: Text)
       (o <# "id") id'
