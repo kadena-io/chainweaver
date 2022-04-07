@@ -70,8 +70,8 @@ getPermissions obj = liftJSM $ do
 
 makePairing :: MonadJSM m => JSVal -> JSVal -> m Pairing
 makePairing client pairing = liftJSM $ do
-  logValue "makePairing"
-  logValue pairing
+  -- logValue "makePairing"
+  -- logValue pairing
   topic <- valToText =<< pairing ! "topic"
   pk <- valToText =<< flip (!) "publicKey" =<< pairing ! "peer"
   metadata <- getMetadata =<< pairing ! "state"
@@ -91,7 +91,7 @@ makePairing client pairing = liftJSM $ do
 
 doConnect :: JSVal -> Maybe Topic -> (Permissions, Metadata) -> JSM JSVal
 doConnect client mTopic (permissions, metadata) = do
-  logValue "doConnect"
+  -- logValue "doConnect"
   args <- do
     o <- create
     (o <# "permissions") =<< toJSVal (A.toJSON permissions)
@@ -103,7 +103,7 @@ doConnect client mTopic (permissions, metadata) = do
         pure o
       (o <# "pairing") pairing
     pure o
-  logValue args
+  -- logValue args
   client ^. js1 "connect" args
 
 doPair uri client = do
@@ -117,8 +117,8 @@ doPair uri client = do
 
 doRequest :: JSVal -> Topic -> Request -> JSM JSVal
 doRequest client topic (Request chainId method params) = do
-  logValue "doRequest"
-  logValue topic
+  -- logValue "doRequest"
+  -- logValue topic
   args <- do
     o <- create
     (o <# "topic") topic
@@ -130,13 +130,13 @@ doRequest client topic (Request chainId method params) = do
       pure o
     (o <# "request") request
     pure o
-  logValue args
+  -- logValue args
   client ^. js1 "request" args
 
 doRespond :: JSVal -> Topic -> JSVal -> Either () JSVal -> JSM ()
 doRespond client topic id' result = do
-  logValue "doRespond"
-  logValue topic
+  -- logValue "doRespond"
+  -- logValue topic
   args <- do
     o <- create
     (o <# "topic") topic
@@ -157,7 +157,7 @@ doRespond client topic id' result = do
       pure o
     (o <# "response") response
     pure o
-  logValue args
+  -- logValue args
   void $ client ^. js1 "respond" args
 
 -- JSaddle APIs

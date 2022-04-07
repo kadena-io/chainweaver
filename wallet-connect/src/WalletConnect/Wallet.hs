@@ -129,9 +129,9 @@ doNewPairing walletConnect uriEv = performEventAsync $ ffor uriEv $ \uri -> \res
 
 makeSession :: (MonadJSM m) => JSVal -> JSVal -> m Session
 makeSession client session = do
-  liftJSM $ do
-    logValue "makeSession"
-    logValue session
+  -- liftJSM $ do
+  --   logValue "makeSession"
+  --   logValue session
   topic <- liftJSM $ valToText =<< session ! "topic"
   peer <- liftJSM $ getMetadataPublicKey =<< session ! "peer"
   let
@@ -147,8 +147,8 @@ makeSession client session = do
   return $ Session topic delete peer
 
 subscribeToEvents clientMVar reqAction proposalAction sessionAction pairingsAction = fun $ \_ _ (client:_) -> do
-  logValue ("subscribeToEvents" :: Text)
-  logValue client
+  -- logValue ("subscribeToEvents" :: Text)
+  -- logValue client
 
   liftIO $ putMVar clientMVar client
 
@@ -159,8 +159,8 @@ subscribeToEvents clientMVar reqAction proposalAction sessionAction pairingsActi
 
   let
     onProposal = fun $ \_ _ [proposal] -> do
-      logValue "onProposal"
-      logValue proposal
+      -- logValue "onProposal"
+      -- logValue proposal
       topic <- valToText =<< proposal ! "topic"
       permissions <- getPermissions proposal
       ttl <- fromJSValUnchecked =<< proposal ! "ttl"
@@ -197,8 +197,8 @@ subscribeToEvents clientMVar reqAction proposalAction sessionAction pairingsActi
 
   let
     onRequest = fun $ \_ _ [requestEvent] -> do
-      logValue "onRequest"
-      logValue requestEvent
+      -- logValue "onRequest"
+      -- logValue requestEvent
       topic <- valToText =<< requestEvent ! "topic"
       chainId <- valToText =<< requestEvent ! "chainId"
       req <- requestEvent ! "request"
@@ -219,7 +219,7 @@ subscribeToEvents clientMVar reqAction proposalAction sessionAction pairingsActi
   client ^. js2 "on" request onRequest
 
   let onPairingSync = fun $ \_ _ _ -> do
-        logValue "onSync"
+        -- logValue "onSync"
         readPairings
 
       readPairings = do
@@ -237,7 +237,7 @@ subscribeToEvents clientMVar reqAction proposalAction sessionAction pairingsActi
   void $ client ^. js2 "on" deleted onPairingSync
 
   let onSync = fun $ \_ _ _ -> do
-        logValue "onSync"
+        -- logValue "onSync"
         readSessions
 
       readSessions = do
