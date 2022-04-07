@@ -56,7 +56,7 @@ in with obelisk;
           desktop = ./desktop;
           mac = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./mac;
           linux = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./linux;
-          wallet-connect = ./wallet-connect;
+          wallet-connect = hackGet ./dep/wallet-connect;
       };
 
     overrides = let
