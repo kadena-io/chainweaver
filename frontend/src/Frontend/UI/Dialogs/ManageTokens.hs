@@ -76,8 +76,8 @@ inputToken
   -> m (Event t (mConf, Event t ()))
 inputToken model _ = do
   close <- modalHeader $ text "Manage Tokens"
-  networkView $ model ^. network_modules <&> \moduleMap ->
-    if Map.null moduleMap
+  networkView $ model ^. network_modules <&> \chainToModuleMap ->
+    if Map.null chainToModuleMap
       then do
         void $ modalMain $ text "Loading Tokens..."
         pure mempty
@@ -88,10 +88,9 @@ inputToken model _ = do
             let
               tokenValidator inputEv = do
                 let
-                  chainTomoduleMapDyn = model ^. network_modules
-                  moduleToChainMapDyn = invertMap <$> chainTomoduleMapDyn
-                  chainListDyn = Map.keys <$> chainTomoduleMapDyn
-                dynEv <- networkHold (pure never) $ (,,) <$> current moduleToChainMapDyn <*> current chainListDyn <@> inputEv <&> \(moduleToChainMap, chainList, input) ->
+                  moduleToChainMap = invertMap chainToModuleMap
+                  chainList = Map.keys chainToModuleMap
+                dynEv <- networkHold (pure never) $ inputEv <&> \input ->
                   case parseModuleName input of
                     -- User input is not a valid module name
                     Left err -> pure never
