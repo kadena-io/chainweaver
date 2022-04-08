@@ -122,6 +122,9 @@ uiManageTokensButton
      , HasWalletCfg (ModalCfg mConf t) key t
      , HasModalCfg mConf (Modal mConf m t) t
      , HasWallet model key t
+     , HasLogger model t
+     , HasTransactionLogger m
+     , HasCrypto key m
      )
   => model -> m mConf
 uiManageTokensButton model = do
