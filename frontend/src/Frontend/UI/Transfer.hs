@@ -835,10 +835,11 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
         transferMetadata model netInfo fks tks ti ty
       let payload = buildUnsignedCmd netInfo ti ty <$> meta
       ddSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
-        let signingData = current $ (,,)
+        let pkt2pk = fromPactPublicKey . Pact.PublicKey . T.encodeUtf8
+            signingData = current $ (,,)
               <$> (model ^. wallet_keys)
               <*> payload
-              <*> (_transferMeta_sourceChainSigners <$> meta)
+              <*> ((fmap $ pkt2pk . _siPubKey) <$> (_transferMeta_sourceChainSigners <$> meta))
             produceSigsIfSigTab ((cwKeys, payload, meta), tab) =
               case tab of
                 TransferTab_Signatures -> Just <$$> uiSignatures cwKeys payload meta
