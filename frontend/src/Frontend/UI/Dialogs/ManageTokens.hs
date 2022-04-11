@@ -101,7 +101,18 @@ inputToken model _ = do
                         -- If the module does not exist on any chains, it will store all the chainIds.
                         chainIdsToCheck = fromMaybe chainList $ Map.lookup mdule moduleToChainMap
                         net = model ^. network
-                        createCode moduleName = "(contains \"fungible-v2\" (at 'interfaces (describe-module \"" <> moduleName <> "\")))"
+                        createCode moduleName =
+                          -- Writing the query in this way allows us to restrict the functions that can produce an error
+                          -- In the query below, only the `describe-module` function can generate an error.
+                          -- If `describe-module` generated an error, it means that the user entered module is not present on any chain.
+                          -- If `describe-module` didn't generate any error, it means that the user entered module is a valid module,
+                          --      though it might not be a valid "fungible-v2" contract. For this contract, we should return a False.
+                          "(let ((moduleDesc (describe-module \"" <> moduleName <> "\")))" <>
+                            "(contains \"fungible-v2\"" <>
+                              "(if (contains 'interfaces moduleDesc)" <>
+                                "(at 'interfaces moduleDesc)" <>
+                                "[]" <>
+                                ")))"
 
                       reqEv <- networkView $ getNetworkNameAndMeta net <&> \(netName, netMetadata) ->
                         forM chainIdsToCheck $ \chainId ->
