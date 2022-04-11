@@ -211,10 +211,8 @@ expectedAccounts =
     , (mkNetworkName "testnet", testnetmap)
     ]
 
--- This has been copied over from V1.hs, line 93. The "coin" token is required,
--- but the additional 10 tokens have been kept for just UI demos.
 expectedTokens :: TokenStorage
-expectedTokens = ModuleName "coin" Nothing :| map (\i -> ModuleName (pack $ show i) Nothing) [1..10]
+expectedTokens = ModuleName "coin" Nothing :| []
 
 testVersioner
   :: ( HasCrypto TestPrv m
