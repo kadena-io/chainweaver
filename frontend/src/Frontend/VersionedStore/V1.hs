@@ -90,7 +90,7 @@ upgradeFromV0 v0 = do
     , newNetworks
     ]
   where
-    tokens = ModuleName "coin" Nothing :| map (\i -> ModuleName (pack $ show i) Nothing) [1..10]
+    tokens = ModuleName "coin" Nothing :| []
     oldKeysList = maybe [] (IntMap.toList . runIdentity) (DMap.lookup V0.StoreWallet_Keys v0)
 
     -- We have to walk through the slightly different encoding of the Network information.

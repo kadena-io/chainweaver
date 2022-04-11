@@ -239,7 +239,6 @@ makeWallet mChangePassword model conf = do
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
   let
     coinList = ModuleName "coin" Nothing :| []
-      --[ModuleName "fungible-crosschain-test" $ Just $ NamespaceName "free"]
   initialTokens <- fromMaybe coinList <$> loadTokens
   tokens <- holdDyn initialTokens $ _walletCfg_moduleList conf
 

@@ -150,7 +150,6 @@ inputToken model _ = do
           deleteToken (t NE.:| ts) token = t NE.:| filter (/= token) ts
           processUserAction action tokens = either (deleteToken tokens) (addToken tokens) action
           addEv = fmapMaybe id $ updated dmFung
-          tokenListDyn = model ^. wallet_tokenList
         localListDyn <- foldDyn processUserAction initialTokens $ leftmost
           [ Left <$> deleteEv
           , Right <$> addEv
