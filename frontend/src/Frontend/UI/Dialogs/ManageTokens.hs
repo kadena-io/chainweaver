@@ -165,7 +165,13 @@ inputToken model _ = do
           [ Left <$> deleteEv
           , Right <$> addEv
           ]
-        let 
-          fungE = tagMaybe (current dmFung) done
-          conf = mempty & walletCfg_moduleList .~ tag (current localListDyn) done
+        let
+          fungibleDyn = _wallet_fungible $ model ^. wallet
+          fungE = fmapMaybe id $ (,) <$> current fungibleDyn <*> current localListDyn <@ done <&> \(currentFungible, localList) ->
+            -- If currently selected token is not in the new local list
+            -- that means it was deleted by the user. Switch to the head element ie "coin".
+            if currentFungible `notElem` localList
+              then Just $ NE.head localList
+              else Nothing
+          conf = mempty & walletCfg_moduleList .~ tag (current localListDyn) done & walletCfg_fungibleModule .~ fungE
         pure (conf, done <> close)
