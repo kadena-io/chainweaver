@@ -1615,6 +1615,7 @@ textFormWidgetAsync initPopState getTriggerEvent isValid dropdownListId cfg = md
               Warning e _ -> PopoverState_Warning e
               _ -> PopoverState_Disabled
           , loadingEv
+          , PopoverState_Disabled <$ inputEv
           ]
         )
 
