@@ -166,6 +166,7 @@ import qualified Pact.Types.Util as Pact
 import           Common.Wallet
 import           Frontend.Network (HasNetwork(..), maxCoinPrecision)
 import           Frontend.Foundation
+import           Frontend.ModuleExplorer.ModuleRef
 import           Frontend.TxBuilder
 import           Frontend.UI.Button
 import           Frontend.UI.Common
@@ -1301,7 +1302,7 @@ uiTokenDropdown
   -> PrimFormWidgetConfig t ModuleName
   -> Dynamic t (NE.NonEmpty ModuleName)
   -> m (Dynamic t ModuleName)
-uiTokenDropdown m cfg tokenList = fmap value $ dropdownFormWidget (NE.toList <$> tokenList) renderCompactText cfg
+uiTokenDropdown m cfg tokenList = fmap value $ dropdownFormWidget (NE.toList <$> tokenList) renderTokenName cfg
 
 uiKeyPairDropdown
   :: forall t m key model

@@ -41,6 +41,8 @@ module Frontend.ModuleExplorer.ModuleRef
     -- * Get hold of a `Module`
   , fetchModule
     -- * Pretty printing
+  , renderTokenModule
+  , renderTokenName
   , textModuleRefSource
   , textModuleRefName
   ) where
@@ -222,6 +224,16 @@ textModuleRefSource isModule m =
   where
     printPretty n d = mconcat [ n, " ", moduleText, " [ " , d , " ]" ]
     moduleText = if isModule then "Module" else "Interface"
+
+-- | For the "coin" module show "KDA", for other tokens use `_mnName`
+renderTokenModule :: ModuleName -> T.Text
+renderTokenModule (ModuleName "coin" Nothing) = "KDA"
+renderTokenModule t = _mnName t
+
+-- | For the "coin" module show "KDA", for other tokens use `renderCompactText`
+renderTokenName :: ModuleName -> T.Text
+renderTokenName (ModuleName "coin" Nothing) = "KDA"
+renderTokenName t = renderCompactText t
 
 -- Get hold of a deployed module:
 

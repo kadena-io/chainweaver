@@ -146,9 +146,9 @@ inputToken model _ = do
             delClicks <- forM (NE.toList ne) $ \token -> do
               (e, _) <- accordionItem' False "segment segment_type_secondary"
                 (do
-                  text $ _mnName token
+                  text $ renderTokenModule token
                   deleteButtonNaked $ def & uiButtonCfg_class .~ "accordion__title-button")
-                (text $ renderCompactText token)
+                (text $ renderTokenName token)
               pure $ token <$ e
             pure $ leftmost delClicks
           deleteEv <- switchHold never eventEv
