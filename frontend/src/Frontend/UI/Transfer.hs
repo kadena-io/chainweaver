@@ -1088,7 +1088,7 @@ gasPayersSection model netInfo fks tks ti = do
         defaultDestGasPayer = case Map.lookup toAccount tks of
           Just (AccountStatus_Exists dets)
             | _accountDetails_balance dets > AccountBalance 0 -> toAccount
-          _ -> AccountName "free-x-chain-gas"
+          _ -> AccountName "free-x-chain-gas2"
     (dgp1, mdmgp2) <- if fromChain == toChain
       then do
         let initialGasPayer = if _ti_maxAmount ti then Nothing else Just (_ca_account $ _ti_fromAccount ti)
@@ -1177,10 +1177,14 @@ transferCapability from to amount = SigCapability
     ]
   }
 
-crosschainCapability :: AccountName -> SigCapability
-crosschainCapability from = SigCapability
-  { _scName = QualifiedName { _qnQual = "coin", _qnName = "DEBIT", _qnInfo = def }
-  , _scArgs = [PLiteral $ LString $ unAccountName from]
+crosschainCapability :: AccountName -> AccountName -> Decimal -> ChainId -> SigCapability
+crosschainCapability from to amount chain = SigCapability
+  { _scName = QualifiedName { _qnQual = "coin", _qnName = "TRANSFER_XCHAIN", _qnInfo = def }
+  , _scArgs = [ PLiteral $ LString $ unAccountName from
+              , PLiteral $ LString $ unAccountName to
+              , PLiteral $ LDecimal amount
+              , PLiteral $ LString $ _chainId chain
+              ]
   }
 
 gasCapability :: SigCapability
@@ -1285,7 +1289,7 @@ transferMetadata model netInfo fks tks ti ty = do
       amount = if ty == SafeTransfer then rawAmount + safeTransferEpsilon else rawAmount
       transferCap = if fromChain == toChain
                       then transferCapability fromAccount toAccount amount
-                      else crosschainCapability fromAccount
+                      else crosschainCapability fromAccount toAccount amount toChain
       fromCapsA = foldr (addCap transferCap) <$> gasCaps <*> fromTxKeys
       allFromCaps = if ty == SafeTransfer
                       then foldr (addCap (transferCapability toAccount fromAccount safeTransferEpsilon))
@@ -1313,7 +1317,7 @@ transferMetadata model netInfo fks tks ti ty = do
           then Just 1200
           else if fromChain == toChain
             then Just 600
-            else Just 400  -- Cross-chains need to be under 400 in order to use gas-station
+            else Just 450  -- Cross-chains need to be under 450 in order to use gas-station
     (conf, ttl, lim, price) <- uiMetaData model Nothing defaultLimit
     elAttr "div" ("style" =: "margin-top: 10px") $ do
       now <- fmap round $ liftIO $ getPOSIXTime
