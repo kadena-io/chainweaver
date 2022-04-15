@@ -98,6 +98,7 @@ import Frontend.Storage
 import Frontend.Network
 import Frontend.VersionedStore
 import Frontend.Log
+import Frontend.UI.Common
 
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey :: Event t ()
@@ -238,7 +239,7 @@ makeWallet mChangePassword model conf = do
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
   let
-    coinList = ModuleName "coin" Nothing :| []
+    coinList = kdaToken :| []
   initialTokens <- fromMaybe coinList <$> loadTokens
   tokens <- holdDyn initialTokens $ _walletCfg_moduleList conf
 

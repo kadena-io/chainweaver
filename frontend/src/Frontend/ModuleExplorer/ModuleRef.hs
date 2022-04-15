@@ -41,7 +41,6 @@ module Frontend.ModuleExplorer.ModuleRef
     -- * Get hold of a `Module`
   , fetchModule
     -- * Pretty printing
-  , renderTokenModule
   , renderTokenName
   , textModuleRefSource
   , textModuleRefName
@@ -90,6 +89,7 @@ import           Frontend.ModuleExplorer.Module (nameOfModule)
 import           Frontend.Network
 import           Frontend.Log
 import           Frontend.Crypto.Class
+import           Frontend.UI.Common
 
 -- | A `Module` can come from a number of sources.
 --
@@ -225,15 +225,11 @@ textModuleRefSource isModule m =
     printPretty n d = mconcat [ n, " ", moduleText, " [ " , d , " ]" ]
     moduleText = if isModule then "Module" else "Interface"
 
--- | For the "coin" module show "KDA", for other tokens use `_mnName`
-renderTokenModule :: ModuleName -> T.Text
-renderTokenModule (ModuleName "coin" Nothing) = "KDA"
-renderTokenModule t = _mnName t
-
 -- | For the "coin" module show "KDA", for other tokens use `renderCompactText`
 renderTokenName :: ModuleName -> T.Text
-renderTokenName (ModuleName "coin" Nothing) = "KDA"
-renderTokenName t = renderCompactText t
+renderTokenName t
+  | t == kdaToken = "KDA"
+  | otherwise     = renderCompactText t
 
 -- Get hold of a deployed module:
 

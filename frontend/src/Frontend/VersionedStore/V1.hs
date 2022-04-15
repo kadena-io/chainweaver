@@ -30,6 +30,7 @@ import qualified Frontend.VersionedStore.V0 as V0
 import qualified Frontend.VersionedStore.V0.Wallet as V0
 import Frontend.VersionedStore.MigrationUtils
 import Frontend.Crypto.Class
+import Frontend.UI.Common
 
 -- WARNING: Upstream deps. Check this when we bump pact and obelisk!
 -- May be worth storing this in upstream independent datatypes.
@@ -90,7 +91,7 @@ upgradeFromV0 v0 = do
     , newNetworks
     ]
   where
-    tokens = ModuleName "coin" Nothing :| []
+    tokens = kdaToken :| []
     oldKeysList = maybe [] (IntMap.toList . runIdentity) (DMap.lookup V0.StoreWallet_Keys v0)
 
     -- We have to walk through the slightly different encoding of the Network information.

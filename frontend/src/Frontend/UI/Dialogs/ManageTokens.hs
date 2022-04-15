@@ -28,6 +28,7 @@ import Frontend.Foundation hiding (Arg)
 import Frontend.Log (HasLogger(..))
 import Frontend.ModuleExplorer.ModuleRef
 import Frontend.Network
+import Frontend.UI.Common
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers
@@ -150,12 +151,12 @@ inputToken model _ = do
             pure dmFung
           eventEv <- networkView $ localListDyn <&> \ne -> do
             delClicks <- forM (NE.toList ne) $ \token -> do
-              (e, _) <- accordionItem' False "segment segment_type_secondary"
-                (do
-                  text $ renderTokenModule token
-                  deleteButtonNaked $ def & uiButtonCfg_class .~ "accordion__title-button")
-                (text $ renderTokenName token)
-              pure $ token <$ e
+              ev <- divClass "flex paddingLeftTopRight" $ do
+                divClass "flex-grow paddingTop" $ text $ renderTokenName token
+                if token == kdaToken
+                  then pure never
+                  else deleteButtonNaked def
+              pure $ token <$ ev
             pure $ leftmost delClicks
           deleteEv <- switchHold never eventEv
           pure (dmFung, deleteEv)
