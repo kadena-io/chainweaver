@@ -146,7 +146,7 @@ inputToken model _ = do
 
               triggerEv inputEl = () <$ tag (current $ value inputEl) addClickEv
             dmFung <- divClass "group flex-grow" $
-              fmap snd $ uiTextInputAsync "Enter token" True (Nothing, PopoverState_Disabled) never triggerEv tokenValidator moduleListId
+              fmap snd $ uiTextInputAsync "Enter token" True (Nothing, PopoverState_Disabled) (Just "" <$ addEv) triggerEv tokenValidator moduleListId
             addClickEv <- confirmButton (def & uiButtonCfg_class .~ "margin") "Add"
             pure dmFung
           eventEv <- networkView $ localListDyn <&> \ne -> do
