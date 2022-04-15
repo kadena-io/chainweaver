@@ -90,10 +90,10 @@ inputToken model _ = do
                 let
                   moduleToChainMap = invertMap chainToModuleMap
                   chainList = Map.keys chainToModuleMap
-                dynEv <- networkHold (pure never) $ inputEv <&> \input ->
+                failureOrEventDyn <- networkHold (pure $ Right never) $ (,) <$> current localListDyn <@> inputEv <&> \(localList, input) ->
                   case parseModuleName input of
                     -- User input is not a valid module name
-                    Left err -> pure never
+                    Left err -> pure $ Left $ Failure "Invalid module name"
                     -- User input is a valid module name, check if it already exists on any chain
                     Right mdule -> do
                       let
@@ -114,28 +114,34 @@ inputToken model _ = do
                                 "[]" <>
                                 ")))"
 
-                      reqEv <- networkView $ getNetworkNameAndMeta net <&> \(netName, netMetadata) ->
-                        forM chainIdsToCheck $ \chainId ->
-                          mkSimpleReadReq (createCode (renderCompactText mdule)) netName netMetadata $ ChainRef Nothing chainId
-                      respEv <- performLocalRead (model ^. logger) net reqEv
-                      pure $ respEv <&> \responses ->
-                        -- In the following foldM, we have used Either as a Monad to short circuit the fold.
-                        -- We short circuit the fold as soon as we find a `True`.
-                        -- Note: In order to short circuit, we need to use `Left`, which is commonly used for errors.
-                        --       Here, `Left` does NOT represent errors, only a way to short circuit.
-                        -- If we encounter an unknown error, we keep the already existing error with us.
-                        either id id $
-                          foldM (\err (_, netErrorResult) ->
-                            case netErrorResult of
-                              That (_, pVal) -> case pVal of
-                                PLiteral (LBool b) -> if b
-                                  then Left $ Success mdule
-                                  else Right $ Failure "Contract not a token"
-                                x -> Right err
-                              _ -> Right err
-                            ) (Failure "This module does not exist on any chain") responses
+                      if mdule `elem` localList
+                        then pure $ Left $ Failure "Token already added"
+                        else do
+                          reqEv <- networkView $ getNetworkNameAndMeta net <&> \(netName, netMetadata) ->
+                            forM chainIdsToCheck $ \chainId ->
+                              mkSimpleReadReq (createCode (renderCompactText mdule)) netName netMetadata $ ChainRef Nothing chainId
+                          respEv <- performLocalRead (model ^. logger) net reqEv
+                          pure $ Right $ respEv <&> \responses ->
+                            -- In the following foldM, we have used Either as a Monad to short circuit the fold.
+                            -- We short circuit the fold as soon as we find a `True`.
+                            -- Note: In order to short circuit, we need to use `Left`, which is commonly used for errors.
+                            --       Here, `Left` does NOT represent errors, only a way to short circuit.
+                            -- If we encounter an unknown error, we keep the already existing error with us.
+                            either id id $
+                              foldM (\err (_, netErrorResult) ->
+                                case netErrorResult of
+                                  That (_, pVal) -> case pVal of
+                                    PLiteral (LBool b) -> if b
+                                      then Left $ Success mdule
+                                      else Right $ Failure "Contract not a token"
+                                    x -> Right err
+                                  _ -> Right err
+                                ) (Failure "This module does not exist on any chain") responses
+                let
+                  (failureEv, eventEv) = fanEither $ updated failureOrEventDyn
 
-                switchHold never $ updated dynEv
+                resultEv <- switchHold never eventEv
+                pure $ leftmost [failureEv, resultEv]
 
               triggerEv inputEl = () <$ tag (current $ value inputEl) addClickEv
             dmFung <- divClass "group flex-grow" $
