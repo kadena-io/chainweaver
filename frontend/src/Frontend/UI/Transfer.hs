@@ -720,12 +720,20 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
       (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti ty
       let payload = buildUnsignedCmd netInfo ti ty <$> meta
-      edSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
-        networkView $ transferSigs
-          <$> (model ^. wallet_keys)
-          <*> payload
-          <*> (_transferMeta_sourceChainSigners <$> meta)
-      sc <- holdUniqDyn . join =<< holdDyn (constDyn Nothing) (Just <$$> edSigned)
+      let isSignatureTab = (== TransferTab_Signatures) <$> updated currentTab
+      ddSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
+        let signingData = current $ (,,)
+              <$> (model ^. wallet_keys)
+              <*> payload
+              <*> (_transferMeta_sourceChainSigners <$> meta)
+            produceSigs ((cwKeys, payload, meta), tab) =
+              case tab of
+                TransferTab_Signatures -> Just <$$> transferSigs cwKeys payload meta
+                TransferTab_Metadata -> pure $ constDyn Nothing
+        networkHold (pure $ constDyn Nothing)
+          $ produceSigs
+              <$> (attach signingData $ updated currentTab)
+      sc <- holdUniqDyn $ join ddSigned
       return (conf, meta, payload, sc, destChainInfo)
     footerSection currentTab meta sc = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
