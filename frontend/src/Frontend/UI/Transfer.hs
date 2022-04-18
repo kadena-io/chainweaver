@@ -67,7 +67,7 @@ import qualified Codec.QRCode.JuicyPixels as QR
 import qualified Data.YAML.Aeson as Y
 
 import           Pact.Types.SigData
-import           Kadena.SigningApi (AccountName(..))
+import           Kadena.SigningTypes (AccountName(..))
 import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.API as Api
@@ -227,39 +227,39 @@ uiGenericTransfer
   -> TransferCfg t
   -> m mConf
 uiGenericTransfer model cfg = do
-  let attrs = do
-        visible <- _transferCfg_isVisible cfg
-        pure $ if visible
-          then ("class" =: "main transfer transfer__expanded")
-          else ("class" =: "main transfer transfer__collapsed")
-  elDynAttr "main" attrs $ mdo
-    transferInfo <- divClass "transfer-fields" $ do
-      (fromAcct,amount) <- divClass "transfer__left-pane" $ do
+  eTransInfoAndType <- gTransferWidget
+  let transferWithNet = flip push eTransInfoAndType $ \(mTInfo, tType) ->
+        sampleNetInfo model >>= pure . fmap (mTInfo, tType, )
+      mkModal (Nothing, _, _) = Nothing
+      mkModal (Just ti, ty, ni) = Just $ lookupAndTransfer model ni ti ty
+  pure $ mempty & modalCfg_setModal .~ (fmap mkModal transferWithNet)
+  where
+    -- From
+    fromAccountWidget eClearForm =
+      divClass "transfer__left-pane" $ do
         el "h4" $ text "From"
         fca <- labeledChainAccount model $ mkCfg Nothing
           & initialAttributes .~ "placeholder" =: "Account Name"
-          & setValue .~ (Just $ Nothing <$ clear)
+          & setValue .~ (Just $ Nothing <$ eClearForm)
         rec
           amt <- amountFormWithMaxButton model fca $ mkCfg (Left "", False)
             & setValue .~ (Just $ (Left "", False) <$ leftmost
-                [ clear
+                [ eClearForm
 
                 -- If Max is checked, clear the amount and max checkbox when the
                 -- ChainAccount is updated.  Otherwise leave it alone.
                 , () <$ gate (fmap snd <$> current $ value amt) (updated (value fca))
                 ])
         return (fca,amt)
-      (toAcct,ks) <- divClass "transfer__right-pane" $ do
-        el "h4" $ text "To"
-        toFormWidget model $ mkCfg (Nothing, Nothing)
-          & setValue .~ (Just $ (Nothing, Nothing) <$ clear)
-      return $ runMaybeT $ TransferInfo <$>
-        MaybeT (value fromAcct) <*>
-        MaybeT (hush . fst <$> value amount) <*>
-        lift (snd <$> value amount) <*>
-        MaybeT (value toAcct) <*>
-        lift ks
-    (clear, signTransfer) <- divClass "transfer-fields submit" $ do
+
+    -- Destination
+    toAccountWidget eClear = divClass "transfer__right-pane" $ do
+      el "h4" $ text "To"
+      toFormWidget model $ mkCfg (Nothing, Nothing)
+        & setValue .~ (Just $ (Nothing, Nothing) <$ eClear)
+
+    -- Submit
+    submitOrClearWidget transferInfo =  divClass "transfer-fields submit" $ do
       clr <- el "div" $ uiButton btnCfgTertiary $ text "Clear"
       normal <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Sign & Transfer"
       let safeDisabled Nothing = True
@@ -277,18 +277,31 @@ uiGenericTransfer model cfg = do
             , _uiButtonCfg_title = constDyn $ Just "Safe transfers make it impossible to lose coins by sending to the wrong public key when transferring to the same chain.  They require a little extra work because the receiving account also has to sign the transaction."
             }
       safe <- confirmButton safeBtnCfg "Safe Transfer"
-      -- _ <- confirmButton (def { _uiButtonCfg_disabled = (isNothing <$> transferInfo) }) "Quick Transfer"
       let txEvt = leftmost
             [ NormalTransfer <$ normal
             , SafeTransfer <$ safe
             ]
       return (clr, txEvt)
-    let netInfo = flip push signTransfer $ \ty -> do
-          ni <- sampleNetInfo model
-          return ((ty,) <$> ni)
-    let mkModal (Just ti) (ty, ni) = Just $ lookupAndTransfer model ni ti ty
-        mkModal Nothing _ = Nothing
-    pure $ mempty & modalCfg_setModal .~ (attachWith mkModal (current transferInfo) netInfo)
+
+    attrs = do
+      visible <- _transferCfg_isVisible cfg
+      pure $ if visible
+        then ("class" =: "main transfer transfer__expanded")
+        else ("class" =: "main transfer transfer__collapsed")
+
+    -- Put it all together
+    gTransferWidget = elDynAttr "main" attrs $ mdo
+      transferInfo <- divClass "transfer-fields" $ do
+        (fromAcct,amount) <- fromAccountWidget eClearTransfer
+        (toAcct,ks) <- toAccountWidget eClearTransfer
+        return $ runMaybeT $ TransferInfo <$>
+          MaybeT (value fromAcct) <*>
+          MaybeT (hush . fst <$> value amount) <*>
+          lift (snd <$> value amount) <*>
+          MaybeT (value toAcct) <*>
+          lift ks
+      (eClearTransfer, signTransfer) <- submitOrClearWidget transferInfo
+      pure $ flip attach signTransfer $ current transferInfo
 
 amountFormWithMaxButton
   :: ( DomBuilder t m, MonadFix m
@@ -560,7 +573,7 @@ checkReceivingAccount model netInfo ti ty fks tks fromPair = do
           else
             transferDialog model netInfo ti ty fks tks fromPair
       (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
-        let 
+        let
           transferDialogWithWarn model netInfo ti ty fks tks fromPair = Workflow $ do
             close <- modalHeader $ text "Account Keyset"
             _ <- elClass "div" "modal__main" $ do
@@ -624,7 +637,7 @@ handleMissingKeyset
   -> (AccountName, AccountDetails)
   -> Workflow t m (mConf, Event t ())
 handleMissingKeyset model netInfo ti ty fks tks fromPair = do
-    let 
+    let
       toAccount = _ca_account $ _ti_toAccount ti
       toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
     case parsePubKeyOrKAccount toAccount of
@@ -707,12 +720,20 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
       (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti ty
       let payload = buildUnsignedCmd netInfo ti ty <$> meta
-      edSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
-        networkView $ transferSigs
-          <$> (model ^. wallet_keys)
-          <*> payload
-          <*> (_transferMeta_sourceChainSigners <$> meta)
-      sc <- holdUniqDyn . join =<< holdDyn (constDyn Nothing) (Just <$$> edSigned)
+      let isSignatureTab = (== TransferTab_Signatures) <$> updated currentTab
+      ddSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
+        let signingData = current $ (,,)
+              <$> (model ^. wallet_keys)
+              <*> payload
+              <*> (_transferMeta_sourceChainSigners <$> meta)
+            produceSigs ((cwKeys, payload, meta), tab) =
+              case tab of
+                TransferTab_Signatures -> Just <$$> transferSigs cwKeys payload meta
+                TransferTab_Metadata -> pure $ constDyn Nothing
+        networkHold (pure $ constDyn Nothing)
+          $ produceSigs
+              <$> (attach signingData $ updated currentTab)
+      sc <- holdUniqDyn $ join ddSigned
       return (conf, meta, payload, sc, destChainInfo)
     footerSection currentTab meta sc = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
@@ -866,6 +887,10 @@ crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners meta = Work
         toChainMeta = transferMetaToPublicMeta meta toChain
     close <- modalHeader $ text "Cross Chain Transfer"
     (resultOk, errMsg) <- elClass "div" "modal__main" $ do
+      elAttr "div" ("style" =: "margin-top: 30px; margin-bottom: 30px") $ do
+        el "p" $ do
+          el "strong" $ text "Warning: "
+          text "Prematurely exiting this popup may result in failed or unfinished transactions"
       transactionHashSection cmd
       fbk <- submitTransactionAndListen model cmd fromAccount fromChain (fmap Right nodeInfos)
       let listenDone = ffilter (==Status_Done) $ updated $ _transactionSubmitFeedback_listenStatus fbk
@@ -1070,7 +1095,7 @@ gasPayersSection model netInfo fks tks ti = do
         toChain = _ca_chain (_ti_toAccount ti)
         defaultDestGasPayer = case Map.lookup toAccount tks of
           Just (AccountStatus_Exists dets)
-            | _accountDetails_balance dets > AccountBalance 0 -> toAccount 
+            | _accountDetails_balance dets > AccountBalance 0 -> toAccount
           _ -> AccountName "free-x-chain-gas"
 
         -- If this is a max amount transaction, then leave the source gas payer field empty

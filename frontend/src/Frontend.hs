@@ -18,6 +18,7 @@ import qualified GHCJS.DOM.HTMLElement as HTMLElement
 import qualified GHCJS.DOM.HTMLInputElement as HTMLInput
 import qualified GHCJS.DOM.Types as Types
 import qualified GHCJS.DOM.File as JSFile
+import Kadena.SigningApi
 import Reflex.Dom
 import Pact.Server.ApiClient (runTransactionLoggerT, noLogger)
 import Obelisk.Frontend
@@ -74,12 +75,13 @@ frontend = Frontend
             , _fileFFI_openFileDialog = liftJSM . triggerOpen
             , _fileFFI_deliverFile = \_ -> pure never
             }
-          printResponsesHandler = pure $ FRPHandler never $ performEvent . fmap (liftIO . print)
+
       bipWalletBrowser fileFFI $ \enabledSettings -> AppCfg
         { _appCfg_gistEnabled = False
         , _appCfg_loadEditor = loadEditorFromLocalStorage
         , _appCfg_editorReadOnly = False
-        , _appCfg_signingHandler = printResponsesHandler
+        , _appCfg_quickSignHandler = pure never
+        , _appCfg_signingHandler = pure never
         , _appCfg_enabledSettings = enabledSettings
         , _appCfg_logMessage = errorLevelLogger
         }

@@ -65,7 +65,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Kadena.SigningApi (AccountName(..), mkAccountName)
+import Kadena.SigningTypes (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
 import Pact.Types.Pretty
 import Reflex
@@ -361,7 +361,7 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
         pm chain = Pact.PublicMeta
           { Pact._pmChainId = chain
           , Pact._pmSender = "chainweaver"
-          , Pact._pmGasLimit = defaultTransactionGasLimit
+          , Pact._pmGasLimit = defaultTransactionGasLimit * 2
           , Pact._pmGasPrice = defaultTransactionGasPrice
           , Pact._pmTTL = 3600
           , Pact._pmCreationTime = 0

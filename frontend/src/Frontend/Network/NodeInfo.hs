@@ -58,10 +58,12 @@ import qualified Data.Aeson                  as Aeson
 import qualified Data.Aeson.Lens             as AL
 import           Data.Char                   (isDigit)
 import           Data.Default
+import           Data.Either                 (lefts, rights)
 import           Data.List                   (sortOn)
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
+import           GHCJS.DOM.XMLHttpRequest    (setTimeout)
 import           Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 import           Reflex.Dom.Class            (HasJSContext (..))
 import           Reflex.Dom.Xhr
@@ -118,32 +120,26 @@ nodeVersion ni = case _nodeInfo_type ni of
 
 -- | Retrive the `NodeInfo` for a given host by quering its API.
 discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m, HasJSContext m) => NodeRef -> m (Either Text NodeInfo)
-discoverNode (NodeRef auth) = do
-    httpsReqs <- async $ discoverChainwebOrPact httpsUri
-    httpReqs <- async $ discoverChainwebOrPact httpUri
-
-    -- For some http only servers waiting for a https response will take ages
-    -- on the other hand we need to prefer chainweb detection over pact -s
-    -- detection (as the former is more reliable). Therefore we group them by
-    -- protocol and go with the first success result.
-    waitSuccess [httpsReqs, httpReqs]
-
+discoverNode (NodeRef auth) = go ["Error in discoverNode:"] discoveryFuncs
   where
-    waitSuccess :: [Async (Either Text NodeInfo)] -> m (Either Text NodeInfo)
-    waitSuccess = \case
-      [] -> pure $ Left ""
-      xs -> do
-        (finished, r) <- waitAny xs
-        case r of
-          Left err -> do
-            left ((err <> "\n\n") <>) <$> waitSuccess (filter (/= finished) xs)
-          Right success -> pure $ Right success
+    discoveryFuncs =
+      [ discoverPactNode httpUri
+      , discoverChainwebNode httpsUri
+      , discoverChainwebNode httpUri
+      , discoverPactNode httpsUri
+      ]
+
+    go es [] = pure $ Left $ T.unlines es
+    go es (x:xs) = do
+      res <- x
+      case res of
+        Right a -> pure $ Right a
+        Left e -> go (es ++ [e]) xs
 
     httpsUri = uriFromSchemeAuth [URI.scheme|https|]
     httpUri = uriFromSchemeAuth [URI.scheme|http|]
 
     uriFromSchemeAuth scheme =  NodeUri scheme auth
-
 
 -- | The node this node info is for.
 nodeInfoRef :: NodeInfo -> NodeRef
@@ -297,7 +293,7 @@ newXMLHttpRequestWithErrorSane
     -- case of error.
     -> m ()
 newXMLHttpRequestWithErrorSane req cb =
-    void (newXMLHttpRequestWithError req cb) `catch` handleException
+    void (newXMLHttpRequestWithError req cb >>= \xhr -> setTimeout xhr 2000) `catch` handleException
   where
     handleException :: XhrException -> m ()
     handleException e = liftJSM $ cb $ Left e
@@ -310,7 +306,7 @@ newXMLHttpRequestWithErrorSane req cb =
 
    Possibly a bug in 'newXMLHttpRequestWithError': https://github.com/reflex-frp/reflex-dom/issues/369
 -}
-newtype SafeXhrRequest a = SafeXhrRequest (XhrRequest a)
+newtype SafeXhrRequest a = SafeXhrRequest (XhrRequest a) deriving Show
 
 mkSafeReq :: URI -> Either Text (SafeXhrRequest ())
 mkSafeReq uri = case uri ^. uriAuthority ^? _Right . authPort of
