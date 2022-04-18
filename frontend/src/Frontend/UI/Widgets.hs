@@ -1505,26 +1505,19 @@ textFormWidgetAsync
   -> m (FormWidget t (Maybe a), Event t (Maybe Text))
 textFormWidgetAsync initPopState isValid cfg = mdo
   let
-    -- Treats Warning and Result types as valid values, errors are treated as invalid
-    toValid = \case
-      Warning _ a -> Just a
-      Success a -> Just a
-      Failure _ -> Nothing
-
-    showPopover _ = do
-      let
-        loadingEv = inputEv <&> \input ->
-          if T.null input
-            then PopoverState_Disabled
-            else PopoverState_Loading
-      pure
+    showPopover _ = pure
         ( initPopState
         , leftmost
-          [ resultEv <&> \case
+          [ gate validationIsRelevant $ ffor resultEv $ \case
               Failure e -> PopoverState_Error e
               Warning e _ -> PopoverState_Warning e
               _ -> PopoverState_Disabled
-          , loadingEv
+
+            -- Show loader (or nothing) immediately when user starts typing again
+          , inputEv <&> \input ->
+              if T.null input
+                then PopoverState_Disabled
+                else PopoverState_Loading
           ]
         )
 
@@ -1532,18 +1525,37 @@ textFormWidgetAsync initPopState isValid cfg = mdo
       inp <- uiInputElement $ cfg & initialAttributes %~
                (<> "list" =: accountListId) . addToClassAttr "account-input"
       pure (inp, _inputElement_raw inp)
+  (inputElem, _) <- uiInputWithPopoverWithInitState uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
 
-  (inputE, _) <- uiInputWithPopoverWithInitState uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
-  let
-    inputDyn = value inputE
-    inputEv = updated inputDyn
-  resultEv <- isValid inputEv
-  validDyn <- holdDyn Nothing $ toValid <$> resultEv
+  -- Used to determine when user is typing and when we need to clear popover state and replace it
+  -- with a loader
+  let inputEv = updated $ value inputElem
+
+  -- Only start validating after the user is definitely done typing
+  startValidation <- debounce 1.25 inputEv
+
+  -- Used to prevent stale validations -- when a validation response event is no longer
+  -- valid because the user has started typing again, we don't want to use it
+  validationIsRelevant <- fmap current $ holdDyn True $ leftmost
+    [ False <$ inputEv
+    , True <$ startValidation
+    ]
+
+  resultEv <- isValid startValidation
+  validDyn <- holdDyn Nothing $ leftmost
+
+    [ Nothing <$ inputEv
+    , ffor resultEv $ \case
+        -- Treats Warning and Result types as valid values, errors are treated as invalid
+        Warning _ a -> Just a
+        Success a -> Just a
+        Failure _ -> Nothing
+    ]
   let w = FormWidget
             validDyn
             (() <$ inputEv)
-            (_inputElement_hasFocus inputE)
-  pure (w, domEvent Paste inputE)
+            (_inputElement_hasFocus inputElem)
+  pure (w, domEvent Paste inputElem)
 
 accountNameFormWidgetNoDropdown
   :: ( DomBuilder t m

@@ -1095,12 +1095,14 @@ gasPayersSection model netInfo fks tks ti = do
         toChain = _ca_chain (_ti_toAccount ti)
         defaultDestGasPayer = case Map.lookup toAccount tks of
           Just (AccountStatus_Exists dets)
+            -- TODO: Check if it's a k-account owned by chainweaver
             | _accountDetails_balance dets > AccountBalance 0 -> toAccount
           _ -> AccountName "free-x-chain-gas"
 
         -- If this is a max amount transaction, then leave the source gas payer field empty
         -- Otherwise, fill it with the sender account.
         initialSourceGasPayer = if _ti_maxAmount ti then Nothing else Just fromAccount
+
         initPopState = case initialSourceGasPayer of
           Nothing -> case mkAccountName "" of
             Left e  -> PopoverState_Error e   -- The initial error message to be shown
@@ -1119,10 +1121,8 @@ gasPayersSection model netInfo fks tks ti = do
               return $ Map.lookup gp <$> fmapMaybe id evt
 
         goodGasPayer textEv = do
-          let
-            (errorEv, accEv) = fanEither $ mkAccountName <$> textEv
-          debouncedAccountEv <- debounce 1.0 accEv
-          validationDynEv <- networkHold (return never) $ debouncedAccountEv <&> \acc -> do
+          let (errorEv, accEv) = fanEither $ mkAccountName <$> textEv
+          validationDynEv <- networkHold (return never) $ accEv <&> \acc -> do
             -- Check if the account is either the source or destination account
             if acc == fromAccount || acc == toAccount
               then do
@@ -1142,15 +1142,16 @@ gasPayersSection model netInfo fks tks ti = do
                   withAccountDetails acc fromChain maybeAccDetails $ \accDetails ->
                     W.Success (acc, accDetails)
           pure $ leftmost [Failure <$> errorEv, switchDyn validationDynEv]
+
     (dgp1, mdmgp2) <- if fromChain == toChain
       then do
         (_,dgp1) <- uiTextInputAsync "Gas Paying Account" True initValues
-                                       never goodGasPayer accountListId
+                                       never goodGasPayer
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
         (_,dgp1) <- uiTextInputAsync (mkLabel fromChain) True initValues
-                                       never goodGasPayer accountListId
+                                       never goodGasPayer
         (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True (Just defaultDestGasPayer) never noValidation
         pure $ (dgp1, Just dgp2)
     let
@@ -1289,8 +1290,9 @@ transferMetadata model netInfo fks tks ti ty = do
       "This is a cross-chain transfer.  You must choose an account that has coins on chain %s as the chain %s gas payer otherwise your coins will not arrive!  They will be stuck in transit.  If this happens, they can still be recovered.  Save the request key and get someone with coins on that chain to finish the cross-chain transfer for you." (_chainId toChain) (_chainId toChain)
     el "br" blank
 
-  dialogSectionHeading mempty "Gas Payers"
-  (GasPayers srcPayer mdestPayer) <- divClass "group" $ gasPayersSection model netInfo fks tks ti
+  rec
+    dialogSectionHeading mempty "Gas Payers"
+    (GasPayers srcPayer mdestPayer) <- divClass "group" $ gasPayersSection model netInfo fks tks ti
   let senderAction = getKeysetActionSingle fromChain (Just fromAccount) (Map.lookup fromAccount fks)
       getGpdAction (GasPayerDetails f a d) = getKeysetActionSingle f a d
       dSourceGasAction = getGpdAction <$> srcPayer
