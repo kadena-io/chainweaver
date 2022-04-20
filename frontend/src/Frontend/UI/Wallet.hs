@@ -23,6 +23,7 @@ module Frontend.UI.Wallet
   , uiAccountsTable
   , uiAvailableKeys
   , uiWalletRefreshButton
+  , uiSwitchTokenButton
   , uiWatchRequestButton
   , uiGenerateKeyButton
     -- ** Filters for keys
@@ -34,6 +35,7 @@ module Frontend.UI.Wallet
 import           Control.Lens
 import           Control.Monad               (when, (<=<))
 import           Control.Error               (headMay)
+import           Data.Bifunctor              (second)
 import qualified Data.IntMap                 as IntMap
 import           Data.Map                    (Map)
 import qualified Data.Map                    as Map
@@ -46,6 +48,7 @@ import           Reflex
 import           Reflex.Dom hiding (Key)
 import           Text.Read
 ------------------------------------------------------------------------------
+import           Pact.Types.Names (ModuleName)
 import qualified Pact.Types.Pretty as Pact
 import qualified Pact.Types.Term   as Pact
 ------------------------------------------------------------------------------
@@ -61,11 +64,16 @@ import           Frontend.TxBuilder
 import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
+import           Frontend.UI.Dialogs.SwitchToken (uiSwitchToken)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 -- import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
 import           Frontend.Network
+import           Frontend.UI.FormWidget
+import           Frontend.UI.Form.Common
+import Control.Error.Util (hush)
+import Common.Modules
 ------------------------------------------------------------------------------
 
 -- | Constraints on the model config we have for implementing this widget.
@@ -103,6 +111,21 @@ uiWalletRefreshButton
 uiWalletRefreshButton = do
   eRefresh <- uiButton headerBtnCfg (text "Refresh")
   pure $ mempty & walletCfg_refreshBalances <>~ eRefresh
+
+uiSwitchTokenButton
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , Monoid (ModalCfg mConf t)
+     , Flattenable (ModalCfg mConf t) t
+     , HasWalletCfg mConf key t
+     , HasWalletCfg (ModalCfg mConf t) key t
+     , HasModalCfg mConf (Modal mConf m t) t
+     , HasWallet model key t
+     )
+  => model -> m mConf
+uiSwitchTokenButton model = do
+  switch <- uiButton headerBtnCfg (text "Switch Token")
+  pure $ mempty & modalCfg_setModal .~ (Just (uiSwitchToken model) <$ switch)
 
 uiWatchRequestButton
   :: ( MonadWidget t m
@@ -164,6 +187,7 @@ uiAccountItems
   => model -> Dynamic t (Map AccountName (AccountInfo Account)) -> Dynamic t (Maybe AccountName) -> m mConf
 uiAccountItems model accountsMap dStartOpen = do
   let net = model ^. network_selectedNetwork
+      contractStatus = model ^. wallet_moduleData
       tableAttrs = mconcat
         [ "style" =: "table-layout: fixed; width: 98%"
         , "class" =: "wallet table"
@@ -181,23 +205,26 @@ uiAccountItems model accountsMap dStartOpen = do
       elAttr "col" ("style" =: "width: 25%") blank
 
     el "thead" $ el "tr" $ do
-      let mkHeading = elClass "th" "wallet__table-heading" . text
+      let mkHeading = elClass "th" "wallet__table-heading"
+          fungible = model ^. wallet_fungible
       traverse_ mkHeading $
-        [ ""
-        , ""
-        , "Account Name"
-        , "Owner"
-        , "Keyset Info"
-        , "Notes"
-        , "Balance (KDA)"
-        , ""
+        [ text ""
+        , text ""
+        , text "Account Name"
+        , text "Owner"
+        , text "Keyset Info"
+        , text "Notes"
+        , dynText $ ffor fungible $ \case
+            "coin" -> "Balance (KDA)"
+            f -> "Balance (" <> Pact.renderCompactText f <> ")"
+        , text ""
         ]
 
     el "tbody" $ do
       let cwKeys = model ^. wallet_keys
           dMapAndOpenAcc = (,) <$> accountsMap <*> dStartOpen
           startsOpen = ffor dMapAndOpenAcc $ \(m, open) name -> Map.size m == 1 || (Just name == open)
-      events <- listWithKey accountsMap (uiAccountItem cwKeys startsOpen)
+      events <- listWithKey accountsMap (uiAccountItem cwKeys startsOpen contractStatus)
       dyn_ $ ffor accountsMap $ \accs ->
         when (null accs) $
           elClass "tr" "wallet__table-row" $ elAttr "td" ("colspan" =: "5" <> "class" =: "wallet__table-cell") $
@@ -290,10 +317,11 @@ uiAccountItem
   :: forall key t m. MonadWidget t m
   => Dynamic t (KeyStorage key)
   -> Dynamic t (AccountName -> Bool)
+  -> Dynamic t ModuleData
   -> AccountName
   -> Dynamic t (AccountInfo Account)
   -> m (Event t AccountDialog)
-uiAccountItem cwKeys startsOpen name accountInfo = do
+uiAccountItem cwKeys startsOpen contractStatus name accountInfo = do
   let chainMap = _accountInfo_chains <$> accountInfo
 
       -- Chains get sorted in text order without padding is wrong for more than 10 chains
@@ -349,6 +377,8 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
     let chain = unPadChainId paddedChain
     let details = (^? account_status . _AccountStatus_Exists) <$> dAccount
     let balance = _accountDetails_balance <$$> details
+    let contractStatusChain = Map.lookup chain <$> contractStatus
+    -- let dAccountAndFungStatus = attachPromptlyDyn dAccount $ ffor (updated contractStatus) $ Map.lookup chainId
     -- Previously we always added all chain rows, but hid them with CSS. A bug
     -- somewhere between reflex-dom and jsaddle means we had to push this under
     -- a `dyn`.
@@ -365,7 +395,9 @@ uiAccountItem cwKeys startsOpen name accountInfo = do
           AccountStatus_DoesNotExist -> ""
           AccountStatus_Exists d -> accountGuardSummary $ _accountDetails_guard d
         td $ dynText $ maybe "" unAccountNotes . _vanityAccount_notes . _account_storage <$> dAccount
-        td' " wallet__table-cell-balance" $ dynText $ fmap (uiAccountBalance' False) dAccount
+        td' " wallet__table-cell-balance" $ dyn_ $ ffor contractStatusChain $ \case
+          Just Nothing -> text "Module Does Not Exist On Chain"
+          otherwise -> dynText $ fmap (uiAccountBalance' False) dAccount
         td $ buttons $ switchHold never <=< dyn $ ffor accStatus $ \case
           AccountStatus_Unknown -> pure never
           AccountStatus_DoesNotExist -> do
