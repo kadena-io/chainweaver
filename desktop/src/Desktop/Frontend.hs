@@ -33,7 +33,7 @@ import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Time (NominalDiffTime, getCurrentTime, addUTCTime)
 import Data.Traversable (for)
-import Kadena.SigningApi (SigningRequest)
+import Kadena.SigningApi (SigningRequest, QuickSignRequest)
 import Language.Javascript.JSaddle (liftJSM)
 import Pact.Server.ApiClient (HasTransactionLogger, runTransactionLoggerT, logTransactionFile, askTransactionLogger)
 import Reflex.Dom.Core
@@ -150,9 +150,10 @@ bipWallet
      )
   => FileFFI t m
   -> MVar SigningRequest
+  -> MVar QuickSignRequest
   -> MkAppCfg t m
   -> RoutedT t (R FrontendRoute) m ()
-bipWallet fileFFI signingReq mkAppCfg = do
+bipWallet fileFFI signingReq quickSignReq mkAppCfg = do
   txLogger <- askTransactionLogger
 
   let
@@ -188,7 +189,7 @@ bipWallet fileFFI signingReq mkAppCfg = do
       LockScreen_RunSetup :=> _ -> runSetup0 Nothing WalletExists_No
       -- Wallet exists but the lock screen is active
       LockScreen_Locked :=> Compose root -> do
-        (restore, mLogin) <- lockScreenWidget signingReq $ fmap runIdentity $ current root
+        (restore, mLogin) <- lockScreenWidget signingReq quickSignReq $ fmap runIdentity $ current root
         pure $ leftmost
           [ (LockScreen_Restore ==>) . runIdentity <$> current root <@ restore
           , (LockScreen_Unlocked ==>) <$> attach (runIdentity <$> current root) mLogin
@@ -286,11 +287,13 @@ _watchInactivity checkInterval timeout = do
 
 lockScreenWidget
   :: (DomBuilder t m, PostBuild t m, TriggerEvent t m, PerformEvent t m, MonadIO m, MonadFix m, MonadHold t m)
-  => MVar SigningRequest -> Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
-lockScreenWidget signingReq xprv =
+  => MVar SigningRequest -> MVar QuickSignRequest -> Behavior t Crypto.XPrv -> m (Event t (), Event t Text)
+lockScreenWidget signingReq quickSignReq xprv =
   setupDiv "fullscreen" $ divClass "wrapper" $ setupDiv "splash" $ mdo
     (restore, pass, eSubmit) <- lockScreen $ (fmap . fmap)  Password isValid
-    req <- tryReadMVarTriggerEvent signingReq
+    sreq <- tryReadMVarTriggerEvent signingReq
+    qsreq <- tryReadMVarTriggerEvent  quickSignReq
+    let req = leftmost [() <$ sreq, () <$ qsreq]
     widgetHold_ blank $ ffor req $ \_ -> do
       let line = divClass (setupClass "signing-request") . text
       line "You have an incoming signing request."

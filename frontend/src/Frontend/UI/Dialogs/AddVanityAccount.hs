@@ -3,7 +3,7 @@
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE TupleSections #-}
 module Frontend.UI.Dialogs.AddVanityAccount
-  ( uiAddAccountButton
+  ( uiWatchAccountButton
   , uiCreateAccountButton
   ) where
 
@@ -22,15 +22,15 @@ import Frontend.UI.Widgets.Helpers (dialogSectionHeading)
 import Frontend.Network
 import Frontend.Wallet
 
-uiAddAccountButton
+uiWatchAccountButton
   :: forall t m key mConf
      . ( MonadWidget t m, Monoid mConf
        , HasModalCfg mConf (ModalImpl m key t) t
        )
   => ModalIde m key t
   -> m mConf
-uiAddAccountButton m = do
-  eOpenAddAccount <- uiButton headerBtnCfg  (text "+ Add Account")
+uiWatchAccountButton m = do
+  eOpenAddAccount <- uiButton headerBtnCfg  (text "+ Watch Account")
   pure $ mempty & modalCfg_setModal .~ (Just (uiAddAccountDialog m) <$ eOpenAddAccount)
 
 uiAddAccountDialog
@@ -41,11 +41,11 @@ uiAddAccountDialog
   -> Event t ()
   -> m (mConf, Event t ())
 uiAddAccountDialog model _onCloseExternal = mdo
-  onClose <- modalHeader $ text "Add Account"
+  onClose <- modalHeader $ text "Watch Account"
   name <- modalMain $ do
     dialogSectionHeading mempty "Notice"
     divClass "group" $ text "Add an Account here to display its status. You can add accounts that you do not own as well as accounts that do not exist yet."
-    dialogSectionHeading mempty "Add Account"
+    dialogSectionHeading mempty "Watch Account"
     divClass "group" $ fmap snd $ uiAccountNameInputNoDropdown "Account Name" True Nothing never $ checkAccountNameAvailability
       <$> (model ^. network_selectedNetwork)
       <*> (model ^. wallet_accounts)

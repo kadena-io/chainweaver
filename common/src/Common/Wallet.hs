@@ -106,7 +106,7 @@ import Data.Set (Set)
 import Data.Text (Text)
 import Data.Traversable (for)
 import GHC.Generics (Generic)
-import Kadena.SigningApi (AccountName(..), mkAccountName)
+import Kadena.SigningTypes (AccountName(..), mkAccountName)
 import Pact.Compile (compileExps, mkEmptyInfo)
 import Pact.Parse
 import Pact.Types.Command (RequestKey)

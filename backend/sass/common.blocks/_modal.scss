@@ -384,12 +384,75 @@ button.button.button_type_tertiary.logout-confirm-modal__button {
   text-align: right;
 }
 
-.group__signer {
-  @extend .group;
-  margin-top: 15px;
+$index-width: 20%;
+$accordion-width: 10%;
+$signer-width: 60%;
+
+.signer__group {
+  margin-top: 30px;
 }
 
-.signer__row {
+.payload__header {
   display: flex;
-  margin-top: 10px;
+  border-color: grey;
+  border-style: solid;
+  border-width: 1px;
+  align-items: center;
 }
+.payload__accordion-header {
+  width: $accordion-width;
+}
+
+.payload__index-header {
+  width: $index-width;
+}
+
+.payload__row {
+  padding-bottom: 20px;
+}
+
+.payload__accordion {
+  width: $accordion-width;
+}
+
+.payload__info {
+  margin-left: 3%;
+  margin-right: 3%;
+  padding-top: 25px;
+  padding-bottom: 25px;
+}
+
+.payload__background-wrapper {
+  background-color: #e2e2e2;
+  margin-top: 8px;
+}
+
+.qs-wrapper {
+  background-color: #cbcbcb;
+  overflow: auto;
+}
+
+.payload__txid {
+  width: $signer-width;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.payload__tx-index {
+  width: $index-width;
+}
+
+.signer__capList {
+  // margin-top: 15px;
+}
+
+.signer__header {
+  display: flex;
+  margin-top: 15px;
+  // border-color: grey;
+  // border-style: solid;
+  // border-width: 1px;
+  align-items: center;
+}
+

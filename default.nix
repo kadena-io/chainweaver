@@ -56,7 +56,6 @@ in obApp // rec {
           (obelisk.serverModules.mkDefaultNetworking args)
           (obelisk.serverModules.mkObeliskApp (args // { inherit exe; }))
           ./acme.nix  # Backport of ACME upgrades from 20.03
-
           # (pactServerModule {
           #   hostName = routeHost;
           #   inherit obApp pkgs;
@@ -97,7 +96,7 @@ in obApp // rec {
     let cross = {
           inherit (obApp) exe;
           inherit (obApp.ghc) desktop;
-          shell = obApp.shells.ghc;
+          shell = obApp.shells.ghc { withHoogle = true; };
         };
     in {
       mac   = cross // { inherit mac; };
