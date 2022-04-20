@@ -1088,7 +1088,7 @@ gasPayersSection model netInfo fks tks ti = do
         defaultDestGasPayer = case Map.lookup toAccount tks of
           Just (AccountStatus_Exists dets)
             | _accountDetails_balance dets > AccountBalance 0 -> toAccount
-          _ -> AccountName "free-x-chain-gas2"
+          _ -> AccountName "kadena-xchain-gas"
     (dgp1, mdmgp2) <- if fromChain == toChain
       then do
         let initialGasPayer = if _ti_maxAmount ti then Nothing else Just (_ca_account $ _ti_fromAccount ti)
