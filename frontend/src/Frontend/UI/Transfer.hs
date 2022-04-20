@@ -722,18 +722,17 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
       (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti ty
       let payload = buildUnsignedCmd netInfo ti ty <$> meta
-      let isSignatureTab = (== TransferTab_Signatures) <$> updated currentTab
       ddSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
         let signingData = current $ (,,)
               <$> (model ^. wallet_keys)
               <*> payload
               <*> (_transferMeta_sourceChainSigners <$> meta)
-            produceSigs ((cwKeys, payload, meta), tab) =
+            produceSigsIfSigTab ((cwKeys, payload, meta), tab) =
               case tab of
                 TransferTab_Signatures -> Just <$$> transferSigs cwKeys payload meta
                 TransferTab_Metadata -> pure $ constDyn Nothing
         networkHold (pure $ constDyn Nothing)
-          $ produceSigs
+          $ produceSigsIfSigTab
               <$> (attach signingData $ updated currentTab)
       sc <- holdUniqDyn $ join ddSigned
       return (conf, meta, payload, sc, destChainInfo)
