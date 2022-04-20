@@ -109,6 +109,7 @@ import Frontend.Log
 import Frontend.Network
 import Frontend.UI.FormWidget
 import Frontend.UI.JsonData
+import Frontend.UI.KeysetWidget
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
@@ -149,10 +150,10 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     -- ^ Whether or not to show the preview tab on the deployment dialog.
   }
 
-data CapabilityInputRow t key = CapabilityInputRow
+data CapabilityInputRow t = CapabilityInputRow
   { _capabilityInputRow_empty :: Dynamic t Bool
-  , _capabilityInputRow_value :: Dynamic t (Maybe ((KeyPair key), SigCapability))
-  , _capabilityInputRow_keyPair :: Dynamic t (Maybe (KeyPair key))
+  , _capabilityInputRow_value :: Dynamic t (Maybe (PublicKey, SigCapability))
+  , _capabilityInputRow_pubKey :: Dynamic t (Maybe PublicKey)
   , _capabilityInputRow_cap :: Dynamic t (Either String SigCapability)
   }
 
@@ -205,6 +206,7 @@ data DeploymentSettingsResultError
   | DeploymentSettingsResultError_InvalidJsonData JsonError
   | DeploymentSettingsResultError_NoAccountsOnNetwork
   | DeploymentSettingsResultError_InsufficientFundsOnGasPayer
+  | DeploymentSettingsResultError_ExternalKeysInPayload
   deriving Eq
 
 renderDeploymentSettingsResultError :: DeploymentSettingsResultError -> Text
@@ -216,6 +218,7 @@ renderDeploymentSettingsResultError = \case
   DeploymentSettingsResultError_InvalidJsonData err -> "JSON error: " <> showJsonError err
   DeploymentSettingsResultError_NoAccountsOnNetwork -> "No accounts on network"
   DeploymentSettingsResultError_InsufficientFundsOnGasPayer -> "Gas payer does not have sufficient funds"
+  DeploymentSettingsResultError_ExternalKeysInPayload -> "External keys in payload." -- TODO allow the user to provide external signatures and remove this.
 
 buildDeploymentSettingsResult
   :: ( HasNetwork model t
@@ -228,9 +231,9 @@ buildDeploymentSettingsResult
      )
   => model
   -> Dynamic t (Maybe AccountName)
-  -> Dynamic t (Set (KeyPair key))
+  -> Dynamic t (Set PublicKey)
   -> Dynamic t (Maybe ChainId)
-  -> Dynamic t (Map (KeyPair key) [SigCapability])
+  -> Dynamic t (Map PublicKey [SigCapability])
   -> Dynamic t TTLSeconds
   -> Dynamic t GasLimit
   -> Dynamic t Text
@@ -258,9 +261,7 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
   allAccounts <- failWithM DeploymentSettingsResultError_NoAccountsOnNetwork
     $ Map.lookup networkName . unAccountData <$> m ^. wallet_accounts
 
-  let signingKeypairs = Map.keys caps <> Set.toList signs
-      publicKeyCapabilities = disregardPrivateKey caps
-      deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
+  let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       publicMeta = lastPublicMeta
         { _pmChainId = chainId
         , _pmGasLimit = limit
@@ -287,17 +288,36 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
         in unless (unAccountBalance b > fromIntegral lim * price) $
              throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
 
+  keyStore <- lift $ m ^. wallet_keys
+
+  signingKeypairs <- do
+    let
+      allPublicKeys = Map.keysSet caps <> signs
+      (pubKeysWithPrivateKeys, pubKeysWithoutPrivateKeys) = splitKeysInAndOutOfStore keyStore allPublicKeys
+    if null pubKeysWithoutPrivateKeys
+      then return pubKeysWithPrivateKeys
+      -- TODO need to provide a Performable Payload, or maybe better a widget that will output the DeploymentSettingsResult
+      else throwError DeploymentSettingsResultError_ExternalKeysInPayload
+
   pure $ do
     cmd <- buildCmd
       (_deploymentSettingsConfig_nonce settings)
       networkId publicMeta signingKeypairs
       (_deploymentSettingsConfig_extraSigners settings)
-      code' (HM.union jsonData' deploySettingsJsonData) publicKeyCapabilities
+      code' (HM.union jsonData' deploySettingsJsonData) caps
     pure $ DeploymentSettingsResult
       { _deploymentSettingsResult_sender = sender
       , _deploymentSettingsResult_chainId = chainId
       , _deploymentSettingsResult_command = cmd
       }
+
+-- TODO: are we worried about multiple private keys with the same pubkey key?
+splitKeysInAndOutOfStore :: KeyStorage key -> Set PublicKey -> ([KeyPair key], Set PublicKey)
+splitKeysInAndOutOfStore keyStore pubKeys = (pubKeysWithPrivateKeys, pubKeysWithoutPrivateKeys)
+  where
+    kpInWalletMap = Map.fromList . fmap ((\pk -> (_keyPair_publicKey pk, pk)) . _key_pair) . IM.elems $ keyStore
+    pubKeysWithPrivateKeys =  Map.elems $ Map.restrictKeys kpInWalletMap pubKeys
+    pubKeysWithoutPrivateKeys = pubKeys Set.\\ Map.keysSet kpInWalletMap
 
 buildDeployTabs
   :: ( DomBuilder t m
@@ -370,10 +390,6 @@ buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn 
     , prevView mUserTabName <$ back
     ]
 
---TODO: are we worried about multiple private keys with the same public key?
-disregardPrivateKey :: Map (KeyPair key) a -> Map PublicKey a
-disregardPrivateKey = Map.mapKeys _keyPair_publicKey
-
 -- | Show settings related to deployments to the user.
 --
 --
@@ -423,7 +439,8 @@ uiDeploymentSettings m settings = mdo
             aChainId = (<|>) <$> cChainId <*> mHeadChain
 
             uiPreviewPane = uiDeployPreview m settings
-              <$> signers
+              <$> (m ^. wallet_keys)
+              <*> signers
               <*> gasLimit
               <*> ttl
               <*> code
@@ -764,14 +781,14 @@ uiSignerList
      , MonadFix m
      )
   => model
-  -> Dynamic t (Map (KeyPair key) [SigCapability])
-  -> m (Dynamic t (Set (KeyPair key)))
+  -> Dynamic t (Map PublicKey [SigCapability])
+  -> m (Dynamic t (Set PublicKey))
 uiSignerList m dCapMap = do
   dialogSectionHeading mempty "Unrestricted Signing Keys"
   divClass "group signing-ui-signers" $ do
     let dKeys = ffor2 dCapMap (m ^. wallet_keys) $ \capMap keyIndices ->
           let caps = Map.map (not . null) capMap
-              keys = Map.fromList $ (, False) . _key_pair <$> IM.elems keyIndices
+              keys = Map.fromList $ (, False) . _keyPair_publicKey . _key_pair <$> IM.elems keyIndices
            in Map.unionWith (||) caps keys
     results <- listWithKey dKeys $ \pair hasCap' -> do
       hasCap <- holdUniqDyn hasCap'
@@ -780,7 +797,7 @@ uiSignerList m dCapMap = do
             -- Uncheck the checkbox when this item gains a capability
             & checkboxConfig_setValue .~ (False <$ ffilter id (updated hasCap))
       fmap value $ uiCheckbox "signing-ui-signers__signer" False conf $
-        text $ keyToText $ _keyPair_publicKey pair
+        text . keyToText $ pair
     pure $ Map.keysSet . Map.filter id <$> joinDynThroughMap results
 
 parseSigCapability :: Text -> Either String SigCapability
@@ -798,11 +815,11 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
 -- | Display a single row for the user to enter a custom capability and
 -- account to attach
 capabilityInputRow
-  :: forall t m key
+  :: forall t m
      . MonadWidget t m
   => Maybe DappCap
-  -> m (Dynamic t (Maybe (KeyPair key)))
-  -> m (CapabilityInputRow t key)
+  -> m (Dynamic t (Maybe PublicKey))
+  -> m (CapabilityInputRow t)
 capabilityInputRow mCap keyPairSelector = elClass "tr" "table__row" $ do
   let
     uiCapInput cfg0 = do
@@ -847,23 +864,23 @@ capabilityInputRow mCap keyPairSelector = elClass "tr" "table__row" $ do
         kp <- MaybeT dkp
         p <- MaybeT $ either (const Nothing) pure <$> parsed
         pure (kp, p)
-    , _capabilityInputRow_keyPair = dkp
+    , _capabilityInputRow_pubKey = dkp
     , _capabilityInputRow_cap = parsed
     }
 
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
-  :: forall t m key. MonadWidget t m
+  :: forall t m. MonadWidget t m
   => Event t ()  -- Add new row
-  -> m (Dynamic t (Maybe (KeyPair key)))
-  -> m (Dynamic t (Map (KeyPair key) [SigCapability]), Dynamic t Int)
+  -> m (Dynamic t (Maybe PublicKey))
+  -> m (Dynamic t (Map PublicKey [SigCapability]), Dynamic t Int)
 capabilityInputRows addNew keysSelector = do
   rec
     (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing keysSelector) IM.empty $ leftmost
       [ -- Add a new row when all rows are used
         attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse addNew
       ]
-    results :: Dynamic t (IntMap (CapabilityInputRow t key))
+    results :: Dynamic t (IntMap (CapabilityInputRow t))
       <- foldDyn applyAlways im0 im'
     let nextKeyToUse = maybe 0 (succ . fst) . IM.lookupMax <$> current results
         mkSingleton = fmap $ maybe Map.empty $ \(a,b) -> a =: [b]
@@ -877,9 +894,25 @@ uiSenderCapabilities
   :: forall key t m model. (MonadWidget t m, HasWallet model key t)
   => model
   -> Maybe [DappCap]
-  -> m (Dynamic t (Set (KeyPair key)), Dynamic t (Map (KeyPair key) [SigCapability]))
+  -> m (Dynamic t (Set PublicKey), Dynamic t (Map PublicKey [SigCapability]))
 uiSenderCapabilities m mCaps = do
-  let keyPairDropdown ev = uiKeyPairDropdown m $ def & dropdownConfig_setValue .~ fmap Just ev
+  let
+      -- TODO: With the uiKeyPairDropdown it the user can select an empty item.
+      -- Now no empty item shows, but the user can delete all the text instead.
+      -- Also, once item is selected the others dont show becuase its a combobox thing, might be ok idk
+      pubKeyInput :: Event t PublicKey -> m (Dynamic t (Maybe PublicKey))
+      pubKeyInput ev = do
+        let
+          pkt2kp (PublicKeyText "") = Nothing
+          pkt2kp (PublicKeyText keyText) = textToKey keyText
+
+          cfg = (mkCfg $ PublicKeyText "")
+            & formWidgetConfig_setValue .~ Just ((PublicKeyText . keyToText) <$> ev)
+
+        wgt <- pubKeyFormWidget (m ^. wallet_keys) cfg
+
+        return $ pkt2kp <$> _formWidget_value wgt
+
       staticCapabilityRow dd cap = do
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ _dappCap_role cap
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ renderCompactText $ _dappCap_cap cap
@@ -887,7 +920,7 @@ uiSenderCapabilities m mCaps = do
         pure $ CapabilityInputRow
           { _capabilityInputRow_empty = pure False
           , _capabilityInputRow_value = fmap (\kp -> (kp, _dappCap_cap cap)) <$> dkp
-          , _capabilityInputRow_keyPair = dkp
+          , _capabilityInputRow_pubKey = dkp
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
@@ -914,9 +947,9 @@ uiSenderCapabilities m mCaps = do
           elClass "th" "table__heading table__cell_padded" $ text "Capability"
           elClass "th" "table__heading table__cell_padded" $ text "Signing Key"
         el "tbody" $ do
-          gas <- capabilityInputRow (Just defaultGASCapability) (keyPairDropdown never)
-          (rest, restCount) <- capabilityInputRows eAddCap (keyPairDropdown eApplyToAll)
-          pure ( _capabilityInputRow_keyPair gas
+          gas <- capabilityInputRow (Just defaultGASCapability) (pubKeyInput never)
+          (rest, restCount) <- capabilityInputRows eAddCap (pubKeyInput eApplyToAll)
+          pure ( _capabilityInputRow_pubKey gas
                , combineMaps [(mkSingleton $ _capabilityInputRow_value gas), rest]
                , fmap (1+) restCount
                )
@@ -926,9 +959,9 @@ uiSenderCapabilities m mCaps = do
           elAttr "th" ("class" =: "table__heading") $ text "Capability"
           elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Public Key"
         el "tbody" $ do
-          gas <- staticCapabilityRow (keyPairDropdown never) defaultGASCapability
-          rest <- staticCapabilityRows (keyPairDropdown eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
-          pure ( _capabilityInputRow_keyPair gas
+          gas <- staticCapabilityRow (pubKeyInput never) defaultGASCapability
+          rest <- staticCapabilityRows (pubKeyInput eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
+          pure ( _capabilityInputRow_pubKey gas
                , combineMaps [(mkSingleton $ _capabilityInputRow_value gas),rest]
                , constDyn (1 {- Gas payer -} + length caps)
                )
@@ -985,28 +1018,29 @@ uiDeployPreview
      )
   => model
   -> DeploymentSettingsConfig t m model a
-  -> Set (KeyPair key)
+  -> KeyStorage key
+  -> Set PublicKey
   -> GasLimit
   -> TTLSeconds
   -> Text
   -> PublicMeta
-  -> Map (KeyPair key) [SigCapability]
+  -> Map PublicKey [SigCapability]
   -> Either JsonError Aeson.Object
   -> Maybe DeploymentSettingsResultError
   -> Maybe NetworkName
   -> Maybe ChainId
   -> Maybe AccountName
   -> m ()
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
-uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabilities jData resultError (Just networkId) (Just chainId) (Just sender) = do
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
+uiDeployPreview model settings keyStore signers gasLimit ttl code lastPublicMeta capabilities jData resultError (Just networkId) (Just chainId) (Just sender) = do
   pb <- getPostBuild
 
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       jsonData0 = fromMaybe mempty $ hush jData
-      signingPairs = Map.keys capabilities <> Set.toList signers
-      publicKeyCapabilities = disregardPrivateKey capabilities
+      -- TODO: If we have PublicKeys that are not in the keyStore then signingPairs does not contain all the keys in the Paylaod!
+      signingPairs = fst $ splitKeysInAndOutOfStore keyStore (Map.keysSet capabilities <> signers)
 
       isChainwebNode (NodeType_Pact _) = False
       isChainwebNode (NodeType_Chainweb _) = True
@@ -1027,7 +1061,7 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
 
   let
     mkBuildCmd code0 = buildCmd nonce networkId publicMeta signingPairs
-      extraSigners code0 jsondata publicKeyCapabilities
+      extraSigners code0 jsondata capabilities
 
   eCmds <- performEvent $ ffor (current dIsChainWebNode <@ pb) $ \onChainweb -> do
     c <- mkBuildCmd code
