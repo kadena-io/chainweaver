@@ -697,9 +697,9 @@ uiMetaData m mTTL mGasLimit = do
                 & inputElementConfig_initialValue .~ showTtl initTTL
           sliderEl <- uiSlider "" (text $ prettyTTL minTTL) (text "1 day") $ conf
             & initialAttributes .~ "min" =: (tshow minTTL) <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
-            & inputElementConfig_setValue .~ _inputElement_input inputEl
+            & inputElementConfig_setValue .~ leftmost [_inputElement_input inputEl, showTtl <$> pbTTL]
           (inputEl, inputEv) <- dimensionalInputFeedbackWrapper (Just "Seconds") $ uiIntInputElement (Just minTTL) (Just maxTTL) $ conf
-            & inputElementConfig_setValue .~ _inputElement_input sliderEl
+            & inputElementConfig_setValue .~ leftmost [_inputElement_input sliderEl, showTtl <$> pbTTL]
             & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
           preventScrollWheel $ _inputElement_raw inputEl
           pure $ leftmost
@@ -712,7 +712,6 @@ uiMetaData m mTTL mGasLimit = do
     onTTL <- divClass "deploy-meta-cfg__request-expires"
       $ mkLabeledClsInput True "Request Expires (TTL)" ttlInput
     ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]
-
     pure
       ( mempty
         & networkCfg_setGasPrice .~ onGasPrice

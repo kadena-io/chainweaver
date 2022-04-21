@@ -113,7 +113,7 @@ import           Frontend.UI.FormWidget
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
 import           Frontend.UI.TabBar
-import           Frontend.UI.Widgets
+import           Frontend.UI.Widgets as W
 import           Frontend.UI.Widgets.Helpers
 import           Frontend.Wallet
 
@@ -693,7 +693,9 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
     rec
       (currentTab, _done) <- transferTabs newTab
       (conf, meta, payload, dSignedCmd, destChainInfo) <- mainSection currentTab
-      (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd
+      (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd disableNext
+      let disableNext = let noSender = isNothing . _transferMeta_senderAccount <$> meta
+                       in maybe noSender (\(dgp, _) -> (||) <$> (isNothing <$> dgp) <*> noSender) destChainInfo
     let backW = transferDialog model netInfo ti ty fks tks unused
     case destChainInfo of
       Nothing -> do
@@ -720,14 +722,21 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
       (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti ty
       let payload = buildUnsignedCmd netInfo ti ty <$> meta
-      edSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
-        networkView $ transferSigs
-          <$> (model ^. wallet_keys)
-          <*> payload
-          <*> (_transferMeta_sourceChainSigners <$> meta)
-      sc <- holdUniqDyn . join =<< holdDyn (constDyn Nothing) (Just <$$> edSigned)
+      ddSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
+        let signingData = current $ (,,)
+              <$> (model ^. wallet_keys)
+              <*> payload
+              <*> (_transferMeta_sourceChainSigners <$> meta)
+            produceSigsIfSigTab ((cwKeys, payload, meta), tab) =
+              case tab of
+                TransferTab_Signatures -> Just <$$> transferSigs cwKeys payload meta
+                TransferTab_Metadata -> pure $ constDyn Nothing
+        networkHold (pure $ constDyn Nothing)
+          $ produceSigsIfSigTab
+              <$> (attach signingData $ updated currentTab)
+      sc <- holdUniqDyn $ join ddSigned
       return (conf, meta, payload, sc, destChainInfo)
-    footerSection currentTab meta sc = modalFooter $ do
+    footerSection currentTab meta sc disableNext = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
             TransferTab_Metadata -> ("Cancel", Left ())
             TransferTab_Signatures -> ("Back", Right TransferTab_Metadata)
@@ -736,7 +745,7 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
 
       let isDisabled m s = length (_transferMeta_sourceChainSigners m) /= maybe (-1) (length . _cmdSigs) s
       let mkNextButton ct m s = case ct of
-            TransferTab_Metadata -> ("Next", constDyn False) -- TODO Properly enable/disable Next button
+            TransferTab_Metadata -> ("Next", disableNext) -- Only proceed if the gas payer is valid
             TransferTab_Signatures -> ("Preview", isDisabled <$> meta <*> sc)
           (name, disabled) = splitDynPure $ mkNextButton <$> currentTab <*> meta <*> sc
           cfg = def
@@ -1081,72 +1090,103 @@ gasPayersSection
   -> TransferInfo
   -> m (GasPayers t)
 gasPayersSection model netInfo fks tks ti = do
-    let fromChain = _ca_chain (_ti_fromAccount ti)
-        fromAccount = _ca_account (_ti_fromAccount ti)
-        toAccount = _ca_account (_ti_toAccount ti)
-        toChain = _ca_chain (_ti_toAccount ti)
-        defaultDestGasPayer = case Map.lookup toAccount tks of
-          Just (AccountStatus_Exists dets)
-            | _accountDetails_balance dets > AccountBalance 0 -> toAccount
-          _ -> AccountName "kadena-xchain-gas"
-    (dgp1, mdmgp2) <- if fromChain == toChain
+    (dmgp1, mdmgp2) <- if fromChain == toChain
       then do
-        let initialGasPayer = if _ti_maxAmount ti then Nothing else Just (_ca_account $ _ti_fromAccount ti)
-        let goodGasPayer a = if _ti_maxAmount ti && a == fromAccount
-                               then Left $ "The account sending coins cannot be the gas payer on a max transfer"
-                               else Right a
-        (_,dgp1) <- uiAccountNameInput "Gas Paying Account" True initialGasPayer
-                                       never (constDyn goodGasPayer)
+        dgp1 <- gasPayerInput "Gas Paying Account" True initialSourceGasPayer fromChain getGasPayerKeys
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
-        (_,dgp1) <- uiAccountNameInput (mkLabel fromChain) True (Just $ _ca_account $ _ti_fromAccount ti) never noValidation
-        (_,dgp2) <- uiAccountNameInput (mkLabel toChain) True (Just defaultDestGasPayer) never noValidation
+        dgp1 <- gasPayerInput (mkLabel fromChain) True initialSourceGasPayer fromChain getGasPayerKeys
+        dgp2 <- gasPayerInput (mkLabel toChain) True defaultDestGasPayer toChain getGasPayerKeys
         pure $ (dgp1, Just dgp2)
-    let
-      getGasPayerKeys chain mgp = do
-        case mgp of
-          Nothing -> return never
-          Just gp -> do
-            -- I think lookupKeySets can't be done in the PushM monad
-            evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                          (_sharedNetInfo_nodes netInfo) chain [gp]
-            return $ Map.lookup gp <$> fmapMaybe id evt
 
-    -- Event t (Maybe AccountName)
-    gp1Debounced <- debounce 1.0 $ updated dgp1
-    gp1Keys <- networkHold (return never)
-                           (getGasPayerKeys fromChain <$> gp1Debounced)
-    let initialDetails = Map.lookup fromAccount fks
-    gp1 <- foldDyn ($) (GasPayerDetails fromChain (Just fromAccount) initialDetails) $ leftmost
-      [ (\a gp -> gp { gpdAccount = a }) <$> updated dgp1
-      , (\keys gp -> gp { gpdDetails = keys }) <$> switch (current gp1Keys)
-      ]
-    --Outer maybe represents single chain transfer (so no second gas payer). Inner maybe represents
-    --an account name that is less than 3 chars for the "Destination Gas Payer" input field
+    gp1 <-
+      foldDyn
+        ($)
+        (GasPayerDetails fromChain initialSourceGasPayer $ initialDetails initialSourceGasPayer)
+        (updated dmgp1 <&> \mAccDetails gp ->
+          gp { gpdAccount = fst <$> mAccDetails
+             , gpdDetails = AccountStatus_Exists . snd <$> mAccDetails
+             }
+        )
     mgp2 <- forM mdmgp2 $ \dmgp2 -> do
-        -- Take the initial value of the destination gas payer and lookup its details
-        initGasPayerDetails <- GasPayerDetails toChain (Just defaultDestGasPayer)
-          <$$> getGasPayerKeys toChain (Just defaultDestGasPayer)
-        updatedGP2 <- debounce 1.5 $ updated dmgp2
-        let (invalidGasPayer, newAccName) = fanEither $ ffor updatedGP2 $ \case
-              Nothing -> Left $ GasPayerDetails toChain Nothing Nothing
-              Just accName -> Right accName
-        -- gp2 and gp2Keys ---> is there a better way to do this??? Seems super redundant to
-        -- create a dynamic just for an event
-        gp2Keys <- networkHold (return never) (getGasPayerKeys toChain <$> updatedGP2)
-        gp2 <- foldDyn ($) (GasPayerDetails toChain Nothing Nothing) $ leftmost
-          [ (\a gp -> gp { gpdAccount = a }) <$> maybe never updated mdmgp2
-          , (\keys gp -> gp { gpdDetails = keys }) <$> switch (current gp2Keys)
-          ]
-        dgp2 <- holdDyn (GasPayerDetails toChain Nothing Nothing) $ leftmost [
-            initGasPayerDetails
-          , invalidGasPayer
-          , updated gp2
-          ]
-        return dgp2
+      foldDyn ($)
+        (GasPayerDetails toChain defaultDestGasPayer $ initialDetails defaultDestGasPayer)
+        (updated dmgp2 <&> \mAccDetails gp ->
+          gp { gpdAccount = fst <$> mAccDetails
+             , gpdDetails = AccountStatus_Exists . snd <$> mAccDetails
+             }
+        )
     return $ GasPayers gp1 mgp2
+  where
+    fromChain = _ca_chain (_ti_fromAccount ti)
+    fromAccount = _ca_account (_ti_fromAccount ti)
+    toAccount = _ca_account (_ti_toAccount ti)
+    toChain = _ca_chain (_ti_toAccount ti)
+    -- If this is a max amount transaction, then leave the source gas payer field empty
+    -- Otherwise, fill it with the sender account.
 
+    initialSourceGasPayer = if _ti_maxAmount ti then Nothing else Just fromAccount
+
+    initialDetails = (>>= flip Map.lookup fks)
+
+    defaultDestGasPayer = case Map.lookup toAccount tks of
+      Just (AccountStatus_Exists dets)
+        -- TODO: Check if it's a k-account owned by chainweaver
+        | _accountDetails_balance dets > AccountBalance 0 -> Just toAccount
+      _ -> Just $ AccountName "kadena-xchain-gas"
+
+    getGasPayerKeys chain = maybe (pure never) $ \gp -> do
+        -- I think lookupKeySets can't be done in the PushM monad
+        evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
+                      (_sharedNetInfo_nodes netInfo) chain [gp]
+        return $ Map.lookup gp <$> fmapMaybe id evt
+
+gasPayerInput
+  :: ( DomBuilder t m
+     , PostBuild t m
+     , MonadHold t m
+     , DomBuilderSpace m ~ GhcjsDomSpace
+     , PerformEvent t m
+     , TriggerEvent t m
+     , MonadJSM (Performable m)
+     , MonadFix m
+     )
+  => Text                       -- ^ The label for this input
+  -> Bool                       -- ^ Should the label be inline?
+  -> Maybe AccountName -- ^ Initial Value for the input
+  -> ChainId
+  -> (ChainId -> Maybe AccountName -> m (Event t (Maybe (AccountStatus AccountDetails))))
+  -> m (Dynamic t (Maybe (AccountName, AccountDetails)))
+gasPayerInput label inlineLabel initVal chainId lookupFunc = do
+  let
+    initPopState = maybe (PopoverState_Error "Gas Payer Required") (const PopoverState_Disabled) initVal
+    initVal' = unAccountName <$> initVal
+  (gpInput, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState goodGasPayer) $ mkCfg initVal'
+  pure $ value gpInput
+  where
+      withAccountDetails account chain maybeAccDetails f =
+        let
+          accName = unAccountName account
+          chainId = _chainId chain
+        in
+        case maybeAccDetails of
+          Nothing -> Failure $ T.pack $
+            printf "Couldn't find account %s on chain %s" accName chainId
+          Just AccountStatus_DoesNotExist -> Failure $ T.pack $
+            printf "Account %s does not exist on chain %s" accName chainId
+          Just AccountStatus_Unknown -> Failure $ T.pack $
+            printf "Account status unknown for account %s, chain %s" accName chainId
+          Just (AccountStatus_Exists accDetails) -> f accDetails
+      goodGasPayer textEv = do
+        let (errorEv, accEv) = fanEither $ mkAccountName <$> textEv
+        validationDynEv <- networkHold (pure never) $ accEv <&> \acc -> do
+          accDetailsEv <- lookupFunc chainId $ Just acc
+          pure $ accDetailsEv <&> \maybeAccDetails ->
+            withAccountDetails acc chainId maybeAccDetails $ \accDetails ->
+              W.Success (acc, accDetails)
+
+        pure $ leftmost [Failure <$> errorEv, switchDyn validationDynEv]
 
 data TransferMeta = TransferMeta
   { _transferMeta_senderAccount :: Maybe AccountName
@@ -1235,8 +1275,9 @@ transferMetadata model netInfo fks tks ti ty = do
       "This is a cross-chain transfer.  You must choose an account that has coins on chain %s as the chain %s gas payer otherwise your coins will not arrive!  They will be stuck in transit.  If this happens, they can still be recovered.  Save the request key and get someone with coins on that chain to finish the cross-chain transfer for you." (_chainId toChain) (_chainId toChain)
     el "br" blank
 
-  dialogSectionHeading mempty "Gas Payers"
-  (GasPayers srcPayer mdestPayer) <- divClass "group" $ gasPayersSection model netInfo fks tks ti
+  rec
+    dialogSectionHeading mempty "Gas Payers"
+    (GasPayers srcPayer mdestPayer) <- divClass "group" $ gasPayersSection model netInfo fks tks ti
   let senderAction = getKeysetActionSingle fromChain (Just fromAccount) (Map.lookup fromAccount fks)
       getGpdAction (GasPayerDetails f a d) = getKeysetActionSingle f a d
       dSourceGasAction = getGpdAction <$> srcPayer
