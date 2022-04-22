@@ -86,16 +86,12 @@ tokenInput
   -> m (Dynamic t (Maybe ModuleName))
 tokenInput model chainToModuleMap bLocalList = do
   --TODO: Sample higher?
-  netNAM <- sample $ current $ getNetworkNameAndMeta model
-  let tokenValidator' = tokenValidator netNAM bLocalList
+  netMeta <- sample $ current $ getNetworkNameAndMeta model
+  let tokenValidator' = tokenValidator netMeta bLocalList
   (ti, _) <- mkLabeledInput True "Enter Token"
     (textFormWidgetAsync PopoverState_Disabled tokenValidator') $ mkCfg Nothing
-  -- => PopoverState
-  -- -> (Event t Text -> m (Event t (ValidationResult Text a)))
-  -- -> PrimFormWidgetConfig t (Maybe Text)
-  -- -> m (FormWidget t (Maybe a), Event t (Maybe Text))
-  -- textFormWidgetAsync initPopState isValid cfg = mdo
-  pure $ constDyn Nothing
+  -- (Event t Text -> m (Event t (ValidationResult Text a)))
+  pure $ value ti
   where
     moduleToChainMap = invertMap chainToModuleMap
 
@@ -115,6 +111,7 @@ tokenInput model chainToModuleMap bLocalList = do
             "[]" <>
             ")))"
 
+    -- checkModuleIsFungible ::_
     checkModuleIsFungible (netName, netMetadata) evModule = do
       --TODO: This is a bad hack to get the modname used in the req
       dModName <- holdDyn Nothing $ Just <$> evModule
@@ -127,23 +124,25 @@ tokenInput model chainToModuleMap bLocalList = do
         mkSimpleReadReq (isModuleFungiblePact (renderCompactText mdule))
           netName netMetadata $ ChainRef Nothing chainId
       respEv <- performLocalRead (model ^. logger) net reqEv
-      pure $ attach (current dModName) respEv <&> \(mdule, responses) ->
+      pure $ attach (current dModName) respEv <&> \(mModule, responses) -> case mModule of
+        Nothing -> Failure "Empty Module Name"
+        Just mdule ->
 
-        -- In the following foldM, we have used Either as a Monad to short circuit the fold.
-        -- We short circuit the fold as soon as we find a `True`.
-        -- Note: In order to short circuit, we need to use `Left`, which is commonly used for errors.
-        --       Here, `Left` does NOT represent errors, only a way to short circuit.
-        -- If we encounter an unknown error, we keep the already existing error with us.
-        either id id $
-          foldM (\err (_, netErrorResult) ->
-            case netErrorResult of
-              That (_, pVal) -> case pVal of
-                PLiteral (LBool b) -> if b
-                  then Left $ Success mdule
-                  else Right $ Failure "Contract not a token"
-                x -> Right err
-              _ -> Right err
-            ) (Failure "This module does not exist on any chain") responses
+          -- In the following foldM, we have used Either as a Monad to short circuit the fold.
+          -- We short circuit the fold as soon as we find a `True`.
+          -- Note: In order to short circuit, we need to use `Left`, which is commonly used for errors.
+          --       Here, `Left` does NOT represent errors, only a way to short circuit.
+          -- If we encounter an unknown error, we keep the already existing error with us.
+          either id id $
+            foldM (\err (_, netErrorResult) ->
+              case netErrorResult of
+                That (_, pVal) -> case pVal of
+                  PLiteral (LBool b) -> if b
+                    then Left $ Success mdule
+                    else Right $ Failure "Contract not a token"
+                  x -> Right err
+                _ -> Right err
+              ) (Failure "This module does not exist on any chain") responses
 
     tokenValidator netAndMeta bLocalList inputEv = do
       let
@@ -204,6 +203,7 @@ inputToken model _ = do
           deleteEv <- switchHold never eventEv
           pure (dmFung, deleteEv)
 
+        display dmFung
         done <- modalFooter $ do
           confirmButton def "Done"
         initialTokens <- sample $ current $ model ^. wallet_tokenList

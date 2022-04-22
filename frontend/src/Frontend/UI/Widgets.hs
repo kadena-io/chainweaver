@@ -1582,6 +1582,7 @@ data ValidationResult a b
   = Failure a     -- ^ Signifies a failure, value is invalid
   | Warning a b   -- ^ Signifies a warning, value may be accepted
   | Success b     -- ^ Value is valid
+  deriving (Show)
 
 textFormWidgetAsync
   :: ( DomBuilder t m
