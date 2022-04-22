@@ -125,6 +125,8 @@ uiManageTokensButton
      , HasLogger model t
      , HasTransactionLogger m
      , HasCrypto key m
+     , HasCrypto key (Performable m)
+     -- , MonadSample t (Performable m)
      )
   => model -> m mConf
 uiManageTokensButton model = do

@@ -31,6 +31,7 @@ import Frontend.ModuleExplorer.ModuleRef
 import Frontend.Network
 import Frontend.UI.Common
 import Frontend.UI.Modal
+import Frontend.UI.FormWidget (mkCfg)
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers
 import Frontend.Wallet
@@ -54,6 +55,7 @@ uiManageTokens
      , HasWalletCfg mConf key t
      , HasWallet model key t
      , MonadWidget t m
+     , HasCrypto key (Performable m)
      )
   => model -> Event t () -> m (mConf, Event t ())
 uiManageTokens model onCloseExternal = do
@@ -72,16 +74,22 @@ tokenInput
      , MonadJSM (Performable m)
      , MonadFix m
      , HasLogger model t
-     -- , HasWallet model key t
+     , HasNetwork model t
+     , HasCrypto key (Performable m)
+     , HasTransactionLogger m
+     , MonadSample t (Performable m)
+     , MonadIO m
      )
-  => Dynamic t (Network t)
-  -> Map.Map ChainId ModuleName
+  => model
+  -> Map.Map ChainId [ModuleName]
   -> Behavior t [ModuleName]
   -> m (Dynamic t (Maybe ModuleName))
-tokenInput model net chainToModuleMap bLocalList= do
-  netNAM <- sample $ current $ getNetworkNameAndMeta net
-  let tokenValidator' = tokenValidator net netNAM bLocalList
-  (ti, _) <- mkLabeledInput True "Enter Token" (textFormWidgetAsync PopoverState_Disabled tokenValidator') def
+tokenInput model chainToModuleMap bLocalList = do
+  --TODO: Sample higher?
+  netNAM <- sample $ current $ getNetworkNameAndMeta model
+  let tokenValidator' = tokenValidator netNAM bLocalList
+  (ti, _) <- mkLabeledInput True "Enter Token"
+    (textFormWidgetAsync PopoverState_Disabled tokenValidator') $ mkCfg Nothing
   -- => PopoverState
   -- -> (Event t Text -> m (Event t (ValidationResult Text a)))
   -- -> PrimFormWidgetConfig t (Maybe Text)
@@ -108,15 +116,19 @@ tokenInput model net chainToModuleMap bLocalList= do
             ")))"
 
     checkModuleIsFungible (netName, netMetadata) evModule = do
-      let
-        -- In case the module exists on some chains, this will store the list of those chainIds.
-        -- If the module does not exist on any chains, it will store all the chainIds.
-        chainIdsToCheck = fromMaybe chainList . flip Map.lookup moduleToChainMap
+      --TODO: This is a bad hack to get the modname used in the req
+      dModName <- holdDyn Nothing $ Just <$> evModule
+      let net = model ^. network
+      -- In case the module exists on some chains, this will store the list of those chainIds.
+      -- If the module does not exist on any chains, it will store all the chainIds.
+      let chainIdsToCheck = fromMaybe chainList . flip Map.lookup moduleToChainMap
 
-        reqEv = evModule <&> \mdule -> forM (chainIdsToCheck mdule) $ \chainId ->
-                    mkSimpleReadReq (createCode (renderCompactText mdule)) netName netMetadata $ ChainRef Nothing chainId
+      reqEv <- performEvent $ evModule <&> \mdule -> forM (chainIdsToCheck mdule) $ \chainId ->
+        mkSimpleReadReq (isModuleFungiblePact (renderCompactText mdule))
+          netName netMetadata $ ChainRef Nothing chainId
       respEv <- performLocalRead (model ^. logger) net reqEv
-      pure $ respEv <&> \responses ->
+      pure $ attach (current dModName) respEv <&> \(mdule, responses) ->
+
         -- In the following foldM, we have used Either as a Monad to short circuit the fold.
         -- We short circuit the fold as soon as we find a `True`.
         -- Note: In order to short circuit, we need to use `Left`, which is commonly used for errors.
@@ -133,11 +145,11 @@ tokenInput model net chainToModuleMap bLocalList= do
               _ -> Right err
             ) (Failure "This module does not exist on any chain") responses
 
-    tokenValidator net netAndMeta bLocalList inputEv = do
+    tokenValidator netAndMeta bLocalList inputEv = do
       let
-        localList = bLocalList <@ inputEv
+        inputEvAndModList = attach bLocalList inputEv
         -- eNetAndMeta = tag (current $ getNetworkNameAndMeta net) inputEv
-        (failureEv, validNameEv) = fanEither $ ffor inputEv $ \rawInput -> do
+        (failureEv, validNameEv) = fanEither $ ffor inputEvAndModList $ \(localList, rawInput) -> do
           case parseModuleName rawInput of
             -- User input is not a valid module name
             Left err -> Left $ Failure "Invalid module name"
@@ -145,7 +157,7 @@ tokenInput model net chainToModuleMap bLocalList= do
             Right mdule -> case mdule `elem` localList of
               True -> Left $ Failure "Token already added"
               False -> Right mdule
-      resultEv <- switchHold never $ checkModuleIsFungible netAndMeta validNameEv
+      resultEv <- checkModuleIsFungible netAndMeta validNameEv
       pure $ leftmost [failureEv, resultEv]
 
 -- | Allow the user to input a new fungible
@@ -158,6 +170,10 @@ inputToken
      , HasNetwork model t
      , HasWallet model key t
      , HasWalletCfg mConf key t
+
+     , HasCrypto key (Performable m)
+     , HasTransactionLogger m
+     , MonadSample t (Performable m)
      )
   => model
   -> Event t () -- ^ Modal was externally closed
@@ -165,17 +181,17 @@ inputToken
 inputToken model _ = do
   close <- modalHeader $ text "Manage Tokens"
   networkView $ model ^. network_modules <&> \chainToModuleMap ->
-    bool (Map.null chainToModuleMap) (modalMain $ text "Loading Tokens..." >> pure mempty) $
+    if (Map.null chainToModuleMap) then ((modalMain $ text "Loading Tokens...") >> pure mempty) else
       mdo
-        network <- sample $ current $ model ^. network
         (dmFung, deleteEv) <- modalMain $ do
           dialogSectionHeading mempty "Tokens"
           dmFung <- divClass "flex" $ mdo
             --TODO: add trigger
             -- let triggerEv inputEl = () <$ tag (current $ value inputEl) addClickEv
-            dmFung <- divClass "group flex-grow" $ tokenInput model network chainToModuleMap $ current localListDyn
+            dmFung <- divClass "group flex-grow" $ tokenInput model chainToModuleMap $ fmap NE.toList $ current localListDyn
             addClickEv <- confirmButton (def & uiButtonCfg_class .~ "margin") "Add"
             pure dmFung
+
           eventEv <- networkView $ localListDyn <&> \ne -> do
             delClicks <- forM (NE.toList ne) $ \token -> do
               ev <- divClass "flex paddingLeftTopRight" $ do
@@ -187,6 +203,7 @@ inputToken model _ = do
             pure $ leftmost delClicks
           deleteEv <- switchHold never eventEv
           pure (dmFung, deleteEv)
+
         done <- modalFooter $ do
           confirmButton def "Done"
         initialTokens <- sample $ current $ model ^. wallet_tokenList
@@ -195,7 +212,7 @@ inputToken model _ = do
           deleteToken (t NE.:| ts) token = t NE.:| filter (/= token) ts
           processUserAction action tokens = either (deleteToken tokens) (addToken tokens) action
           addEv = fmapMaybe id $ updated dmFung
-        localListDyn::_ <- foldDyn processUserAction initialTokens $ leftmost
+        localListDyn <- foldDyn processUserAction initialTokens $ leftmost
           [ Left <$> deleteEv
           , Right <$> addEv
           ]
