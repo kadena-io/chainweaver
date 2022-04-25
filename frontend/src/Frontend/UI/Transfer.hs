@@ -1187,12 +1187,12 @@ gasPayersSection model netInfo fks tks ti = do
 
     (dmgp1, mdmgp2) <- if fromChain == toChain
       then do
-        dgp1 <- gasPayerInput "Gas Paying Account" True initialSourceGasPayer fromChain getGasPayerKeys
+        dgp1 <- gasPayerInput "Gas Paying Account" True initialSourceGasPayer fromChain $ getGasPayerKeys fromChain
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
-        dgp1 <- gasPayerInput (mkLabel fromChain) True initialSourceGasPayer fromChain getGasPayerKeys
-        dgp2 <- gasPayerInput (mkLabel toChain) True mDefaultDestGasPayer toChain getGasPayerKeys
+        dgp1 <- gasPayerInput (mkLabel fromChain) True initialSourceGasPayer fromChain $ getGasPayerKeys fromChain
+        dgp2 <- gasPayerInput (mkLabel toChain) True mDefaultDestGasPayer toChain $ getGasPayerKeys toChain
         pure $ (dgp1, Just dgp2)
 
     gp1 <-
@@ -1241,42 +1241,58 @@ gasPayerInput
      , TriggerEvent t m
      , MonadJSM (Performable m)
      , MonadFix m
+     , PostBuild t m
      )
   => Text                       -- ^ The label for this input
   -> Bool                       -- ^ Should the label be inline?
   -> Maybe AccountName -- ^ Initial Value for the input
   -> ChainId
-  -> (ChainId -> Maybe AccountName -> m (Event t (Maybe (AccountStatus AccountDetails))))
+  -> (Maybe AccountName -> m (Event t (Maybe (AccountStatus AccountDetails))))
   -> m (Dynamic t (Maybe (AccountName, AccountDetails)))
 gasPayerInput label inlineLabel initVal chainId lookupFunc = do
   let
     initPopState = maybe (PopoverState_Error "Gas Payer Required") (const PopoverState_Disabled) initVal
     initVal' = unAccountName <$> initVal
-  (gpInput, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState accountListId goodGasPayer Nothing) $ mkCfg initVal'
+    gasPayerValidator = gasPayerValidation chainId lookupFunc
+  pb <- getPostBuild
+  (gpInput, _) <- mkLabeledInput inlineLabel label
+    (textFormAsyncValidationWidget initPopState accountListId gasPayerValidator Nothing) $
+      mkCfg initVal'
+        & setValue .~ (Just $ initVal' <$ pb)
   pure $ value gpInput
-  where
-      withAccountDetails account chain maybeAccDetails f =
-        let
-          accName = unAccountName account
-          chainId = _chainId chain
-        in
-        case maybeAccDetails of
-          Nothing -> Validation_Failure $ T.pack $
-            printf "Couldn't find account %s on chain %s" accName chainId
-          Just AccountStatus_DoesNotExist -> Validation_Failure $ T.pack $
-            printf "Account %s does not exist on chain %s" accName chainId
-          Just AccountStatus_Unknown -> Validation_Failure $ T.pack $
-            printf "Account status unknown for account %s, chain %s" accName chainId
-          Just (AccountStatus_Exists accDetails) -> f accDetails
-      goodGasPayer textEv = do
-        let (errorEv, accEv) = fanEither $ mkAccountName <$> textEv
-        validationDynEv <- networkHold (pure never) $ accEv <&> \acc -> do
-          accDetailsEv <- lookupFunc chainId $ Just acc
-          pure $ accDetailsEv <&> \maybeAccDetails ->
-            withAccountDetails acc chainId maybeAccDetails $ \accDetails ->
-              Validation_Success (acc, accDetails)
 
-        pure $ leftmost [Validation_Failure <$> errorEv, switchDyn validationDynEv]
+gasPayerValidation ::
+  ( PerformEvent t m
+  , TriggerEvent t m
+  , Adjustable t m
+  , MonadHold t m
+  , MonadJSM (Performable m)
+  , MonadFix m
+  )
+  => ChainId
+  -> (Maybe AccountName -> m (Event t (Maybe (AccountStatus AccountDetails))))
+  -> Event t Text
+  -> m (Event t (ValidationResult Text (AccountName, AccountDetails)))
+gasPayerValidation chainId lookupFunc textEv = do
+  -- Only start validating after the user is definitely done typing
+  textEv' <- debounce 1.25 textEv
+  let (errorEv, accEv) = fanEither $ mkAccountName <$> textEv'
+  validationDynEv <- networkHold (pure never) $ accEv <&> \acc -> do
+    accDetailsEv <- lookupFunc $ Just acc
+    pure $ accDetailsEv <&> \maybeAccDetails ->
+      withAccountDetails acc chainId maybeAccDetails $ \accDetails ->
+        Validation_Success (acc, accDetails)
+  pure $ leftmost [Validation_Failure <$> errorEv, switchDyn validationDynEv]
+  where
+    withAccountDetails (AccountName accName) (ChainId chainId) maybeAccDetails f =
+      case maybeAccDetails of
+        Nothing -> Validation_Failure $ T.pack $
+          printf "Couldn't find account %s on chain %s" accName chainId
+        Just AccountStatus_DoesNotExist -> Validation_Failure $ T.pack $
+          printf "Account %s does not exist on chain %s" accName chainId
+        Just AccountStatus_Unknown -> Validation_Failure $ T.pack $
+          printf "Account status unknown for account %s, chain %s" accName chainId
+        Just (AccountStatus_Exists accDetails) -> f accDetails
 
 data TransferMeta = TransferMeta
   { _transferMeta_senderAccount :: Maybe AccountName

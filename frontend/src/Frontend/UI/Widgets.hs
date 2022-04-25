@@ -52,7 +52,7 @@ module Frontend.UI.Widgets
   -- ** Other widgets
   , PopoverState (..)
   , ValidationResult (..)
-  , textFormWidgetAsync
+  , textFormAsyncValidationWidget
   , uiInputWithPopover
   , uiSegment
   , uiGroup
@@ -1497,7 +1497,79 @@ data ValidationResult a b
   | Validation_Success b     -- ^ Value is valid
   deriving (Show)
 
-textFormWidgetAsync
+-- textFormWidgetAsync
+--   :: ( DomBuilder t m
+--      , PostBuild t m
+--      , MonadHold t m
+--      , DomBuilderSpace m ~ GhcjsDomSpace
+--      , PerformEvent t m
+--      , TriggerEvent t m
+--      , MonadJSM (Performable m)
+--      , MonadFix m
+--      )
+--   => PopoverState
+--   -> Text
+--   -> (Event t Text -> m (Event t (ValidationResult Text a)))
+--   -> Maybe (Event t ())
+--   -> PrimFormWidgetConfig t (Maybe Text)
+--   -> m (FormWidget t (Maybe a), Event t (Maybe Text))
+-- textFormWidgetAsync initPopState dropdownListId isValid mEvTrigger cfg = mdo
+--   let
+--     showPopover _ = pure
+--         ( initPopState
+--         , leftmost
+--           [ ffor resultEv $ \case
+--               Validation_Failure e -> PopoverState_Error e
+--               Validation_Warning e _ -> PopoverState_Warning e
+--               _ -> PopoverState_Disabled
+--             -- Show loader (or nothing) immediately when user starts typing again
+--           , inputEv <&> \input ->
+--               if T.null input
+--                 then PopoverState_Disabled
+--                 else PopoverState_Loading
+--           ]
+--         )
+
+--     uiNameInput cfg = do
+--       inp <- uiInputElement $ cfg & initialAttributes %~
+--                (<> "list" =: dropdownListId) . addToClassAttr "account-input"
+--       pure (inp, _inputElement_raw inp)
+--   (inputElem, _) <- uiInputWithPopoverWithInitState uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
+--   initInput <- getPostBuild <&> tag (current $ value inputElem)
+
+--   -- Used to determine when user is typing and when we need to clear popover state and replace it
+--   -- with a loader
+--   let inputEv = case mEvTrigger of
+--                   Nothing -> leftmost [ initInput, updated $ value inputElem]
+--                   Just eTrigger -> (current $ value inputElem) <@ eTrigger
+
+--   -- Only start validating after the user is definitely done typing
+--   startValidation <- debounce 1.25 inputEv
+
+--   -- Used to prevent stale validations -- when a validation response event is no longer
+--   -- valid because the user has started typing again, we don't want to use it
+--   validationIsRelevant <- fmap current $ holdDyn True $ leftmost
+--     [ False <$ inputEv
+--     , True <$ startValidation
+--     ]
+
+--   resultEv <- isValid startValidation
+--   validDyn <- holdDyn Nothing $ leftmost
+
+--     [ Nothing <$ inputEv
+--     , ffor resultEv $ \case
+--         -- Treats Warning and Result types as valid values, errors are treated as invalid
+--         Validation_Warning _ a -> Just a
+--         Validation_Success a -> Just a
+--         Validation_Failure _ -> Nothing
+--     ]
+--   let w = FormWidget
+--             validDyn
+--             (() <$ inputEv)
+--             (_inputElement_hasFocus inputElem)
+--   pure (w, domEvent Paste inputElem)
+
+textFormAsyncValidationWidget
   :: ( DomBuilder t m
      , PostBuild t m
      , MonadHold t m
@@ -1513,7 +1585,7 @@ textFormWidgetAsync
   -> Maybe (Event t ())
   -> PrimFormWidgetConfig t (Maybe Text)
   -> m (FormWidget t (Maybe a), Event t (Maybe Text))
-textFormWidgetAsync initPopState dropdownListId isValid mEvTrigger cfg = mdo
+textFormAsyncValidationWidget initPopState dropdownListId isValid mEvTrigger cfg = mdo
   let
     showPopover _ = pure
         ( initPopState
@@ -1535,25 +1607,14 @@ textFormWidgetAsync initPopState dropdownListId isValid mEvTrigger cfg = mdo
                (<> "list" =: dropdownListId) . addToClassAttr "account-input"
       pure (inp, _inputElement_raw inp)
   (inputElem, _) <- uiInputWithPopoverWithInitState uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
-  initInput <- getPostBuild <&> tag (current $ value inputElem)
 
   -- Used to determine when user is typing and when we need to clear popover state and replace it
   -- with a loader
-  let inputEv = case mEvTrigger of
-                  Nothing -> leftmost [ initInput, updated $ value inputElem]
-                  Just eTrigger -> (current $ value inputElem) <@ eTrigger
-
-  -- Only start validating after the user is definitely done typing
-  startValidation <- debounce 1.25 inputEv
-
-  -- Used to prevent stale validations -- when a validation response event is no longer
-  -- valid because the user has started typing again, we don't want to use it
-  validationIsRelevant <- fmap current $ holdDyn True $ leftmost
-    [ False <$ inputEv
-    , True <$ startValidation
-    ]
-
-  resultEv <- isValid startValidation
+  let
+    inputEv = case mEvTrigger of
+      Nothing -> updated $ value inputElem
+      Just eTrigger -> (current $ value inputElem) <@ eTrigger
+  resultEv <- isValid inputEv
   validDyn <- holdDyn Nothing $ leftmost
 
     [ Nothing <$ inputEv

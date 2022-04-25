@@ -83,15 +83,20 @@ tokenInputWidget
      )
   => model
   -> Map.Map ChainId [ModuleName]
-  -> Event t ()
+  -> Event t () -- validation trigger
   -> Behavior t [ModuleName]
   -> m (Dynamic t (Maybe ModuleName))
 tokenInputWidget model chainToModuleMap eTrigger bLocalList = do
   --TODO: Sample higher?
   netMeta <- sample $ current $ getNetworkNameAndMeta model
   let tokenValidator' = tokenValidator netMeta bLocalList
-  fmap (value . fst) $ mkLabeledInput True "Enter Token"
-    (textFormWidgetAsync PopoverState_Disabled moduleListId tokenValidator' (Just eTrigger)) $ mkCfg Nothing
+      tokenInput = textFormAsyncValidationWidget PopoverState_Disabled
+        moduleListId tokenValidator' (Just eTrigger)
+  rec
+    dmFung <- fmap (value . fst) $ mkLabeledInput True "Enter Token" tokenInput $ mkCfg Nothing
+      & setValue .~ (Just eClear)
+    let eClear = Nothing <$ (fmapMaybe id $ updated dmFung)
+  pure dmFung
   where
     moduleToChainMap = invertMap chainToModuleMap
 
@@ -111,7 +116,6 @@ tokenInputWidget model chainToModuleMap eTrigger bLocalList = do
             "[]" <>
             ")))"
 
-    -- checkModuleIsFungible ::_
     checkModuleIsFungible (netName, netMetadata) evModule = do
       --TODO: This is a bad hack to get the modname used in the req
       dModName <- holdDyn Nothing $ Just <$> evModule
