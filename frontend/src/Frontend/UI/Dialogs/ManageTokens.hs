@@ -125,7 +125,7 @@ tokenInputWidget model chainToModuleMap eTrigger bLocalList = do
           netName netMetadata $ ChainRef Nothing chainId
       respEv <- performLocalRead (model ^. logger) net reqEv
       pure $ attach (current dModName) respEv <&> \(mModule, responses) -> case mModule of
-        Nothing -> Failure "Empty Module Name"
+        Nothing -> Validation_Failure "Empty Module Name"
         Just mdule ->
 
           -- In the following foldM, we have used Either as a Monad to short circuit the fold.
@@ -138,11 +138,11 @@ tokenInputWidget model chainToModuleMap eTrigger bLocalList = do
               case netErrorResult of
                 That (_, pVal) -> case pVal of
                   PLiteral (LBool b) -> if b
-                    then Left $ Success mdule
-                    else Right $ Failure "Contract not a token"
+                    then Left $ Validation_Success mdule
+                    else Right $ Validation_Failure "Contract not a token"
                   x -> Right err
                 _ -> Right err
-              ) (Failure "This module does not exist on any chain") responses
+              ) (Validation_Failure "This module does not exist on any chain") responses
 
     tokenValidator netAndMeta bLocalList inputEv = do
       let
@@ -151,10 +151,10 @@ tokenInputWidget model chainToModuleMap eTrigger bLocalList = do
         (failureEv, validNameEv) = fanEither $ ffor inputEvAndModList $ \(localList, rawInput) -> do
           case parseModuleName rawInput of
             -- User input is not a valid module name
-            Left err -> Left $ Failure "Invalid module name"
+            Left err -> Left $ Validation_Failure "Invalid module name"
             -- User input is a valid module name, check if it already exists on any chain
             Right mdule -> case mdule `elem` localList of
-              True -> Left $ Failure "Token already added"
+              True -> Left $ Validation_Failure "Token already added"
               False -> Right mdule
       resultEv <- checkModuleIsFungible netAndMeta validNameEv
       pure $ leftmost [failureEv, resultEv]

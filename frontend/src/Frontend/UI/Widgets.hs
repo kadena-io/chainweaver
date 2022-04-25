@@ -1492,9 +1492,9 @@ accountNameFormWidget validateName cfg = do
 -- A warning state is not considered a failure, the value is considered acceptable,
 -- but there is scope for improvement.
 data ValidationResult a b
-  = Failure a     -- ^ Signifies a failure, value is invalid
-  | Warning a b   -- ^ Signifies a warning, value may be accepted
-  | Success b     -- ^ Value is valid
+  = Validation_Failure a     -- ^ Signifies a failure, value is invalid
+  | Validation_Warning a b   -- ^ Signifies a warning, value may be accepted
+  | Validation_Success b     -- ^ Value is valid
   deriving (Show)
 
 textFormWidgetAsync
@@ -1519,8 +1519,8 @@ textFormWidgetAsync initPopState dropdownListId isValid mEvTrigger cfg = mdo
         ( initPopState
         , leftmost
           [ ffor resultEv $ \case
-              Failure e -> PopoverState_Error e
-              Warning e _ -> PopoverState_Warning e
+              Validation_Failure e -> PopoverState_Error e
+              Validation_Warning e _ -> PopoverState_Warning e
               _ -> PopoverState_Disabled
             -- Show loader (or nothing) immediately when user starts typing again
           , inputEv <&> \input ->
@@ -1559,9 +1559,9 @@ textFormWidgetAsync initPopState dropdownListId isValid mEvTrigger cfg = mdo
     [ Nothing <$ inputEv
     , ffor resultEv $ \case
         -- Treats Warning and Result types as valid values, errors are treated as invalid
-        Warning _ a -> Just a
-        Success a -> Just a
-        Failure _ -> Nothing
+        Validation_Warning _ a -> Just a
+        Validation_Success a -> Just a
+        Validation_Failure _ -> Nothing
     ]
   let w = FormWidget
             validDyn

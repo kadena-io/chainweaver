@@ -113,7 +113,7 @@ import           Frontend.UI.FormWidget
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
 import           Frontend.UI.TabBar
-import           Frontend.UI.Widgets as W
+import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers
 import           Frontend.Wallet
 
@@ -1261,11 +1261,11 @@ gasPayerInput label inlineLabel initVal chainId lookupFunc = do
           chainId = _chainId chain
         in
         case maybeAccDetails of
-          Nothing -> Failure $ T.pack $
+          Nothing -> Validation_Failure $ T.pack $
             printf "Couldn't find account %s on chain %s" accName chainId
-          Just AccountStatus_DoesNotExist -> Failure $ T.pack $
+          Just AccountStatus_DoesNotExist -> Validation_Failure $ T.pack $
             printf "Account %s does not exist on chain %s" accName chainId
-          Just AccountStatus_Unknown -> Failure $ T.pack $
+          Just AccountStatus_Unknown -> Validation_Failure $ T.pack $
             printf "Account status unknown for account %s, chain %s" accName chainId
           Just (AccountStatus_Exists accDetails) -> f accDetails
       goodGasPayer textEv = do
@@ -1274,9 +1274,9 @@ gasPayerInput label inlineLabel initVal chainId lookupFunc = do
           accDetailsEv <- lookupFunc chainId $ Just acc
           pure $ accDetailsEv <&> \maybeAccDetails ->
             withAccountDetails acc chainId maybeAccDetails $ \accDetails ->
-              W.Success (acc, accDetails)
+              Validation_Success (acc, accDetails)
 
-        pure $ leftmost [Failure <$> errorEv, switchDyn validationDynEv]
+        pure $ leftmost [Validation_Failure <$> errorEv, switchDyn validationDynEv]
 
 data TransferMeta = TransferMeta
   { _transferMeta_senderAccount :: Maybe AccountName
