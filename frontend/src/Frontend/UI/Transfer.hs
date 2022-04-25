@@ -1252,7 +1252,7 @@ gasPayerInput label inlineLabel initVal chainId lookupFunc = do
   let
     initPopState = maybe (PopoverState_Error "Gas Payer Required") (const PopoverState_Disabled) initVal
     initVal' = unAccountName <$> initVal
-  (gpInput, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState goodGasPayer) $ mkCfg initVal'
+  (gpInput, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState accountListId goodGasPayer Nothing) $ mkCfg initVal'
   pure $ value gpInput
   where
       withAccountDetails account chain maybeAccDetails f =

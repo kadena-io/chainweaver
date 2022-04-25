@@ -64,7 +64,7 @@ import           Frontend.TxBuilder
 import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Dialogs.KeyDetails (uiKeyDetails)
 import           Frontend.UI.Dialogs.Receive (uiReceiveModal)
-import           Frontend.UI.Dialogs.ManageTokens (uiManageTokens)
+import           Frontend.UI.Dialogs.ManageTokens (uiManageTokensDialog)
 import           Frontend.UI.Dialogs.WatchRequest (uiWatchRequestDialog)
 -- import           Frontend.UI.Dialogs.Send (uiSendModal)
 import           Frontend.UI.KeysetWidget
@@ -126,12 +126,11 @@ uiManageTokensButton
      , HasTransactionLogger m
      , HasCrypto key m
      , HasCrypto key (Performable m)
-     -- , MonadSample t (Performable m)
      )
   => model -> m mConf
 uiManageTokensButton model = do
   switch <- uiButton headerBtnCfg (text "Manage Tokens")
-  pure $ mempty & modalCfg_setModal .~ (Just (uiManageTokens model) <$ switch)
+  pure $ mempty & modalCfg_setModal .~ (Just (uiManageTokensDialog model) <$ switch)
 
 uiWatchRequestButton
   :: ( MonadWidget t m

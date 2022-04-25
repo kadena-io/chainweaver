@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Frontend.UI.Dialogs.ManageTokens
-  ( uiManageTokens
+  ( uiManageTokensDialog
   ) where
 
 
@@ -12,6 +12,7 @@ import Control.Monad (foldM, forM, void)
 import Data.Bifunctor (first)
 import Data.List (foldl')
 import Data.Either (rights)
+import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import qualified Data.Text as T
@@ -45,7 +46,7 @@ invertMap m = foldl' (\mp (k, as) ->
   ) Map.empty $ Map.toList m
 
 -- | A modal for watching request keys
-uiManageTokens
+uiManageTokensDialog
   :: ( Flattenable mConf t
      , Monoid mConf
      , HasLogger model t
@@ -58,13 +59,13 @@ uiManageTokens
      , HasCrypto key (Performable m)
      )
   => model -> Event t () -> m (mConf, Event t ())
-uiManageTokens model onCloseExternal = do
-  (conf, closes) <- splitE <$> inputToken model onCloseExternal
+uiManageTokensDialog model onCloseExternal = do
+  (conf, closes) <- splitE <$> manageTokens model onCloseExternal
   mConf <- flatten conf
   close <- switchHold never closes
   pure (mConf, close)
 
-tokenInput
+tokenInputWidget
   :: ( DomBuilder t m
      , PostBuild t m
      , MonadHold t m
@@ -82,16 +83,15 @@ tokenInput
      )
   => model
   -> Map.Map ChainId [ModuleName]
+  -> Event t ()
   -> Behavior t [ModuleName]
   -> m (Dynamic t (Maybe ModuleName))
-tokenInput model chainToModuleMap bLocalList = do
+tokenInputWidget model chainToModuleMap eTrigger bLocalList = do
   --TODO: Sample higher?
   netMeta <- sample $ current $ getNetworkNameAndMeta model
   let tokenValidator' = tokenValidator netMeta bLocalList
-  (ti, _) <- mkLabeledInput True "Enter Token"
-    (textFormWidgetAsync PopoverState_Disabled tokenValidator') $ mkCfg Nothing
-  -- (Event t Text -> m (Event t (ValidationResult Text a)))
-  pure $ value ti
+  fmap (value . fst) $ mkLabeledInput True "Enter Token"
+    (textFormWidgetAsync PopoverState_Disabled moduleListId tokenValidator' (Just eTrigger)) $ mkCfg Nothing
   where
     moduleToChainMap = invertMap chainToModuleMap
 
@@ -159,70 +159,92 @@ tokenInput model chainToModuleMap bLocalList = do
       resultEv <- checkModuleIsFungible netAndMeta validNameEv
       pure $ leftmost [failureEv, resultEv]
 
+uiAddToken
+  :: (
+       MonadWidget t m
+     , HasLogger model t
+     , HasTransactionLogger m
+     , HasNetwork model t
+     , HasCrypto key (Performable m)
+     )
+  => model
+  -> Map.Map ChainId [ModuleName]
+  -> Dynamic t (NonEmpty ModuleName)
+  -> m (Dynamic t (Maybe ModuleName))
+uiAddToken model moduleMap dTokenListNE = do
+  dialogSectionHeading mempty "Add Tokens"
+  divClass "flex" $ mdo
+    dmFung <- divClass "group flex-grow" $ do
+      let dTokenList = fmap NE.toList $ current dTokenListNE
+      tokenInputWidget model moduleMap addTokenEv dTokenList
+    addTokenEv <- flip confirmButton "Add"  $ def
+      & uiButtonCfg_class .~ "margin"
+    pure dmFung
+
+uiFavoriteTokens
+  :: MonadWidget t m
+  => Dynamic t (NonEmpty ModuleName)
+  -> m (Event t ModuleName)
+uiFavoriteTokens dTokenListNE = do
+  dialogSectionHeading mempty "My Tokens"
+  eeDelete <- networkView $ dTokenListNE <&> \neTokenList -> do
+    delClicks <- forM (NE.toList neTokenList) $ \token -> do
+      delToken <- divClass "flex paddingLeftTopRight" $ do
+        divClass "flex-grow paddingTop" $ text $ renderTokenName token
+        if token == kdaToken
+          then pure never
+          else deleteButtonNaked def
+      pure $ token <$ delToken
+    pure $ leftmost delClicks
+  switchHold never eeDelete
+
 -- | Allow the user to input a new fungible
-inputToken
+manageTokens
   :: ( Monoid mConf
      , MonadWidget t m
      , HasLogger model t
-     , HasCrypto key m
      , HasTransactionLogger m
      , HasNetwork model t
      , HasWallet model key t
      , HasWalletCfg mConf key t
-
      , HasCrypto key (Performable m)
-     , HasTransactionLogger m
      , MonadSample t (Performable m)
      )
   => model
   -> Event t () -- ^ Modal was externally closed
   -> m (Event t (mConf, Event t ()))
-inputToken model _ = do
+manageTokens model _ = do
   close <- modalHeader $ text "Manage Tokens"
   networkView $ model ^. network_modules <&> \chainToModuleMap ->
-    if (Map.null chainToModuleMap) then ((modalMain $ text "Loading Tokens...") >> pure mempty) else
-      mdo
-        (dmFung, deleteEv) <- modalMain $ do
-          dialogSectionHeading mempty "Tokens"
-          dmFung <- divClass "flex" $ mdo
-            --TODO: add trigger
-            -- let triggerEv inputEl = () <$ tag (current $ value inputEl) addClickEv
-            dmFung <- divClass "group flex-grow" $ tokenInput model chainToModuleMap $ fmap NE.toList $ current localListDyn
-            addClickEv <- confirmButton (def & uiButtonCfg_class .~ "margin") "Add"
-            pure dmFung
+    if (Map.null chainToModuleMap)
+    then do
+      modalMain $ text "Loading Tokens..."
+      pure mempty
+    else mdo
+      (dmFung, deleteEv) <- modalMain $ do
+        (,) <$> uiAddToken model chainToModuleMap dLocalList
+            <*> uiFavoriteTokens dLocalList
+      done <- modalFooter $ confirmButton def "Done"
 
-          eventEv <- networkView $ localListDyn <&> \ne -> do
-            delClicks <- forM (NE.toList ne) $ \token -> do
-              ev <- divClass "flex paddingLeftTopRight" $ do
-                divClass "flex-grow paddingTop" $ text $ renderTokenName token
-                if token == kdaToken
-                  then pure never
-                  else deleteButtonNaked def
-              pure $ token <$ ev
-            pure $ leftmost delClicks
-          deleteEv <- switchHold never eventEv
-          pure (dmFung, deleteEv)
-
-        display dmFung
-        done <- modalFooter $ do
-          confirmButton def "Done"
-        initialTokens <- sample $ current $ model ^. wallet_tokenList
-        let
-          addToken (t NE.:| ts) newToken = t NE.:| (newToken : ts)
-          deleteToken (t NE.:| ts) token = t NE.:| filter (/= token) ts
-          processUserAction action tokens = either (deleteToken tokens) (addToken tokens) action
-          addEv = fmapMaybe id $ updated dmFung
-        localListDyn <- foldDyn processUserAction initialTokens $ leftmost
-          [ Left <$> deleteEv
-          , Right <$> addEv
-          ]
-        let
-          fungibleDyn = _wallet_fungible $ model ^. wallet
-          fungE = fmapMaybe id $ (,) <$> current fungibleDyn <*> current localListDyn <@ done <&> \(currentFungible, localList) ->
+      initialTokens <- sample $ current $ model ^. wallet_tokenList
+      let
+        addToken (t :| ts) newToken = t :| (newToken : ts)
+        deleteToken (t :| ts) token = t :| filter (/= token) ts
+        processUserAction action tokens = either (deleteToken tokens) (addToken tokens) action
+        addEv = fmapMaybe id $ updated dmFung
+      dLocalList <- foldDyn processUserAction initialTokens $ leftmost
+        [ Left <$> deleteEv
+        , Right <$> addEv
+        ]
+      let
+        bToken = current $ _wallet_fungible $ model ^. wallet
+        eActiveToken = fmapMaybe id $
+          attach bToken (updated dLocalList) <&> \(activeFungible, tokenList) ->
             -- If currently selected token is not in the new local list
             -- that means it was deleted by the user. Switch to the head element ie "coin".
-            if currentFungible `notElem` localList
-              then Just $ NE.head localList
-              else Nothing
-          conf = mempty & walletCfg_moduleList .~ tag (current localListDyn) done & walletCfg_fungibleModule .~ fungE
-        pure (conf, done <> close)
+            if activeFungible `notElem` tokenList
+            then Just $ NE.head tokenList
+            else Nothing
+        conf = mempty & walletCfg_moduleList .~ updated dLocalList
+                      & walletCfg_fungibleModule .~ eActiveToken
+      pure (conf, done <> close)

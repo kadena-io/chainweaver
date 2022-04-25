@@ -329,7 +329,6 @@ makeWallet mChangePassword model conf = do
     , _wallet_fungible = dFungible
     , _wallet_moduleData = dModuleData
     , _wallet_tokenList = tokens
-      -- constDyn $ "coin" NE.:| [ "free.fungible-crosschain-test"]
     }
   where
     addStarterKey m = if IntMap.null m then Just (addNewKey m) else Nothing
