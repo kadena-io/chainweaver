@@ -83,7 +83,7 @@ tokenInputWidget
      )
   => model
   -> Map.Map ChainId [ModuleName]
-  -> Event t () -- validation trigger
+  -> Event t () -- Validation trigger
   -> Behavior t [ModuleName]
   -> m (Dynamic t (Maybe ModuleName))
 tokenInputWidget model chainToModuleMap eTrigger bLocalList = do
@@ -123,7 +123,6 @@ tokenInputWidget model chainToModuleMap eTrigger bLocalList = do
       -- In case the module exists on some chains, this will store the list of those chainIds.
       -- If the module does not exist on any chains, it will store all the chainIds.
       let chainIdsToCheck = fromMaybe chainList . flip Map.lookup moduleToChainMap
-
       reqEv <- performEvent $ evModule <&> \mdule -> forM (chainIdsToCheck mdule) $ \chainId ->
         mkSimpleReadReq (isModuleFungiblePact (renderCompactText mdule))
           netName netMetadata $ ChainRef Nothing chainId
@@ -131,7 +130,6 @@ tokenInputWidget model chainToModuleMap eTrigger bLocalList = do
       pure $ attach (current dModName) respEv <&> \(mModule, responses) -> case mModule of
         Nothing -> Validation_Failure "Empty Module Name"
         Just mdule ->
-
           -- In the following foldM, we have used Either as a Monad to short circuit the fold.
           -- We short circuit the fold as soon as we find a `True`.
           -- Note: In order to short circuit, we need to use `Left`, which is commonly used for errors.
@@ -160,8 +158,16 @@ tokenInputWidget model chainToModuleMap eTrigger bLocalList = do
             Right mdule -> case mdule `elem` localList of
               True -> Left $ Validation_Failure "Token already added"
               False -> Right mdule
-      resultEv <- checkModuleIsFungible netAndMeta validNameEv
-      pure $ leftmost [failureEv, resultEv]
+      rec
+        -- Tags requests that go out so that any stale responses are ignored
+        resultEv <- checkModuleIsFungible netAndMeta validNameEv
+        reqCount <- count validNameEv
+        respCount <- count resultEv
+        let reqAndResCount = current $ (==) <$> reqCount <*> respCount
+        resultEv' <- delay 0.0 resultEv
+
+
+      pure $ leftmost [failureEv, gate reqAndResCount resultEv']
 
 uiAddToken
   :: (
