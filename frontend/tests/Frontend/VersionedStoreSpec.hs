@@ -212,7 +212,7 @@ expectedAccounts =
     ]
 
 expectedTokens :: TokenStorage
-expectedTokens = kdaToken :| []
+expectedTokens = "coin" :| []
 
 testVersioner
   :: ( HasCrypto TestPrv m
