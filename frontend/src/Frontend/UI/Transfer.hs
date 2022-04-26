@@ -1323,10 +1323,14 @@ transferCapability fungible from to amount = SigCapability
     ]
   }
 
-crosschainCapability :: ModuleName -> AccountName -> SigCapability
-crosschainCapability moduleName from = SigCapability
-  { _scName = QualifiedName { _qnQual = moduleName, _qnName = "DEBIT", _qnInfo = def }
-  , _scArgs = [PLiteral $ LString $ unAccountName from]
+crosschainCapability :: ModuleName -> AccountName -> AccountName -> Decimal -> ChainId -> SigCapability
+crosschainCapability moduleName from to amount chain = SigCapability
+  { _scName = QualifiedName { _qnQual = moduleName, _qnName = "TRANSFER_XCHAIN", _qnInfo = def }
+  , _scArgs = [ PLiteral $ LString $ unAccountName from
+              , PLiteral $ LString $ unAccountName to
+              , PLiteral $ LDecimal amount
+              , PLiteral $ LString $ _chainId chain
+              ]
   }
 
 gasCapability :: SigCapability
@@ -1434,7 +1438,7 @@ transferMetadata model netInfo fks tks ti ty = do
       amount = if ty == SafeTransfer then rawAmount + safeTransferEpsilon else rawAmount
       transferCap = if fromChain == toChain
                       then transferCapability fungible fromAccount toAccount amount
-                      else crosschainCapability fungible fromAccount
+                      else crosschainCapability fungible fromAccount toAccount amount toChain
       fromCapsA = foldr (addCap transferCap) <$> gasCaps <*> fromTxKeys
       allFromCaps = if ty == SafeTransfer
                       then foldr (addCap (transferCapability fungible toAccount fromAccount safeTransferEpsilon))
@@ -1462,7 +1466,7 @@ transferMetadata model netInfo fks tks ti ty = do
           then Just 1200
           else if fromChain == toChain
             then Just 600
-            else Just 400  -- Cross-chains need to be under 400 in order to use gas-station
+            else Just 450  -- Cross-chains need to be under 450 in order to use gas-station
     (conf, ttl, lim, price) <- uiMetaData model Nothing defaultLimit
     elAttr "div" ("style" =: "margin-top: 10px") $ do
       now <- fmap round $ liftIO $ getPOSIXTime
