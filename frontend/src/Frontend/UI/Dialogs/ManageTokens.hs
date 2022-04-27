@@ -10,7 +10,7 @@ import Control.Lens hiding (failover)
 import Control.Error (hush)
 import Control.Monad (foldM, forM, void)
 import Data.Bifunctor (first)
-import Data.List (foldl')
+import Data.List (foldl', sort)
 import Data.Either (rights)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
@@ -198,7 +198,10 @@ uiFavoriteTokens
 uiFavoriteTokens dTokenListNE = do
   dialogSectionHeading mempty "My Tokens"
   eeDelete <- networkView $ dTokenListNE <&> \neTokenList -> do
-    delClicks <- forM (NE.toList neTokenList) $ \token -> do
+    let (kda:rest) = NE.toList neTokenList
+        -- sorted; except for kda which is always at the top
+        sortedTokens = kda:(sort rest)
+    delClicks <- forM sortedTokens $ \token -> do
       delToken <- divClass "flex paddingLeftTopRight" $ do
         divClass "flex-grow paddingTop" $ text $ renderTokenName token
         if token == kdaToken
