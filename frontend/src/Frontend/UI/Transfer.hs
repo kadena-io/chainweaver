@@ -552,6 +552,61 @@ checkSendingAccountExists model netInfo ti ty fks tks = do
   where
     isCrossChain = (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
 
+checkModuleFungibleXChain
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , HasNetwork model t
+     , HasNetworkCfg mConf t
+     , HasLogger model t
+     , HasWallet model key t
+     , HasCrypto key m
+     , HasCrypto key (Performable m)
+     , HasTransactionLogger m
+     )
+  => model
+  -> SharedNetInfo NodeInfo
+  -> TransferInfo
+  -> TransferType
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Workflow t m (mConf, Event t ())
+checkModuleFungibleXChain model netInfo ti ty fks tks =
+  case moduleName == "coin" of
+    True -> nextW
+    False -> Workflow $ do
+      pb <- getPostBuild
+      req <- mkSimpleReadReq interfaceCheckPact networkName defMeta $ ChainRef Nothing toChain
+      eResult <- performLocalRead (model ^. logger) (model ^. network) $ [req] <$ pb
+      text "Running module check ..."
+      let eResultModal = ffor eResult $ \((_,ner):_) ->
+            case networkErrorResultToEither ner of
+              Left netErrors ->
+                let err = snd $ NEL.head netErrors
+                 in errorWorkflow $ "Network Error: " <> tshow err
+              Right (_, PLiteral (LBool False)) -> errorWorkflow $
+                "Token '" <> moduleName <> "' does not enforce fungible-xchain-v1; cannot complete crosschain transfer"
+              Right (_, PLiteral (LBool True)) -> nextW
+              -- If non-bool is returned; which should not happen
+              otherwise -> errorWorkflow "Unknown error occured with interface local check"
+      pure ((mempty, never), eResultModal)
+  where
+    toChain = _ca_chain $ _ti_toAccount ti
+    networkName = _sharedNetInfo_network netInfo
+    moduleName = renderCompactText $ _ti_fungible ti
+    interfaceCheckPact = "(contains 'fungible-xchain-v1 (at 'interfaces (describe-module \"" <> moduleName <> "\")))"
+    nextW = checkSendingAccountExists model netInfo ti ty fks tks
+    defMeta = (_sharedNetInfo_meta netInfo)
+        { _pmChainId = toChain
+        , _pmSender  = "sender00"
+        , _pmGasLimit = defaultTransactionGasLimit
+        , _pmGasPrice = defaultTransactionGasPrice
+        , _pmTTL = defaultTransactionTTL
+        }
+    errorWorkflow errorMsg = Workflow $ do
+      cancel <- fatalTransferError $
+        text errorMsg
+      return ((mempty, cancel), never)
+
 checkContractHashOnBothChains
   :: ( MonadWidget t m
      , Monoid mConf
@@ -576,14 +631,15 @@ checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap = do
       fromChain = _ca_chain $ _ti_fromAccount ti
       --TODO: Just pass this val in as arg instead of passing around the whole map
       hashPair = (,) <$> Map.lookup fromChain modHashMap <*> Map.lookup toChain modHashMap
+      nextW = checkModuleFungibleXChain model netInfo ti ty fks tks
   case hashPair of
     -- This case implies likely occurs during throttling, so we will continue and allow it
     -- to fail on-chain if there is actually an issue
-    Nothing -> checkSendingAccountExists model netInfo ti ty fks tks
+    Nothing -> nextW
     Just (a, b)
       | a == Nothing || b == Nothing -> errNonexistentModule
     Just (Just a, Just b) | a /= b -> errMsgMatchModHashes a b (toChain, fromChain)
-    otherwise -> checkSendingAccountExists model netInfo ti ty fks tks
+    otherwise -> nextW
   where
     errNonexistentModule = Workflow $ do
       cancel <- fatalTransferError $
