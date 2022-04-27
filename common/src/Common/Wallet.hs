@@ -579,7 +579,7 @@ parseAccountDetailsWithHash = first ("parseAccountDetails: " <>) . \case
     case Map.lookup mhKey obj of
       Just (PLiteral (LString modHash)) ->
         second (\a -> (modHash, a)) $ parseAccountBalances $ Map.delete mhKey obj
-      otherwise -> Left $ "TODO"
+      otherwise -> Left $ "'modHash' field-key unavailable or does not contain a string value"
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
 parseAccountBalances :: Map FieldKey PactValue -> Either Text (Map AccountName (AccountStatus AccountDetails))
