@@ -382,7 +382,6 @@ uiAccountItem cwKeys startsOpen contractStatus name accountInfo = do
     let details = (^? account_status . _AccountStatus_Exists) <$> dAccount
     let balance = _accountDetails_balance <$$> details
     let contractStatusChain = Map.lookup chain <$> contractStatus
-    -- let dAccountAndFungStatus = attachPromptlyDyn dAccount $ ffor (updated contractStatus) $ Map.lookup chainId
     -- Previously we always added all chain rows, but hid them with CSS. A bug
     -- somewhere between reflex-dom and jsaddle means we had to push this under
     -- a `dyn`.
