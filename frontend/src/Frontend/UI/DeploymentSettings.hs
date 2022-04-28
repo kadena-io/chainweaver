@@ -274,7 +274,7 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
   gasPayer <- lift mSender
   case gasPayer of
     Nothing -> pure () -- No gas payer selected, move along
-    Just gp | (fungible /= "coin") ->  pure () -- You can't pay gas with non-kda, and we don't store that data
+    Just gp | (fungible /= kdaToken) ->  pure () -- You can't pay gas with non-kda, and we don't store that data
                                                -- In the future perhaps we can perform a live check
     Just gp ->  for_ (lookupAccountBalance gp chainId allAccounts) $ \case
       -- Gas Payer selected but they're not an account?!

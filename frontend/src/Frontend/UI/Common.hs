@@ -6,8 +6,6 @@ import qualified Data.Map.Strict as Map
 import           Data.String
 import           Data.Text                   (Text)
 import           Reflex.Dom.Contrib.CssClass
-------------------------------------------------------------------------------
-import           Pact.Types.Names
 
 -- | Attributes which will turn off all autocomplete/autofill/autocorrect
 -- functions, including the OS-level suggestions on macOS.
@@ -25,6 +23,3 @@ addInputElementCls = addToClassAttr "input"
 
 addNoAutofillAttrs :: (Ord attr, IsString attr) => Map attr Text -> Map attr Text
 addNoAutofillAttrs = (noAutofillAttrs <>)
-
-kdaToken :: ModuleName
-kdaToken = ModuleName "coin" Nothing

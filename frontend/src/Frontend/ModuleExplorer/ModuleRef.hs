@@ -41,7 +41,6 @@ module Frontend.ModuleExplorer.ModuleRef
     -- * Get hold of a `Module`
   , fetchModule
     -- * Pretty printing
-  , renderTokenName
   , textModuleRefSource
   , textModuleRefName
   ) where
@@ -82,6 +81,7 @@ import           Pact.Types.Term                 as PactTerm (FieldKey,
 ------------------------------------------------------------------------------
 import           Common.Modules
 import           Common.RefPath                  as MP
+import           Common.Wallet
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
@@ -224,12 +224,6 @@ textModuleRefSource isModule m =
   where
     printPretty n d = mconcat [ n, " ", moduleText, " [ " , d , " ]" ]
     moduleText = if isModule then "Module" else "Interface"
-
--- | For the "coin" module show "KDA", for other tokens use `renderCompactText`
-renderTokenName :: ModuleName -> T.Text
-renderTokenName t
-  | t == kdaToken = "KDA"
-  | otherwise     = renderCompactText t
 
 -- Get hold of a deployed module:
 

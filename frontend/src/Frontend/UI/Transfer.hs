@@ -323,9 +323,10 @@ amountFormWithMaxButton
 amountFormWithMaxButton model ca cfg = do
   elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ mdo
     let dFungible = model ^. wallet_fungible
-    divClass ("label labeled-input__label-inline") $ dynText $ ffor dFungible $ \case
-      "coin" -> "Amount (KDA)"
-      _ -> "Amount (Token)"
+    divClass ("label labeled-input__label-inline") $
+      dynText $ ffor dFungible $ \case
+        kdaToken -> "Amount (KDA)"
+        otherwise -> "Amount (Token)"
     let attrs = ffor maxE $ \isMaxed ->
           "disabled" =: (if isMaxed then Just "disabled" else Nothing)
         sv = Just $ leftmost
@@ -465,7 +466,6 @@ lookupKeySets
   -- ^ Name of contract to use during search
   -> m (Event t (Maybe (Map AccountName (AccountStatus AccountDetails))))
 lookupKeySets logL networkName nodes chain accounts fung = do
-  -- TODO: accountDetailsObjectCoin should check fungible
   let code = renderCompactText $ accountDetailsObject fung (map unAccountName accounts)
   pm <- mkPublicMeta chain
   cmd <- buildCmd Nothing networkName pm [] [] code mempty mempty
@@ -948,7 +948,7 @@ previewDialog model _netInfo ti payload cmd backW nextW = Workflow $ do
         uiPreviewItem "From Chain" $ text $ _chainId fromChain
         uiPreviewItem "To Account" $ text $ unAccountName toAccount
         uiPreviewItem "To Chain" $ text $ _chainId toChain
-        uiPreviewItem "Amount" $ text $ tshow (_ti_amount ti) <> fungibleDisplay
+        uiPreviewItem "Amount" $ text $ tshow (_ti_amount ti) <> (renderTokenName $ _ti_fungible ti)
       pb <- getPostBuild
       previewTransaction model fromChain payload (cmd <$ pb)
       --submitTransactionWithFeedback model cmd fromAccount fromChain (fmap Right nodeInfos)
@@ -957,9 +957,6 @@ previewDialog model _netInfo ti payload cmd backW nextW = Workflow $ do
       <*> confirmButton def "Send Transfer"
     pure ((mempty, close), leftmost [ backW <$ back, nextW <$ send])
   where
-    fungibleDisplay = case _ti_fungible ti of
-      "coin" -> " KDA"
-      f -> " " <> renderCompactText f
     fromChain = _ca_chain $ _ti_fromAccount ti
     fromAccount = _ca_account $ _ti_fromAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
@@ -1237,7 +1234,7 @@ gasPayersSection model netInfo fks tks ti = do
       -- can also use that data to make determinations about gas, but otherwise, we leave
       -- the decision to the user
       -- We should add the info in the future perhaps
-      mDefaultDestGasPayer = if fungible == "coin"
+      mDefaultDestGasPayer = if fungible == kdaToken
         then Just defaultGasPayerCoin
         else Nothing
 
@@ -1285,7 +1282,7 @@ gasPayersSection model netInfo fks tks ti = do
     getGasPayerKeys chain = maybe (pure never) $ \gp -> do
         -- I think lookupKeySets can't be done in the PushM monad
         evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                      (_sharedNetInfo_nodes netInfo) chain [gp] "coin"
+                      (_sharedNetInfo_nodes netInfo) chain [gp] kdaToken
         return $ Map.lookup gp <$> fmapMaybe id evt
 
 gasPayerInput

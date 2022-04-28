@@ -49,6 +49,8 @@ module Common.Wallet
   , AccountDetails (..)
   , accountDetails_balance
   , accountDetails_guard
+  , kdaToken
+  , renderTokenName
     -- * Prisms for working directly with Account
   , AccountStorage(..)
   , _AccountStorage
@@ -396,6 +398,15 @@ type KeyStorage key = IntMap (Key key)
 
 type TokenStorage = NonEmpty ModuleName
 
+kdaToken :: ModuleName
+kdaToken = ModuleName "coin" Nothing
+
+-- | For the "coin" module show "KDA", for other tokens use `renderCompactText`
+renderTokenName :: ModuleName -> T.Text
+renderTokenName t
+  | t == kdaToken = "KDA"
+  | otherwise     = renderCompactText t
+
 -- | Predefined predicates in Pact.
 --
 --   Userdefined ones are possible too, although the UI currently does not support them.
@@ -572,8 +583,9 @@ parseAccountDetails = first ("parseAccountDetails: " <>) . \case
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
 -- | Turn the object of account->balance into a map
+-- Assumes fieldKey 'modHash' was used
 parseAccountDetailsWithHash :: PactValue -> Either Text (Text, (Map AccountName (AccountStatus AccountDetails)))
-parseAccountDetailsWithHash = first ("parseAccountDetails: " <>) . \case
+parseAccountDetailsWithHash = first ("parseAccountDetailsWithHash: " <>) . \case
   (PObject (ObjectMap obj)) -> do
     let mhKey = FieldKey "modHash"
     case Map.lookup mhKey obj of

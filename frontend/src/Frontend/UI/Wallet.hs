@@ -219,9 +219,8 @@ uiAccountItems model accountsMap dStartOpen = do
         , text "Owner"
         , text "Keyset Info"
         , text "Notes"
-        , dynText $ ffor fungible $ \case
-            "coin" -> "Balance (KDA)"
-            f -> "Balance (" <> Pact.renderCompactText f <> ")"
+        , dynText $ ffor fungible $ \token ->
+            "Balance (" <> renderTokenName token <> ")"
         , text ""
         ]
 

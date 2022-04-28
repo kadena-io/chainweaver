@@ -239,8 +239,8 @@ makeWallet mChangePassword model conf = do
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
   let
-    coinList = kdaToken :| []
-  initialTokens <- fromMaybe coinList <$> loadTokens
+    defaultCoinList = kdaToken :| []
+  initialTokens <- fromMaybe defaultCoinList <$> loadTokens
   tokens <- holdDyn initialTokens $ _walletCfg_moduleList conf
 
   rec
@@ -268,7 +268,7 @@ makeWallet mChangePassword model conf = do
   initialLoad <- getPostBuild >>= delay 0.5
   fullRefresh <- throttle 3 $ leftmost [_walletCfg_refreshBalances conf, newNetwork, initialLoad]
 
-  dFungible <- holdDyn "coin" $ _walletCfg_fungibleModule conf
+  dFungible <- holdDyn kdaToken $ _walletCfg_fungibleModule conf
   fetchFungStatus <- delay 0.1 $ updated dFungible
 
   let newAccountWithNodes = attach
