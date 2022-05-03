@@ -434,6 +434,7 @@ showSigsWidget p cwKeys sigs sd = do
     go signer (tokenMap, doesPayGas, unscopedCounter) =
       let capList = signer^.siCapList
           tokenTransfers = mapMaybe parseFungibleTransferCap capList
+            <> mapMaybe parseFungibleXChainTransferCap capList
           tokenMap' = foldr (\(k, v) m -> Map.insertWith (+) k v m) tokenMap tokenTransfers
           signerHasGas = isJust $ find (\cap -> asString (_scName cap) == "coin.GAS") capList
       in if capList == [] then (tokenMap, doesPayGas, unscopedCounter + 1)
@@ -523,6 +524,20 @@ sigBuilderAdvancedTab sd externalSigs signerRow = do
       elAttr "img" ("src" =: LT.toStrict img) blank
 #endif
     pure externalSigs'
+
+parseFungibleXChainTransferCap :: SigCapability -> Maybe (Text, Decimal)
+parseFungibleXChainTransferCap cap = xChainTransferCap cap
+  where
+    isFungible (QualifiedName _capModName capName _) =
+      capName == "TRANSFER_XCHAIN"
+    xChainTransferCap (SigCapability modName
+      [PLiteral (LString _sender)
+      ,PLiteral (LString _receiver)
+      ,PLiteral (LDecimal amount)
+      , PLiteral (LString _chain)])
+        | isFungible modName = Just (renderCompactText $ _qnQual modName, amount)
+        | otherwise = Nothing
+    xChainTransferCap _ = Nothing
 
 parseFungibleTransferCap :: SigCapability -> Maybe (Text, Decimal)
 parseFungibleTransferCap cap = transferCap cap
