@@ -1019,7 +1019,9 @@ buildCmdWithSigs
   -- ^ Capabilities for each public key
   -> m (Command Text)
 buildCmdWithSigs signingFn mNonce networkName meta signingKeys extraKeys code dat caps = do
-  cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps
+  let
+    pubKeys = (fmap _keyPair_publicKey signingKeys <> extraKeys)
+  cmd <- encodeAsText . encode <$> buildExecPayload mNonce networkName meta pubKeys code dat caps
   let
     cmdHashL = hash (T.encodeUtf8 cmd)
   sigs <- signingFn cmdHashL signingKeys
@@ -1180,10 +1182,8 @@ buildExecPayload
   -- ^ The network that we are targeting
   -> PublicMeta
   -- ^ Assorted information for the payload. The time is overridden.
-  -> [KeyPair key]
-  -- ^ Keys which we are signing with
   -> [PublicKey]
-  -- ^ Keys which should be added to `signers`, but not used to sign
+  -- ^ Keys which should be added to `signers`.
   -> Text
   -- ^ Code
   -> Object
@@ -1191,7 +1191,7 @@ buildExecPayload
   -> Map PublicKey [SigCapability]
   -- ^ Capabilities for each public key
   -> m (Payload PublicMeta Text)
-buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps = do
+buildExecPayload mNonce networkName meta publicKeys code dat caps = do
     time <- getCreationTime
     nonce <- maybe getNonce pure mNonce
     let
@@ -1203,7 +1203,7 @@ buildExecPayload mNonce networkName meta signingKeys extraKeys code dat caps = d
       { _pPayload = Exec payload
       , _pNonce = "CW:" <> nonce
       , _pMeta = meta { _pmCreationTime = time }
-      , _pSigners = map mkSigner (map _keyPair_publicKey signingKeys ++ extraKeys)
+      , _pSigners = map mkSigner publicKeys
       , _pNetworkId = pure $ NetworkId $ textNetworkName networkName
       }
   where
@@ -1223,7 +1223,7 @@ simpleLocal
   -> Text
   -> m (Command Text)
 simpleLocal nonce networkName meta code = do
-  cmd <- encodeAsText . encode <$> buildExecPayload nonce networkName meta mempty mempty code mempty mempty
+  cmd <- encodeAsText . encode <$> buildExecPayload nonce networkName meta mempty code mempty mempty
   let cmdHashL = hash (T.encodeUtf8 cmd)
   pure $ Pact.Types.Command.Command
     { _cmdPayload = cmd
