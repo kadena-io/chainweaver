@@ -174,21 +174,34 @@ showSettingsTabName DeploymentSettingsView_Preview    = "Preview"
 showSettingsTabName DeploymentSettingsView_Signing    = "External Signatures"
 showSettingsTabName DeploymentSettingsView_Cfg        = "Configuration"
 
+tabsToShow :: Maybe DeploymentSettingsView -> Bool -> Bool -> [DeploymentSettingsView]
+tabsToShow mUserTabName includePreview includeExternalSignatures
+  = (maybeToList mUserTabName)
+  <> stdTabs
+  <> (if includeExternalSignatures then [DeploymentSettingsView_Signing] else [])
+  <> (if includePreview then [DeploymentSettingsView_Preview] else [])
+
+  where
+    stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
+
 -- | Get the previous view, taking into account the custom user tab.
-prevView :: Maybe DeploymentSettingsView -> DeploymentSettingsView -> Maybe DeploymentSettingsView
-prevView custom = \case
+prevView :: Maybe DeploymentSettingsView -> Bool -> DeploymentSettingsView -> Maybe DeploymentSettingsView
+prevView custom showingSigningTab = \case
   DeploymentSettingsView_Custom _ -> Nothing
   DeploymentSettingsView_Cfg -> custom
   DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Cfg
   DeploymentSettingsView_Signing -> Just DeploymentSettingsView_Keys
-  DeploymentSettingsView_Preview -> Just DeploymentSettingsView_Signing
+  DeploymentSettingsView_Preview | showingSigningTab -> Just DeploymentSettingsView_Signing
+                                 | otherwise -> Just DeploymentSettingsView_Keys
 
 -- | Get the next view.
-nextView :: Bool -> DeploymentSettingsView -> Maybe DeploymentSettingsView
-nextView includePreviewTab = \case
+nextView :: Bool -> Bool -> DeploymentSettingsView -> Maybe DeploymentSettingsView
+nextView includePreviewTab showingSigningTab = \case
   DeploymentSettingsView_Custom _ -> Just DeploymentSettingsView_Cfg
   DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
-  DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Signing
+  DeploymentSettingsView_Keys | showingSigningTab -> Just DeploymentSettingsView_Signing
+                              | includePreviewTab -> Just DeploymentSettingsView_Preview
+                              | otherwise -> Nothing
   DeploymentSettingsView_Signing | includePreviewTab -> Just DeploymentSettingsView_Preview
                                  | otherwise -> Nothing
   DeploymentSettingsView_Preview -> Nothing
@@ -318,12 +331,13 @@ buildDeployTabs
      )
   => Maybe DeploymentSettingsView
   -> Bool
+  -> Dynamic t Bool
   -> Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView)
   -> m ( Dynamic t DeploymentSettingsView
        , Event t ()
        , Event t DeploymentSettingsView
        )
-buildDeployTabs mUserTabName includePreviewTab controls = mdo
+buildDeployTabs mUserTabName includePreviewTab dShowExternalSignature controls = mdo
   let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
       f thisView g = case g thisView of
         Just view' -> (Just view', Nothing)
@@ -332,19 +346,14 @@ buildDeployTabs mUserTabName includePreviewTab controls = mdo
     [ const . Just <$> onTabClick
     , controls
     ]
-  (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-    { _tabBarCfg_tabs = availableTabs
-    , _tabBarCfg_mkLabel = const $ text . showSettingsTabName
-    , _tabBarCfg_selectedTab = Just <$> curSelection
-    , _tabBarCfg_classes = mempty
-    , _tabBarCfg_type = TabBarType_Secondary
+  (TabBar onTabClick) <- makeTabBarDyn $ TabBarDynCfg
+    { _tabBarDynCfg_tabs = tabsToShow mUserTabName includePreviewTab <$> dShowExternalSignature
+    , _tabBarDynCfg_mkLabel = const $ text . showSettingsTabName
+    , _tabBarDynCfg_selectedTab = Just <$> curSelection
+    , _tabBarDynCfg_classes = mempty
+    , _tabBarDynCfg_type = TabBarType_Secondary
     }
   pure (curSelection, done, onTabClick)
-  where
-    userTabs = maybeToList mUserTabName
-    stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys, DeploymentSettingsView_Signing]
-    withPreview = if includePreviewTab then [DeploymentSettingsView_Preview] else []
-    availableTabs = userTabs <> stdTabs <> withPreview
 
 defaultTabViewProgressButtonLabel :: DeploymentSettingsView -> Text
 defaultTabViewProgressButtonLabel DeploymentSettingsView_Preview = "Submit"
@@ -357,11 +366,12 @@ buildDeployTabFooterControls
      )
   => Maybe DeploymentSettingsView
   -> Bool
+  -> Behavior t Bool
   -> Dynamic t DeploymentSettingsView
   -> (DeploymentSettingsView -> Text)
   -> Dynamic t Bool
   -> m (Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView))
-buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn hasResult = do
+buildDeployTabFooterControls mUserTabName includePreviewTab bShowExternalSignature curSelection nextBtnTextForTab hasResult = do
   let backConfig = btnCfgTertiary & uiButtonCfg_class .~ ffor curSelection
         (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
 
@@ -375,11 +385,11 @@ buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn 
   back <- cancelButton backConfig "Back"
   next <- uiButtonDyn
     (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
-    $ dynText (stepFn <$> curSelection)
+    $ dynText (nextBtnTextForTab <$> curSelection)
 
   pure $ leftmost
-    [ nextView includePreviewTab <$ next
-    , prevView mUserTabName <$ back
+    [ nextView includePreviewTab <$> bShowExternalSignature <@ next
+    , prevView mUserTabName <$> bShowExternalSignature <@ back
     ]
 
 -- | Show settings related to deployments to the user.
@@ -393,14 +403,15 @@ uiDeploymentSettings
     , HasJsonDataCfg mConf t, Flattenable mConf t, HasJsonData model t
     , HasCrypto key (Performable m), HasLogger model t
     , HasTransactionLogger m
+    , HasCrypto key m
     )
   => model
   -> DeploymentSettingsConfig t m model a
   -> m (mConf, Event t (DeploymentSettingsResult key), Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
-    (curSelection, done, _) <- buildDeployTabs mUserTabName (_deploymentSettingsConfig_includePreviewTab settings) controls
-    (conf, result, ma) <- elClass "div" "modal__main transaction_details" $ do
+    (curSelection, done, _) <- buildDeployTabs mUserTabName (_deploymentSettingsConfig_includePreviewTab settings) showSigning controls
+    (conf, result, ma, showSigning) <- elClass "div" "modal__main transaction_details" $ do
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
@@ -424,6 +435,7 @@ uiDeploymentSettings m settings = mdo
       let
         publicKeys = signers <> (Map.keysSet <$> capabilities)
         eUpdatedSignaturesUi = current (uiSignatures <$> (m ^.wallet_keys) <*> (fmap Set.toList publicKeys)) <@> ePayload
+        payloadContainsExternalKeys = fmap (not . Set.null . snd) $ splitKeysInAndOutOfStore <$> (m ^. wallet_keys) <*> publicKeys
 
       res <- tabPane mempty curSelection DeploymentSettingsView_Signing $ do
         -- TODO initial condition seems like an error that should not exist.
@@ -482,12 +494,14 @@ uiDeploymentSettings m settings = mdo
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
         , res
         , mRes
+        , payloadContainsExternalKeys
         )
     let
       command = tagMaybe (current $ fmap hush result) done
     controls <- modalFooter $ buildDeployTabFooterControls
       mUserTabName
       (_deploymentSettingsConfig_includePreviewTab settings)
+      (current showSigning)
       curSelection
       defaultTabViewProgressButtonLabel
       (isLeft <$> result)
