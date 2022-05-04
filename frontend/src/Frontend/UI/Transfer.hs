@@ -842,7 +842,7 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
               <*> ((fmap $ pkt2pk . _siPubKey) <$> (_transferMeta_sourceChainSigners <$> meta))
             produceSigsIfSigTab ((cwKeys, payload, meta), tab) =
               case tab of
-                TransferTab_Signatures -> Just <$$> uiSignatures cwKeys payload meta
+                TransferTab_Signatures -> Just <$$> uiSignatures cwKeys meta payload
                 TransferTab_Metadata -> pure $ constDyn Nothing
         networkHold (pure $ constDyn Nothing)
           $ produceSigsIfSigTab
