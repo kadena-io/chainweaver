@@ -71,6 +71,7 @@ moduleDetails
     , HasUIModuleDetailsModelCfg mConf m t
     , HasCrypto key (Performable m)
     , HasTransactionLogger m
+    , HasCrypto key m
     )
   => model
   -> (ModuleRef, ModuleDef (Term Name))
@@ -152,6 +153,7 @@ functionList
      , HasUIModuleDetailsModel model key t
      , HasCrypto key (Performable m)
      , HasTransactionLogger m
+     , HasCrypto key m
      )
   => model -> Maybe DeployedModuleRef -> [PactFunction] -> m mConf
 functionList m mDeployed functions =

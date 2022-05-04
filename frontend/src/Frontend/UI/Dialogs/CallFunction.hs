@@ -70,6 +70,7 @@ uiCallFunction
     , HasCrypto key (Performable m)
     , HasLogger model t
     , HasTransactionLogger m
+    , HasCrypto key m
     )
   => model
   -> Maybe DeployedModuleRef

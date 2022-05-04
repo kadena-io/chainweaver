@@ -368,6 +368,7 @@ uiDeployConfirmation
      , HasWallet model key t, HasCrypto key (Performable m)
      , HasLogger model t
      , HasTransactionLogger m
+     , HasCrypto key m
      )
   => Text
   -> model

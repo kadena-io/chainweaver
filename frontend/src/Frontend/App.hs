@@ -377,7 +377,7 @@ getPactVersion = do
       _ -> error "failed to get pact version"
     return ver
 
-controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m), HasTransactionLogger m)
+controlBarRight  :: forall key t m. (MonadWidget t m, HasCrypto key (Performable m), HasTransactionLogger m, HasCrypto key m)
   => FileFFI t m -> AppCfg key t m -> ModalIde m key t -> m (ModalIdeCfg m key t)
 controlBarRight fileFFI appCfg m = do
     divClass "main-header__controls-nav" $ do

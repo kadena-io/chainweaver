@@ -29,7 +29,7 @@ module Frontend.UI.DeploymentSettings
     -- * Helpers
   , TxnSenderTitle (..)
   , getTxnSenderTitle
-  , buildDeploymentSettingsResult
+  , buildPayload
   , defaultGASCapability
 
     -- * Tab Helpers
@@ -115,6 +115,7 @@ import Frontend.UI.TabBar
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (preventUpAndDownArrow, preventScrollWheel, dialogSectionHeading)
 import Frontend.Wallet
+import Frontend.UI.Dialogs.Signing.Common (uiSignatures)
 
 -- | Config for the deployment settings widget.
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
@@ -162,6 +163,7 @@ data DeploymentSettingsView
   = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.
   | DeploymentSettingsView_Cfg -- ^ Actual settings like gas price/limit, ...
   | DeploymentSettingsView_Keys -- ^ Select keys for signing the transaction.
+  | DeploymentSettingsView_Signing -- ^ Provide a singature or private key for each external public key
   | DeploymentSettingsView_Preview -- ^ Attempt to preview this deployments affect on the chain
   deriving (Eq,Ord)
 
@@ -169,6 +171,7 @@ showSettingsTabName :: DeploymentSettingsView -> Text
 showSettingsTabName (DeploymentSettingsView_Custom n) = n
 showSettingsTabName DeploymentSettingsView_Keys       = "Sign"
 showSettingsTabName DeploymentSettingsView_Preview    = "Preview"
+showSettingsTabName DeploymentSettingsView_Signing    = "External Signatures"
 showSettingsTabName DeploymentSettingsView_Cfg        = "Configuration"
 
 -- | Get the previous view, taking into account the custom user tab.
@@ -177,15 +180,17 @@ prevView custom = \case
   DeploymentSettingsView_Custom _ -> Nothing
   DeploymentSettingsView_Cfg -> custom
   DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Cfg
-  DeploymentSettingsView_Preview -> Just DeploymentSettingsView_Keys
+  DeploymentSettingsView_Signing -> Just DeploymentSettingsView_Keys
+  DeploymentSettingsView_Preview -> Just DeploymentSettingsView_Signing
 
 -- | Get the next view.
 nextView :: Bool -> DeploymentSettingsView -> Maybe DeploymentSettingsView
 nextView includePreviewTab = \case
   DeploymentSettingsView_Custom _ -> Just DeploymentSettingsView_Cfg
   DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
-  DeploymentSettingsView_Keys | includePreviewTab -> Just DeploymentSettingsView_Preview
-                              | otherwise -> Nothing
+  DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Signing
+  DeploymentSettingsView_Signing | includePreviewTab -> Just DeploymentSettingsView_Preview
+                                 | otherwise -> Nothing
   DeploymentSettingsView_Preview -> Nothing
 
 data DeploymentSettingsResult key = DeploymentSettingsResult
@@ -206,7 +211,7 @@ data DeploymentSettingsResultError
   | DeploymentSettingsResultError_InvalidJsonData JsonError
   | DeploymentSettingsResultError_NoAccountsOnNetwork
   | DeploymentSettingsResultError_InsufficientFundsOnGasPayer
-  | DeploymentSettingsResultError_ExternalKeysInPayload
+  | DeploymentSettingsResultError_NoPayloadYet
   deriving Eq
 
 renderDeploymentSettingsResultError :: DeploymentSettingsResultError -> Text
@@ -218,9 +223,9 @@ renderDeploymentSettingsResultError = \case
   DeploymentSettingsResultError_InvalidJsonData err -> "JSON error: " <> showJsonError err
   DeploymentSettingsResultError_NoAccountsOnNetwork -> "No accounts on network"
   DeploymentSettingsResultError_InsufficientFundsOnGasPayer -> "Gas payer does not have sufficient funds"
-  DeploymentSettingsResultError_ExternalKeysInPayload -> "External keys in payload." -- TODO allow the user to provide external signatures and remove this.
+  DeploymentSettingsResultError_NoPayloadYet -> "Payload has not been built yet"
 
-buildDeploymentSettingsResult
+buildPayload
   :: ( HasNetwork model t
      , HasJsonData model t
      , HasWallet model key t
@@ -238,8 +243,8 @@ buildDeploymentSettingsResult
   -> Dynamic t GasLimit
   -> Dynamic t Text
   -> DeploymentSettingsConfig t m model a
-  -> Dynamic t (Either DeploymentSettingsResultError (Performable m (DeploymentSettingsResult key)))
-buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
+  -> Dynamic t (Either DeploymentSettingsResultError (Performable m (Pact.Payload PublicMeta Text)))
+buildPayload m mSender signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkName <- lift $ m ^. network_selectedNetwork
   fungible <- lift $ m^. wallet_fungible
@@ -288,28 +293,14 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
         in unless (unAccountBalance b > fromIntegral lim * price) $
              throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
 
-  keyStore <- lift $ m ^. wallet_keys
+  let
+    allPublicKeys = Map.keysSet caps <> signs
 
-  signingKeypairs <- do
-    let
-      allPublicKeys = Map.keysSet caps <> signs
-      (pubKeysWithPrivateKeys, pubKeysWithoutPrivateKeys) = splitKeysInAndOutOfStore keyStore allPublicKeys
-    if null pubKeysWithoutPrivateKeys
-      then return pubKeysWithPrivateKeys
-      -- TODO need to provide a Performable Payload, or maybe better a widget that will output the DeploymentSettingsResult
-      else throwError DeploymentSettingsResultError_ExternalKeysInPayload
-
-  pure $ do
-    cmd <- buildCmd
-      (_deploymentSettingsConfig_nonce settings)
-      networkId publicMeta signingKeypairs
-      (_deploymentSettingsConfig_extraSigners settings)
-      code' (HM.union jsonData' deploySettingsJsonData) caps
-    pure $ DeploymentSettingsResult
-      { _deploymentSettingsResult_sender = sender
-      , _deploymentSettingsResult_chainId = chainId
-      , _deploymentSettingsResult_command = cmd
-      }
+  return $ buildExecPayload
+    (_deploymentSettingsConfig_nonce settings)
+    networkId publicMeta
+    (Set.toList allPublicKeys <> _deploymentSettingsConfig_extraSigners settings)
+    code' (HM.union jsonData' deploySettingsJsonData) caps
 
 -- TODO: are we worried about multiple private keys with the same pubkey key?
 splitKeysInAndOutOfStore :: KeyStorage key -> Set PublicKey -> ([KeyPair key], Set PublicKey)
@@ -351,12 +342,13 @@ buildDeployTabs mUserTabName includePreviewTab controls = mdo
   pure (curSelection, done, onTabClick)
   where
     userTabs = maybeToList mUserTabName
-    stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
+    stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys, DeploymentSettingsView_Signing]
     withPreview = if includePreviewTab then [DeploymentSettingsView_Preview] else []
     availableTabs = userTabs <> stdTabs <> withPreview
 
 defaultTabViewProgressButtonLabel :: DeploymentSettingsView -> Text
 defaultTabViewProgressButtonLabel DeploymentSettingsView_Preview = "Submit"
+defaultTabViewProgressButtonLabel DeploymentSettingsView_Signing = "Sign"
 defaultTabViewProgressButtonLabel _ = "Next"
 
 buildDeployTabFooterControls
@@ -425,7 +417,37 @@ uiDeploymentSettings m settings = mdo
       (signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
         uiSenderCapabilities m (_deploymentSettingsConfig_caps settings)
 
-      let res = buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings
+      let dErrorOrPayload = buildPayload m mSender signers cChainId capabilities ttl gasLimit code settings
+
+      ePayload <- performEvent . snd . fanEither $ updated dErrorOrPayload
+
+      let
+        publicKeys = signers <> (Map.keysSet <$> capabilities)
+        eUpdatedSignaturesUi = current (uiSignatures <$> (m ^.wallet_keys) <*> (fmap Set.toList publicKeys)) <@> ePayload
+
+      res <- tabPane mempty curSelection DeploymentSettingsView_Signing $ do
+        -- TODO initial condition seems like an error that should not exist.
+        dErrorOrCommand <- fmap join . networkHold
+          (return . constDyn $ Left DeploymentSettingsResultError_NoPayloadYet)
+          $ (fmap . fmap . fmap) Right eUpdatedSignaturesUi
+
+        -- Doing these checks again seems wrong, we have another runExceptT in buildPayload with these same checks.
+        return . runExceptT $ do
+          -- Only doing this becuase we need to bring over the errors from buildPayload
+          -- Might not have to if this code was in buildPayload
+          erorrOrPayload <- lift dErrorOrPayload
+          case erorrOrPayload of
+            Left e -> throwError e
+            Right _ -> return ()
+
+          v <- ExceptT $ dErrorOrCommand
+          chainId <- cChainId !? DeploymentSettingsResultError_NoChainIdSelected
+          sender <- lift $ fromMaybe (AccountName "") <$> mSender
+          return $ DeploymentSettingsResult
+            { _deploymentSettingsResult_sender = sender
+            , _deploymentSettingsResult_chainId = chainId
+            , _deploymentSettingsResult_command = v
+            }
 
       when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
@@ -461,8 +483,8 @@ uiDeploymentSettings m settings = mdo
         , res
         , mRes
         )
-
-    command <- performEvent $ tagMaybe (current $ fmap hush result) done
+    let
+      command = tagMaybe (current $ fmap hush result) done
     controls <- modalFooter $ buildDeployTabFooterControls
       mUserTabName
       (_deploymentSettingsConfig_includePreviewTab settings)
