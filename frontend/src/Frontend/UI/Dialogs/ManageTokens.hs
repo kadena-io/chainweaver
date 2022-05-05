@@ -228,7 +228,8 @@ manageTokens
   -> m (Event t (mConf, Event t ()))
 manageTokens model _ = do
   close <- modalHeader $ text "Manage Tokens"
-  networkView $ model ^. network_modules <&> \chainToModuleMap ->
+  let modulesAndNet = (,) <$> model ^. network_modules <*> model ^. network_selectedNetwork
+  networkView $  modulesAndNet <&> \(chainToModuleMap, net) ->
     if (Map.null chainToModuleMap)
     then do
       modalMain $ text "Loading Tokens..."
@@ -240,12 +241,13 @@ manageTokens model _ = do
       done <- modalFooter $ confirmButton def "Done"
 
       initialTokens <- sample $ current $ model ^. wallet_tokenList
+      let initialTokens' = fromMaybe defaultTokenList $ Map.lookup net initialTokens
       let
         addToken (t :| ts) newToken = t :| (newToken : ts)
         deleteToken (t :| ts) token = t :| filter (/= token) ts
         processUserAction action tokens = either (deleteToken tokens) (addToken tokens) action
         addEv = fmapMaybe id $ updated dmFung
-      dLocalList <- foldDyn processUserAction initialTokens $ leftmost
+      dLocalList <- foldDyn processUserAction initialTokens' $ leftmost
         [ Left <$> deleteEv
         , Right <$> addEv
         ]
@@ -258,6 +260,6 @@ manageTokens model _ = do
             if activeFungible `notElem` tokenList
             then Just $ NE.head tokenList
             else Nothing
-        conf = mempty & walletCfg_moduleList .~ updated dLocalList
+        conf = mempty & walletCfg_moduleList .~ ((\localLst -> (net,localLst)) <$> updated dLocalList)
                       & walletCfg_fungibleModule .~ eActiveToken
       pure (conf, done <> close)

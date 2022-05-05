@@ -115,7 +115,7 @@ data WalletCfg key t = WalletCfg
   -- immediately stored with all info we need to retry.
   , _walletCfg_updateAccountNotes :: Event t (NetworkName, AccountName, Maybe ChainId, Maybe AccountNotes)
   , _walletCfg_fungibleModule :: Event t ModuleName
-  , _walletCfg_moduleList :: Event t (NonEmpty ModuleName)
+  , _walletCfg_moduleList :: Event t (NetworkName, NonEmpty ModuleName)
   -- ^ Update the token list in the wallet
   }
   deriving Generic
@@ -133,7 +133,7 @@ data Wallet key t = Wallet
     -- ^ Accounts added and removed by the user
   , _wallet_fungible :: Dynamic t ModuleName
   , _wallet_moduleData :: Dynamic t ModuleData
-  , _wallet_tokenList :: Dynamic t (NonEmpty ModuleName)
+  , _wallet_tokenList :: Dynamic t TokenStorage
   }
   deriving Generic
 
@@ -238,10 +238,8 @@ makeWallet mChangePassword model conf = do
   pb <- getPostBuild
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
-  let
-    defaultCoinList = kdaToken :| []
-  initialTokens <- fromMaybe defaultCoinList <$> loadTokens
-  tokens <- holdDyn initialTokens $ _walletCfg_moduleList conf
+  initialTokens <- fromMaybe mempty <$> loadTokens
+  tokens <- foldDyn id initialTokens $ fmap (uncurry Map.insert) $ _walletCfg_moduleList conf
 
   rec
     onNewKey <- performEvent $ leftmost

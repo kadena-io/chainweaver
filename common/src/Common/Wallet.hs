@@ -50,6 +50,7 @@ module Common.Wallet
   , accountDetails_balance
   , accountDetails_guard
   , kdaToken
+  , defaultTokenList
   , renderTokenName
     -- * Prisms for working directly with Account
   , AccountStorage(..)
@@ -101,7 +102,7 @@ import Data.Decimal (Decimal, roundTo)
 import Data.Default
 import Data.Function (on)
 import Data.IntMap (IntMap)
-import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Ord (comparing)
 import Data.Set (Set)
@@ -396,10 +397,11 @@ instance FromJSON key => FromJSON (Key key) where
 
 type KeyStorage key = IntMap (Key key)
 
-type TokenStorage = NonEmpty ModuleName
-
 kdaToken :: ModuleName
 kdaToken = ModuleName "coin" Nothing
+
+defaultTokenList :: NonEmpty ModuleName
+defaultTokenList = kdaToken :| []
 
 -- | For the "coin" module show "KDA", for other tokens use `renderCompactText`
 renderTokenName :: ModuleName -> T.Text
@@ -526,6 +528,8 @@ instance FromJSON VanityAccount where
       { _vanityAccount_notes = notes
       , _vanityAccount_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
       }
+
+type TokenStorage = Map NetworkName (NonEmpty ModuleName)
 
 newtype AccountStorage = AccountStorage
   { unAccountStorage :: Map NetworkName (Map AccountName (AccountInfo VanityAccount)) }

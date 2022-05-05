@@ -212,8 +212,8 @@ expectedAccounts =
     ]
 
 expectedTokens :: TokenStorage
-expectedTokens = "coin" :| []
-
+expectedTokens = -- mempty
+  Map.fromList $ [ (mkNetworkName "devnet", defaultTokenList), (mkNetworkName "testnet", defaultTokenList)]
 testVersioner
   :: ( HasCrypto TestPrv m
      , HasStorage m

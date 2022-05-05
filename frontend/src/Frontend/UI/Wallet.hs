@@ -379,9 +379,9 @@ uiAccountItem cwKeys startsOpen contractStatus name accountInfo = do
     -> m (Dynamic t (Maybe AccountBalance), Event t AccountDialog)
   accountRow visible paddedChain dAccount = do
     let chain = unPadChainId paddedChain
-    let details = (^? account_status . _AccountStatus_Exists) <$> dAccount
-    let balance = _accountDetails_balance <$$> details
-    let contractStatusChain = Map.lookup chain <$> contractStatus
+        details = (^? account_status . _AccountStatus_Exists) <$> dAccount
+        balance = _accountDetails_balance <$$> details
+        contractStatusChain = Map.lookup chain <$> contractStatus
     -- Previously we always added all chain rows, but hid them with CSS. A bug
     -- somewhere between reflex-dom and jsaddle means we had to push this under
     -- a `dyn`.

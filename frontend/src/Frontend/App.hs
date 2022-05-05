@@ -337,8 +337,13 @@ networkBar m sign = do
         initToken <- sample $ current $ m ^. wallet_fungible
         let cfg = mkCfg initToken
               & primFormWidgetConfig_initialAttributes <>~ ("class" =: "select select_type_special")
-        newToken <- uiTokenDropdown m cfg $ m^.wallet_tokenList
-        pure $ mempty & walletCfg_fungibleModule .~ updated newToken
+        newToken <- uiTokenDropdown m cfg $ do
+          tMap <- m^.wallet_tokenList
+          tNet <- m^.network_selectedNetwork
+          pure $ fromMaybe defaultTokenList $ Map.lookup tNet tMap
+        -- When we switch networks we need to make the default token KDA again
+        let newNetworkToken = kdaToken <$ (updated $ m^.network_selectedNetwork)
+        pure $ mempty & walletCfg_fungibleModule .~ leftmost [newNetworkToken, updated newToken ]
     pure $ netCfg <> tokenCfg
   pure $ barCfg <> signingPopupCfg
 

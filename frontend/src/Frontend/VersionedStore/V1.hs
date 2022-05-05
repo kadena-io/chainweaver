@@ -40,7 +40,7 @@ import Obelisk.OAuth.Common (AccessToken, OAuthState)
 
 data StoreFrontend key a where
   StoreFrontend_Wallet_Keys :: StoreFrontend key (KeyStorage key)
-  StoreFrontend_Wallet_Tokens :: StoreFrontend key (NonEmpty ModuleName)
+  StoreFrontend_Wallet_Tokens :: StoreFrontend key TokenStorage
   StoreFrontend_Wallet_Accounts :: StoreFrontend key AccountStorage
 
   StoreFrontend_Network_PublicMeta :: StoreFrontend key PublicMeta
@@ -72,6 +72,8 @@ deriving instance Show (StoreFrontend key a)
 upgradeFromV0 :: (Monad m, HasCrypto key m) => DMap (V0.StoreFrontend key) Identity -> m (DMap (StoreFrontend key) Identity)
 upgradeFromV0 v0 = do
   (newKeysList, newAccountStorage) <- foldMapM splitOldKey oldKeysList
+  let tokens = -- mempty
+        Map.fromList $ zip (Map.keys $ unAccountStorage newAccountStorage) $ repeat defaultTokenList
   let newKeys = IntMap.fromList newKeysList
   pure $ DMap.fromList . catMaybes $
     [ copyKeyDSum V0.StoreNetwork_PublicMeta StoreFrontend_Network_PublicMeta v0
@@ -91,7 +93,6 @@ upgradeFromV0 v0 = do
     , newNetworks
     ]
   where
-    tokens = kdaToken :| []
     oldKeysList = maybe [] (IntMap.toList . runIdentity) (DMap.lookup V0.StoreWallet_Keys v0)
 
     -- We have to walk through the slightly different encoding of the Network information.
