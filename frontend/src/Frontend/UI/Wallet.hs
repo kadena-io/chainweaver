@@ -33,7 +33,7 @@ module Frontend.UI.Wallet
 
 ------------------------------------------------------------------------------
 import           Control.Lens
-import           Control.Monad               (when, (<=<))
+import           Control.Monad               (when, (<=<), join)
 import           Control.Error               (headMay)
 import           Data.Bifunctor              (second)
 import qualified Data.IntMap                 as IntMap
@@ -381,7 +381,7 @@ uiAccountItem cwKeys startsOpen contractStatus name accountInfo = do
     let chain = unPadChainId paddedChain
         details = (^? account_status . _AccountStatus_Exists) <$> dAccount
         balance = _accountDetails_balance <$$> details
-        contractStatusChain = Map.lookup chain <$> contractStatus
+        contractStatusChain = (join . Map.lookup chain) <$> contractStatus
     -- Previously we always added all chain rows, but hid them with CSS. A bug
     -- somewhere between reflex-dom and jsaddle means we had to push this under
     -- a `dyn`.

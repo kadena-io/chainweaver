@@ -138,7 +138,9 @@ data Wallet key t = Wallet
   deriving Generic
 
 -- Holds the contract hash of the currrent fungible
-type ModuleData = Map ChainId (Maybe Text)
+-- The outer Maybe means the fungible has changed but we haven't fetched details yet, and the innner
+-- Maybe represents whether the contract exists on the chain yet
+type ModuleData = Map ChainId (Maybe (Maybe Text))
 
 data Account = Account
   { _account_status :: AccountStatus AccountDetails
@@ -313,7 +315,10 @@ makeWallet mChangePassword model conf = do
       -- zero out account balance on new fungible
       , ffor (updated dFungible) $ \_ accs-> accs & accountStatuses .~ AccountStatus_Unknown
       ]
-    dModuleData <- foldDyn (uncurry Map.insert) mempty moduleStatusUpdates
+    dModuleData <- foldDyn ($) mempty $ leftmost
+      [ ffor moduleStatusUpdates $ \(cid, mHash) -> Map.insert cid (Just mHash)
+      , ffor (updated dFungible) $ \_ -> fmap (const Nothing)
+      ]
 
   performEvent_ $ storeKeys <$> updated keys
   store <- holdUniqDyn $ toStorage <$> accounts

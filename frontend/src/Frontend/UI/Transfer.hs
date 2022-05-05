@@ -624,13 +624,16 @@ checkContractHashOnBothChains
   -> TransferType
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
-  -> Map ChainId (Maybe Text)
+  -> ModuleData
   -> Workflow t m (mConf, Event t ())
 checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap = do
   let toChain = _ca_chain $ _ti_toAccount ti
       fromChain = _ca_chain $ _ti_fromAccount ti
       --TODO: Just pass this val in as arg instead of passing around the whole map
-      hashPair = (,) <$> Map.lookup fromChain modHashMap <*> Map.lookup toChain modHashMap
+      --Note: The join joins the Maybe from the lookup (where Nothing represents that the chain
+      --doesn't even exist), and the outer Maybe from the ModuleData map, (where Nothing implies
+      --that our onchain lookup has not returned yet)
+      hashPair = (,) <$> (join $ Map.lookup fromChain modHashMap) <*> (join $ Map.lookup toChain modHashMap)
       nextW = checkModuleFungibleXChain model netInfo ti ty fks tks
   case hashPair of
     -- This case implies likely occurs during throttling, so we will continue and allow it
