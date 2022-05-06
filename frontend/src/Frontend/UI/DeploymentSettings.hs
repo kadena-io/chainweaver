@@ -775,30 +775,34 @@ uiMetaData m mTTL mGasLimit = do
 
 -- | Let the user pick signers
 uiSignerList
-  :: ( Adjustable t m, PostBuild t m, DomBuilder t m
-     , MonadHold t m
-     , HasWallet model key t
-     , MonadFix m
-     )
+  :: (MonadWidget t m, HasWallet model key t)
   => model
   -> Dynamic t (Map PublicKey [SigCapability])
   -> m (Dynamic t (Set PublicKey))
 uiSignerList m dCapMap = do
   dialogSectionHeading mempty "Unrestricted Signing Keys"
   divClass "group signing-ui-signers" $ do
-    let dKeys = ffor2 dCapMap (m ^. wallet_keys) $ \capMap keyIndices ->
-          let caps = Map.map (not . null) capMap
-              keys = Map.fromList $ (, False) . _keyPair_publicKey . _key_pair <$> IM.elems keyIndices
-           in Map.unionWith (||) caps keys
-    results <- listWithKey dKeys $ \pair hasCap' -> do
-      hasCap <- holdUniqDyn hasCap'
-      let conf = def
-            & checkboxConfig_attributes .~ ffor hasCap (\s -> if s then "disabled" =: "disabled" else mempty)
-            -- Uncheck the checkbox when this item gains a capability
-            & checkboxConfig_setValue .~ (False <$ ffilter id (updated hasCap))
-      fmap value $ uiCheckbox "signing-ui-signers__signer" False conf $
-        text . keyToText $ pair
-    pure $ Map.keysSet . Map.filter id <$> joinDynThroughMap results
+    let
+      dKeysWithCaps = ffor dCapMap $ \capMap -> Map.keysSet . Map.filter (not . null) $ capMap
+
+      selectMsgKey = PublicKeyText ""
+      doAddDel yesno = fmap (yesno selectMsgKey) . updated
+
+      pkt2kp (PublicKeyText "") = Nothing
+      pkt2kp (PublicKeyText keyText) = textToKey keyText
+
+      -- TODO: Dont use keys that have capabilities, indicate that those keys cant/wont be used or signers
+    dKeyInputMap <- growingList
+      (const $ pubKeyFormWidget (m ^. wallet_keys))
+      (AllowAddNewRow $ doAddDel (/=) . _formWidget_value)
+      (AllowDeleteRow $ doAddDel (==) . _formWidget_value)
+      selectMsgKey
+      never
+      (mkCfg mempty)
+    let
+      keys = Set.fromList . IM.elems . IM.mapMaybe pkt2kp <$> joinDynThroughIntMap (value <$$> dKeyInputMap)
+    return $ Set.difference <$> keys <*> dKeysWithCaps
+    -- pure $ Map.keysSet . Map.filter id <$> joinDynThroughMap results
 
 parseSigCapability :: Text -> Either String SigCapability
 parseSigCapability txt = parsed >>= compiled >>= parseApp
