@@ -255,12 +255,8 @@ executable frontend
   ghc-options: -threaded -O -Wall -fno-show-valid-hole-fits
   if os(darwin)
      ghc-options: -dynamic
-  -- Can and _should_ be re-enabled once
-  -- https://github.com/ghcjs/ghcjs/issues/748 is fixed. -dedupe greatly
-  -- reduces closure compile time, reduces final JS size quite a bit and
-  -- improves page load times:
-  -- if impl(ghcjs)
-  --   ghcjs-options: -dedupe
+  if impl(ghcjs)
+    ghcjs-options: -dedupe
 
 test-suite tests
   type: exitcode-stdio-1.0
