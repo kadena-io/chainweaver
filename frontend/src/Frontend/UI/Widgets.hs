@@ -35,6 +35,8 @@ module Frontend.UI.Widgets
   , keyDatalist
   , accountListId
   , accountDatalist
+  , moduleListId
+  , moduleDatalist
   , uiAccountNameInput
   , uiAccountNameInputNoDropdown
   , accountNameFormWidget
@@ -43,13 +45,14 @@ module Frontend.UI.Widgets
   , uiAccountAny
   , uiAccountDropdown
   , uiAccountDropdown'
+  , uiTokenDropdown
   , uiKeyPairDropdown
   , uiRequestKeyInput
 
   -- ** Other widgets
   , PopoverState (..)
   , ValidationResult (..)
-  , textFormWidgetAsync
+  , textFormAsyncValidationWidget
   , uiInputWithPopover
   , uiSegment
   , uiGroup
@@ -112,6 +115,7 @@ module Frontend.UI.Widgets
   ) where
 
 
+import qualified Data.List.NonEmpty as NE
 ------------------------------------------------------------------------------
 import           Control.Applicative
 import           Control.Arrow (first, (&&&))
@@ -121,6 +125,7 @@ import           Control.Monad
 import           Control.Monad.Except
 import           Control.Monad.Trans.Maybe
 import qualified Data.Aeson.Encode.Pretty as AesonPretty
+import qualified Data.Bifunctor                   as BiF
 import           Data.Decimal
 import           Data.Either (isLeft)
 import           Data.Functor.Misc
@@ -129,6 +134,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Monoid
 import qualified Data.IntMap as IntMap
 import           Data.Proxy                  (Proxy(..))
+import qualified Data.Set as Set
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
@@ -149,15 +155,18 @@ import           System.Random
 import           Text.Read                   (readMaybe)
 ------------------------------------------------------------------------------
 import Pact.Types.ChainId (ChainId (..))
+import Pact.Types.Pretty  (renderCompactText)
 import Pact.Types.SigData
 import Pact.Types.Runtime (GasPrice (..))
 import Pact.Parse (ParsedDecimal (..))
 import Pact.Types.Command (RequestKey)
+import Pact.Types.Names
 import qualified Pact.Types.Util as Pact
 ------------------------------------------------------------------------------
 import           Common.Wallet
 import           Frontend.Network (HasNetwork(..), maxCoinPrecision)
 import           Frontend.Foundation
+import           Frontend.ModuleExplorer.ModuleRef
 import           Frontend.TxBuilder
 import           Frontend.UI.Button
 import           Frontend.UI.Common
@@ -1088,6 +1097,22 @@ accountDatalist ideL = elAttr "datalist" ("id" =: accountListId) $ do
 accountListId :: Text
 accountListId = "account-list"
 
+moduleListId :: Text
+moduleListId = "module-list"
+
+-- | Global dom representation of the module list for use in an HTML5 combo
+-- box. This uses and is addressed by an id, so there should only ever be one of
+-- them in the DOM. Currently it's at the very top of the <body> tag.
+moduleDatalist
+  :: ( DomBuilder t m, PostBuild t m, MonadFix m, MonadHold t m
+     , HasNetwork ide t
+     , HasWallet ide key t
+     )
+  => ide
+  -> m ()
+moduleDatalist ideL =
+  uiDatalist moduleListId $ map renderCompactText . Set.toList . Set.fromList . concat . Map.elems <$> ideL ^. network_modules
+
 uiAccountNameInput
   :: ( DomBuilder t m
      , PostBuild t m
@@ -1233,6 +1258,17 @@ uiAccountDropdown
   -> m (Dynamic t (Maybe (AccountName, Account)))
 uiAccountDropdown uCfg allowAccount mkPlaceholder m = uiAccountDropdown' uCfg allowAccount mkPlaceholder m Nothing
 
+uiTokenDropdown
+  :: forall t m key model
+   . ( HasWallet model key t
+     , DomBuilder t m, MonadFix m, MonadHold t m, PostBuild t m
+     )
+  => model
+  -> PrimFormWidgetConfig t ModuleName
+  -> Dynamic t (NE.NonEmpty ModuleName)
+  -> m (Dynamic t ModuleName)
+uiTokenDropdown m cfg tokenList = fmap value $ dropdownFormWidget (NE.toList <$> tokenList) renderTokenName cfg
+
 uiKeyPairDropdown
   :: forall t m key model
    . ( HasWallet model key t
@@ -1263,8 +1299,8 @@ uiSidebarIcon selected src label = do
 data PopoverState
   = PopoverState_Error Text
   | PopoverState_Warning Text
-  | PopoverState_Loading
   | PopoverState_Disabled
+  | PopoverState_Loading
   deriving (Eq, Show)
 
 uiInputWithPopover
@@ -1456,11 +1492,12 @@ accountNameFormWidget validateName cfg = do
 -- A warning state is not considered a failure, the value is considered acceptable,
 -- but there is scope for improvement.
 data ValidationResult a b
-  = Failure a     -- ^ Signifies a failure, value is invalid
-  | Warning a b   -- ^ Signifies a warning, value may be accepted
-  | Success b     -- ^ Value is valid
+  = Validation_Failure a     -- ^ Signifies a failure, value is invalid
+  | Validation_Warning a b   -- ^ Signifies a warning, value may be accepted
+  | Validation_Success b     -- ^ Value is valid
+  deriving (Show)
 
-textFormWidgetAsync
+textFormAsyncValidationWidget
   :: ( DomBuilder t m
      , PostBuild t m
      , MonadHold t m
@@ -1471,57 +1508,47 @@ textFormWidgetAsync
      , MonadFix m
      )
   => PopoverState
+  -> Text
   -> (Event t Text -> m (Event t (ValidationResult Text a)))
+  -> Maybe (Event t ())
   -> PrimFormWidgetConfig t (Maybe Text)
   -> m (FormWidget t (Maybe a), Event t (Maybe Text))
-textFormWidgetAsync initPopState isValid cfg = mdo
+textFormAsyncValidationWidget initPopState dropdownListId isValid mEvTrigger cfg = mdo
   let
-    showPopover _ = pure
-        ( initPopState
-        , leftmost
-          [ gate validationIsRelevant $ ffor resultEv $ \case
-              Failure e -> PopoverState_Error e
-              Warning e _ -> PopoverState_Warning e
-              _ -> PopoverState_Disabled
+    -- Used to determine when user is typing and when we need to clear popover state and replace it
+    -- with a loader
+    inputEv = case mEvTrigger of
+      Nothing -> updated $ value inputElem
+      Just eTrigger -> (current $ value inputElem) <@ eTrigger
 
-            -- Show loader (or nothing) immediately when user starts typing again
-          , inputEv <&> \input ->
-              if T.null input
-                then PopoverState_Disabled
-                else PopoverState_Loading
-          ]
-        )
+    ePopoverStateChange = leftmost
+      [ ffor resultEv $ \case
+          Validation_Failure e -> PopoverState_Error e
+          Validation_Warning e _ -> PopoverState_Warning e
+          _ -> PopoverState_Disabled
+
+        -- Show loader (or nothing) immediately when user starts typing again
+      , inputEv <&> \input ->
+          if T.null input
+            then PopoverState_Disabled
+            else PopoverState_Loading
+      ]
+    showPopover _ = pure (initPopState, ePopoverStateChange)
 
     uiNameInput cfg = do
       inp <- uiInputElement $ cfg & initialAttributes %~
-               (<> "list" =: accountListId) . addToClassAttr "account-input"
+               (<> "list" =: dropdownListId) . addToClassAttr "account-input"
       pure (inp, _inputElement_raw inp)
+
   (inputElem, _) <- uiInputWithPopoverWithInitState uiNameInput snd showPopover $ pfwc2iec (fromMaybe "") cfg
-  initInput <- getPostBuild <&> tag (current $ value inputElem)
-
-  -- Used to determine when user is typing and when we need to clear popover state and replace it
-  -- with a loader
-  let inputEv = leftmost [ initInput, updated $ value inputElem]
-
-  -- Only start validating after the user is definitely done typing
-  startValidation <- debounce 1.25 inputEv
-
-  -- Used to prevent stale validations -- when a validation response event is no longer
-  -- valid because the user has started typing again, we don't want to use it
-  validationIsRelevant <- fmap current $ holdDyn True $ leftmost
-    [ False <$ inputEv
-    , True <$ startValidation
-    ]
-
-  resultEv <- isValid startValidation
+  resultEv <- isValid inputEv
   validDyn <- holdDyn Nothing $ leftmost
-
     [ Nothing <$ inputEv
     , ffor resultEv $ \case
         -- Treats Warning and Result types as valid values, errors are treated as invalid
-        Warning _ a -> Just a
-        Success a -> Just a
-        Failure _ -> Nothing
+        Validation_Warning _ a -> Just a
+        Validation_Success a -> Just a
+        Validation_Failure _ -> Nothing
     ]
   let w = FormWidget
             validDyn

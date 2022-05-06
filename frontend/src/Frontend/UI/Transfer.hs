@@ -113,7 +113,7 @@ import           Frontend.UI.FormWidget
 import           Frontend.UI.KeysetWidget
 import           Frontend.UI.Modal
 import           Frontend.UI.TabBar
-import           Frontend.UI.Widgets as W
+import           Frontend.UI.Widgets
 import           Frontend.UI.Widgets.Helpers
 import           Frontend.Wallet
 
@@ -199,6 +199,7 @@ toFormWidget model cfg = mdo
 
 data TransferInfo = TransferInfo
   { _ti_fromAccount :: ChainAccount
+  , _ti_fungible :: ModuleName
   , _ti_amount :: Decimal
   , _ti_maxAmount :: Bool
   , _ti_toAccount :: ChainAccount
@@ -296,6 +297,7 @@ uiGenericTransfer model cfg = do
         (toAcct,ks) <- toAccountWidget eClearTransfer
         return $ runMaybeT $ TransferInfo <$>
           MaybeT (value fromAcct) <*>
+          MaybeT (Just <$> model ^. wallet_fungible ) <*>
           MaybeT (hush . fst <$> value amount) <*>
           lift (snd <$> value amount) <*>
           MaybeT (value toAcct) <*>
@@ -309,8 +311,10 @@ amountFormWithMaxButton
      , MonadHold t m
      , HasNetwork model t
      , HasLogger model t
+     , HasWallet model key t
      , HasCrypto key m
      , MonadJSM m
+     , PostBuild t m
      )
   => model
   -> FormWidget t (Maybe ChainAccount)
@@ -318,7 +322,11 @@ amountFormWithMaxButton
   -> m (FormWidget t (Either String Decimal, Bool))
 amountFormWithMaxButton model ca cfg = do
   elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ mdo
-    divClass ("label labeled-input__label-inline") $ text "Amount (KDA)"
+    let dFungible = model ^. wallet_fungible
+    divClass ("label labeled-input__label-inline") $
+      dynText $ ffor dFungible $ \case
+        kdaToken -> "Amount (KDA)"
+        otherwise -> "Amount (Token)"
     let attrs = ffor maxE $ \isMaxed ->
           "disabled" =: (if isMaxed then Just "disabled" else Nothing)
         sv = Just $ leftmost
@@ -350,26 +358,28 @@ getAccountDetails
      , MonadHold t m
      , Adjustable t m
      , HasLogger model t
+     , HasWallet model key t
      , HasCrypto key m
      )
   => model
   -> Event t ChainAccount
   -> m (Event t (Maybe (AccountStatus AccountDetails)))
 getAccountDetails model eca = do
-    let netAndCa = flip push eca $ \ca -> do
+    let netFungAndCa = flip push eca $ \ca -> do
           ni <- sampleNetInfo model
-          return $ (ca,) <$> ni
-    dd <- networkHold (pure never) (go <$> netAndCa)
+          fungible <- sample $ current $ model ^. wallet_fungible
+          return $ (ca, fungible, ) <$> ni
+    dd <- networkHold (pure never) (go <$> netFungAndCa)
     pure $ switch $ current dd
   where
-    go (ca, netInfo) = do
+    go (ca, fung, netInfo) = do
       let nodes = _sharedNetInfo_nodes netInfo
           chain = _ca_chain ca
           acct = _ca_account ca
           extractDetails Nothing = Nothing
           extractDetails (Just m) = Map.lookup acct m
       ks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                   nodes chain [acct]
+                   nodes chain [acct] fung
       pure $ extractDetails <$> ks
 
 transferModalTitle :: TransferType -> Text
@@ -383,8 +393,8 @@ lookupAndTransfer
      , HasCrypto key (Performable m)
      , HasNetwork model t
      , HasNetworkCfg mConf t
-     , HasWallet model key t
      , HasTransactionLogger m
+     , HasWallet model key t
      )
   => model
   -> SharedNetInfo NodeInfo
@@ -394,17 +404,18 @@ lookupAndTransfer
   -> m (mConf, Event t ())
 lookupAndTransfer model netInfo ti ty onCloseExternal = do
     let nodes = _sharedNetInfo_nodes netInfo
+        fungible = _ti_fungible ti
         fromAccount = _ca_account $ _ti_fromAccount ti
         fromChain = _ca_chain $ _ti_fromAccount ti
         toAccount = _ca_account $ _ti_toAccount ti
         toChain = _ca_chain $ _ti_toAccount ti
         accountNames = setify [fromAccount, toAccount]
     efks <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                 nodes fromChain accountNames
+                 nodes fromChain accountNames fungible
     etks <- if fromChain == toChain
               then pure efks
               else lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                                 nodes toChain accountNames
+                                 nodes toChain accountNames fungible
     allKeys <- foldDyn ($) (Nothing, Nothing) $ mergeWith (.)
       [ (\ks (_,b) -> (Just ks, b)) <$> efks
       , (\ks (a,_) -> (a, Just ks)) <$> etks
@@ -412,8 +423,10 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
     let eWrapper (Just f, Just t) = do
           let fks = fromMaybe mempty f
           let tks = fromMaybe mempty t
+          modHashMap <- sample $ current $ model ^. wallet_moduleData
           (conf, closes) <- fmap splitDynPure $ workflow $
-            checkSendingAccountExists model netInfo ti ty fks tks
+            -- checkSendingAccountExists model netInfo ti ty fks tks
+            checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap
           mConf <- flatten =<< tagOnPostBuild conf
           let close = switch $ current closes
           pure (mConf, close)
@@ -449,9 +462,11 @@ lookupKeySets
   -> ChainId
   -> [AccountName]
   -- ^ Account on said chain to find
+  -> ModuleName
+  -- ^ Name of contract to use during search
   -> m (Event t (Maybe (Map AccountName (AccountStatus AccountDetails))))
-lookupKeySets logL networkName nodes chain accounts = do
-  let code = renderCompactText $ accountDetailsObject (map unAccountName accounts)
+lookupKeySets logL networkName nodes chain accounts fung = do
+  let code = renderCompactText $ accountDetailsObject fung (map unAccountName accounts)
   pm <- mkPublicMeta chain
   cmd <- buildCmd Nothing networkName pm [] [] code mempty mempty
   (result, trigger) <- newTriggerEvent
@@ -475,7 +490,9 @@ lookupKeySets logL networkName nodes chain accounts = do
                 mbal = details ^? _AccountStatus_Exists . accountDetails_balance . (to unAccountBalance)
                 updateBal old new = if old == new then old else new
             fmap (fromMaybe details) $ for (liftA2 (,) mbal mref) $ \(bal,ref) -> do
-              let code = printf "{\"balance\" : (at 'balance (coin.details \"%s\")), \"guard\" : (describe-keyset \"%s\")}" name ref
+              let code = printf
+                           "{\"balance\" : (at 'balance (%s.details \"%s\")), \"guard\" : (describe-keyset \"%s\")}"
+                           (renderCompactText fung) name ref
               cmd <- simpleLocal Nothing networkName pm (T.pack code)
               doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
                 Left _ -> pure details
@@ -526,12 +543,118 @@ checkSendingAccountExists
 checkSendingAccountExists model netInfo ti ty fks tks = do
     let fromAccount = _ca_account $ _ti_fromAccount ti
     case Map.lookup fromAccount fks of
-      Just (AccountStatus_Exists ad) -> do
+      Just (AccountStatus_Exists ad) ->
         checkReceivingAccount model netInfo ti ty fks tks (fromAccount, ad)
       _ -> Workflow $ do
         cancel <- fatalTransferError $
           text $ "Sending account " <> unAccountName fromAccount <> " does not exist."
         return ((mempty, cancel), never)
+  where
+    isCrossChain = (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
+
+checkModuleFungibleXChain
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , HasNetwork model t
+     , HasNetworkCfg mConf t
+     , HasLogger model t
+     , HasWallet model key t
+     , HasCrypto key m
+     , HasCrypto key (Performable m)
+     , HasTransactionLogger m
+     )
+  => model
+  -> SharedNetInfo NodeInfo
+  -> TransferInfo
+  -> TransferType
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Workflow t m (mConf, Event t ())
+checkModuleFungibleXChain model netInfo ti ty fks tks =
+  case moduleName == "coin" of
+    True -> nextW
+    False -> Workflow $ do
+      pb <- getPostBuild
+      req <- mkSimpleReadReq interfaceCheckPact networkName defMeta $ ChainRef Nothing toChain
+      eResult <- performLocalRead (model ^. logger) (model ^. network) $ [req] <$ pb
+      text "Running module check ..."
+      let eResultModal = ffor eResult $ \((_,ner):_) ->
+            case networkErrorResultToEither ner of
+              Left netErrors ->
+                let err = snd $ NEL.head netErrors
+                 in errorWorkflow $ "Network Error: " <> tshow err
+              Right (_, PLiteral (LBool False)) -> errorWorkflow $
+                "Token '" <> moduleName <> "' does not enforce fungible-xchain-v1; cannot complete crosschain transfer"
+              Right (_, PLiteral (LBool True)) -> nextW
+              -- If non-bool is returned; which should not happen
+              otherwise -> errorWorkflow "Unknown error occured with interface local check"
+      pure ((mempty, never), eResultModal)
+  where
+    toChain = _ca_chain $ _ti_toAccount ti
+    networkName = _sharedNetInfo_network netInfo
+    moduleName = renderCompactText $ _ti_fungible ti
+    interfaceCheckPact = "(contains 'fungible-xchain-v1 (at 'interfaces (describe-module \"" <> moduleName <> "\")))"
+    nextW = checkSendingAccountExists model netInfo ti ty fks tks
+    defMeta = (_sharedNetInfo_meta netInfo)
+        { _pmChainId = toChain
+        , _pmSender  = "sender00"
+        , _pmGasLimit = defaultTransactionGasLimit
+        , _pmGasPrice = defaultTransactionGasPrice
+        , _pmTTL = defaultTransactionTTL
+        }
+    errorWorkflow errorMsg = Workflow $ do
+      cancel <- fatalTransferError $
+        text errorMsg
+      return ((mempty, cancel), never)
+
+checkContractHashOnBothChains
+  :: ( MonadWidget t m
+     , Monoid mConf
+     , HasNetwork model t
+     , HasNetworkCfg mConf t
+     , HasLogger model t
+     , HasWallet model key t
+     , HasCrypto key m
+     , HasCrypto key (Performable m)
+     , HasTransactionLogger m
+     )
+  => model
+  -> SharedNetInfo NodeInfo
+  -> TransferInfo
+  -> TransferType
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> Map AccountName (AccountStatus AccountDetails)
+  -> ModuleData
+  -> Workflow t m (mConf, Event t ())
+checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap = do
+  let toChain = _ca_chain $ _ti_toAccount ti
+      fromChain = _ca_chain $ _ti_fromAccount ti
+      --TODO: Just pass this val in as arg instead of passing around the whole map
+      --Note: The join joins the Maybe from the lookup (where Nothing represents that the chain
+      --doesn't even exist), and the outer Maybe from the ModuleData map, (where Nothing implies
+      --that our onchain lookup has not returned yet)
+      hashPair = (,) <$> (join $ Map.lookup fromChain modHashMap) <*> (join $ Map.lookup toChain modHashMap)
+      nextW = checkModuleFungibleXChain model netInfo ti ty fks tks
+  case hashPair of
+    -- This case implies likely occurs during throttling, so we will continue and allow it
+    -- to fail on-chain if there is actually an issue
+    Nothing -> nextW
+    Just (a, b)
+      | a == Nothing || b == Nothing -> errNonexistentModule
+    Just (Just a, Just b) | a /= b -> errMsgMatchModHashes a b (toChain, fromChain)
+    otherwise -> nextW
+  where
+    errNonexistentModule = Workflow $ do
+      cancel <- fatalTransferError $
+        text "Transfer cannot be completed: This token does not exist on both the source and destination chains"
+      return ((mempty, cancel), never)
+    errMsgMatchModHashes a b (fromChain, toChain) = Workflow $ do
+      cancel <- fatalTransferError $ do
+        el "div" $ text $ "Cross chain transfer requires matching module hashes for token: " <>
+          (renderCompactText $ _ti_fungible ti)
+        el "div" $ text $ "Chain " <> tshow toChain <> " module hash: " <> tshow a
+        el "div" $ text $ "Chain " <> tshow fromChain <> " module hash: " <> tshow b
+      return ((mempty, cancel), never)
 
 checkReceivingAccount
   :: ( MonadWidget t m, Monoid mConf
@@ -828,7 +951,7 @@ previewDialog model _netInfo ti payload cmd backW nextW = Workflow $ do
         uiPreviewItem "From Chain" $ text $ _chainId fromChain
         uiPreviewItem "To Account" $ text $ unAccountName toAccount
         uiPreviewItem "To Chain" $ text $ _chainId toChain
-        uiPreviewItem "Amount" $ text $ tshow (_ti_amount ti) <> " KDA"
+        uiPreviewItem "Amount" $ text $ tshow (_ti_amount ti) <> (renderTokenName $ _ti_fungible ti)
       pb <- getPostBuild
       previewTransaction model fromChain payload (cmd <$ pb)
       --submitTransactionWithFeedback model cmd fromAccount fromChain (fmap Right nodeInfos)
@@ -985,28 +1108,28 @@ payloadToCommand p =
 safeTransferEpsilon :: Decimal
 safeTransferEpsilon = 0.000000000001
 
-sameChainCmdAndData :: TransferType -> Text -> Text -> Maybe UserKeyset -> Text -> (Maybe Text, String)
-sameChainCmdAndData ty fromAccount toAccount toKeyset amountText =
+sameChainCmdAndData :: TransferType -> ModuleName -> Text -> Text -> Maybe UserKeyset -> Text -> (Maybe Text, String)
+sameChainCmdAndData ty fung fromAccount toAccount toKeyset amountText =
     case ty of
       NormalTransfer ->
         case toKeyset of
           Nothing ->
-            (Nothing, printf "(coin.transfer %s %s %s)"
-                        (show fromAccount) (show toAccount) amountText)
+            (Nothing, printf "(%s.transfer %s %s %s)"
+                        (renderCompactText fung) (show fromAccount) (show toAccount) amountText)
           Just ks ->
-            (Just dataKey, printf "(coin.transfer-create %s %s (read-keyset %s) %s)"
-                      (show fromAccount) (show toAccount) (show dataKey) amountText)
+            (Just dataKey, printf "(%s.transfer-create %s %s (read-keyset %s) %s)"
+                      (renderCompactText fung) (show fromAccount) (show toAccount) (show dataKey) amountText)
       SafeTransfer ->
         let amountExpr :: String = printf "(+ %s %s)" amountText (show safeTransferEpsilon)
-            back :: String = printf "(coin.transfer %s %s %s)"
-                      (show toAccount) (show fromAccount) (show safeTransferEpsilon)
+            back :: String = printf "(%s.transfer %s %s %s)"
+                      (renderCompactText fung) (show toAccount) (show fromAccount) (show safeTransferEpsilon)
         in case toKeyset of
              Nothing ->
-               (Nothing, printf "(coin.transfer %s %s %s)\n%s"
-                           (show fromAccount) (show toAccount) amountExpr back)
+               (Nothing, printf "(%s.transfer %s %s %s)\n%s"
+                           (renderCompactText fung) (show fromAccount) (show toAccount) amountExpr back)
              Just _ ->
-               (Just dataKey, printf "(coin.transfer-create %s %s (read-keyset %s) %s)\n%s"
-                       (show fromAccount) (show toAccount) (show dataKey) amountExpr back)
+               (Just dataKey, printf "(%s.transfer-create %s %s (read-keyset %s) %s)\n%s"
+                       (renderCompactText fung) (show fromAccount) (show toAccount) (show dataKey) amountExpr back)
   where
     dataKey = "ks"
 
@@ -1018,6 +1141,7 @@ buildUnsignedCmd
   -> Payload PublicMeta Text
 buildUnsignedCmd netInfo ti ty tmeta = payload
   where
+    fung = _ti_fungible ti
     network = _sharedNetInfo_network netInfo
     fromAccount = unAccountName $ _ca_account $ _ti_fromAccount ti
     fromChain = _ca_chain $ _ti_fromAccount ti
@@ -1027,11 +1151,11 @@ buildUnsignedCmd netInfo ti ty tmeta = payload
     amountText = showWithDecimal $ normalizeDecimal amount
     dataKey = "ks" :: Text
     (mDataKey, code) = if fromChain == toChain
-             then sameChainCmdAndData ty fromAccount toAccount (_ti_toKeyset ti) amountText
+             then sameChainCmdAndData ty fung fromAccount toAccount (_ti_toKeyset ti) amountText
 
              else -- cross-chain transfer
-               (Just dataKey, printf "(coin.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
-                             (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountText)
+               (Just dataKey, printf "(%s.transfer-crosschain %s %s (read-keyset '%s) %s %s)"
+                             (renderCompactText fung) (show fromAccount) (show toAccount) (T.unpack dataKey) (show toChain) amountText)
     tdata = maybe Null (\a -> object [ dataKey .= toJSON (userToPactKeyset a) ]) $ _ti_toKeyset ti
     meta = transferMetaToPublicMeta tmeta fromChain
     signers = _transferMeta_sourceChainSigners tmeta
@@ -1082,6 +1206,7 @@ data GasPayers t = GasPayers
 gasPayersSection
   :: ( MonadWidget t m, HasLogger model t
      , HasCrypto key m
+     , HasWallet model key t
      )
   => model
   -> SharedNetInfo NodeInfo
@@ -1090,14 +1215,40 @@ gasPayersSection
   -> TransferInfo
   -> m (GasPayers t)
 gasPayersSection model netInfo fks tks ti = do
+    cwKeyMap <- sample $ current (model ^.wallet_keys)
+    let
+      cwKeys = fmap (_keyPair_publicKey . _key_pair) $ IntMap.elems cwKeyMap
+
+      -- Checks whether the account has a guard with any keys controlled by cw
+      -- It is intended to help provide a default for the majority of use-cases, but
+      -- ultimately it is up to the user to select the correct gas-payer
+      accountKeysetHasCWKeys dets = case _accountDetails_guard dets of
+        AccountGuard_KeySetLike g ->
+          not $ Set.disjoint (Set.fromList cwKeys) (_ksh_keys g)
+        otherwise -> False
+
+      -- Destination account should have a balance AND have keys controlled by chainweaver
+      defaultGasPayerCoin = case Map.lookup toAccount tks of
+        Just (AccountStatus_Exists dets)
+          | (_accountDetails_balance dets > AccountBalance 0) && accountKeysetHasCWKeys dets -> toAccount
+        otherwise -> AccountName "kadena-xchain-gas"
+
+      -- We only have account information for the current fungible. If it is coin, then we
+      -- can also use that data to make determinations about gas, but otherwise, we leave
+      -- the decision to the user
+      -- We should add the info in the future perhaps
+      mDefaultDestGasPayer = if fungible == kdaToken
+        then Just defaultGasPayerCoin
+        else Nothing
+
     (dmgp1, mdmgp2) <- if fromChain == toChain
       then do
-        dgp1 <- gasPayerInput "Gas Paying Account" True initialSourceGasPayer fromChain getGasPayerKeys
+        dgp1 <- gasPayerInput "Gas Paying Account" True initialSourceGasPayer fromChain $ getGasPayerKeys fromChain
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
-        dgp1 <- gasPayerInput (mkLabel fromChain) True initialSourceGasPayer fromChain getGasPayerKeys
-        dgp2 <- gasPayerInput (mkLabel toChain) True defaultDestGasPayer toChain getGasPayerKeys
+        dgp1 <- gasPayerInput (mkLabel fromChain) True initialSourceGasPayer fromChain $ getGasPayerKeys fromChain
+        dgp2 <- gasPayerInput (mkLabel toChain) True mDefaultDestGasPayer toChain $ getGasPayerKeys toChain
         pure $ (dgp1, Just dgp2)
 
     gp1 <-
@@ -1111,7 +1262,7 @@ gasPayersSection model netInfo fks tks ti = do
         )
     mgp2 <- forM mdmgp2 $ \dmgp2 -> do
       foldDyn ($)
-        (GasPayerDetails toChain defaultDestGasPayer $ initialDetails defaultDestGasPayer)
+        (GasPayerDetails toChain mDefaultDestGasPayer $ initialDetails mDefaultDestGasPayer)
         (updated dmgp2 <&> \mAccDetails gp ->
           gp { gpdAccount = fst <$> mAccDetails
              , gpdDetails = AccountStatus_Exists . snd <$> mAccDetails
@@ -1122,24 +1273,19 @@ gasPayersSection model netInfo fks tks ti = do
     fromChain = _ca_chain (_ti_fromAccount ti)
     fromAccount = _ca_account (_ti_fromAccount ti)
     toAccount = _ca_account (_ti_toAccount ti)
+    fungible = _ti_fungible ti
     toChain = _ca_chain (_ti_toAccount ti)
+
     -- If this is a max amount transaction, then leave the source gas payer field empty
     -- Otherwise, fill it with the sender account.
-
     initialSourceGasPayer = if _ti_maxAmount ti then Nothing else Just fromAccount
 
     initialDetails = (>>= flip Map.lookup fks)
 
-    defaultDestGasPayer = case Map.lookup toAccount tks of
-      Just (AccountStatus_Exists dets)
-        -- TODO: Check if it's a k-account owned by chainweaver
-        | _accountDetails_balance dets > AccountBalance 0 -> Just toAccount
-      _ -> Just $ AccountName "kadena-xchain-gas"
-
     getGasPayerKeys chain = maybe (pure never) $ \gp -> do
         -- I think lookupKeySets can't be done in the PushM monad
         evt <- lookupKeySets (model ^. logger) (_sharedNetInfo_network netInfo)
-                      (_sharedNetInfo_nodes netInfo) chain [gp]
+                      (_sharedNetInfo_nodes netInfo) chain [gp] kdaToken
         return $ Map.lookup gp <$> fmapMaybe id evt
 
 gasPayerInput
@@ -1151,42 +1297,58 @@ gasPayerInput
      , TriggerEvent t m
      , MonadJSM (Performable m)
      , MonadFix m
+     , PostBuild t m
      )
   => Text                       -- ^ The label for this input
   -> Bool                       -- ^ Should the label be inline?
   -> Maybe AccountName -- ^ Initial Value for the input
   -> ChainId
-  -> (ChainId -> Maybe AccountName -> m (Event t (Maybe (AccountStatus AccountDetails))))
+  -> (Maybe AccountName -> m (Event t (Maybe (AccountStatus AccountDetails))))
   -> m (Dynamic t (Maybe (AccountName, AccountDetails)))
 gasPayerInput label inlineLabel initVal chainId lookupFunc = do
   let
     initPopState = maybe (PopoverState_Error "Gas Payer Required") (const PopoverState_Disabled) initVal
     initVal' = unAccountName <$> initVal
-  (gpInput, _) <- mkLabeledInput inlineLabel label (textFormWidgetAsync initPopState goodGasPayer) $ mkCfg initVal'
+    gasPayerValidator = gasPayerValidation chainId lookupFunc
+  pb <- getPostBuild
+  (gpInput, _) <- mkLabeledInput inlineLabel label
+    (textFormAsyncValidationWidget initPopState accountListId gasPayerValidator Nothing) $
+      mkCfg initVal'
+        & setValue .~ (Just $ initVal' <$ pb)
   pure $ value gpInput
-  where
-      withAccountDetails account chain maybeAccDetails f =
-        let
-          accName = unAccountName account
-          chainId = _chainId chain
-        in
-        case maybeAccDetails of
-          Nothing -> Failure $ T.pack $
-            printf "Couldn't find account %s on chain %s" accName chainId
-          Just AccountStatus_DoesNotExist -> Failure $ T.pack $
-            printf "Account %s does not exist on chain %s" accName chainId
-          Just AccountStatus_Unknown -> Failure $ T.pack $
-            printf "Account status unknown for account %s, chain %s" accName chainId
-          Just (AccountStatus_Exists accDetails) -> f accDetails
-      goodGasPayer textEv = do
-        let (errorEv, accEv) = fanEither $ mkAccountName <$> textEv
-        validationDynEv <- networkHold (pure never) $ accEv <&> \acc -> do
-          accDetailsEv <- lookupFunc chainId $ Just acc
-          pure $ accDetailsEv <&> \maybeAccDetails ->
-            withAccountDetails acc chainId maybeAccDetails $ \accDetails ->
-              W.Success (acc, accDetails)
 
-        pure $ leftmost [Failure <$> errorEv, switchDyn validationDynEv]
+gasPayerValidation ::
+  ( PerformEvent t m
+  , TriggerEvent t m
+  , Adjustable t m
+  , MonadHold t m
+  , MonadJSM (Performable m)
+  , MonadFix m
+  )
+  => ChainId
+  -> (Maybe AccountName -> m (Event t (Maybe (AccountStatus AccountDetails))))
+  -> Event t Text
+  -> m (Event t (ValidationResult Text (AccountName, AccountDetails)))
+gasPayerValidation chainId lookupFunc textEv = do
+  -- Only start validating after the user is definitely done typing
+  textEv' <- debounce 1.25 textEv
+  let (errorEv, accEv) = fanEither $ mkAccountName <$> textEv'
+  validationDynEv <- networkHold (pure never) $ accEv <&> \acc -> do
+    accDetailsEv <- lookupFunc $ Just acc
+    pure $ accDetailsEv <&> \maybeAccDetails ->
+      withAccountDetails acc chainId maybeAccDetails $ \accDetails ->
+        Validation_Success (acc, accDetails)
+  pure $ leftmost [Validation_Failure <$> errorEv, switchDyn validationDynEv]
+  where
+    withAccountDetails (AccountName accName) (ChainId chainId) maybeAccDetails f =
+      case maybeAccDetails of
+        Nothing -> Validation_Failure $ T.pack $
+          printf "Couldn't find account %s on chain %s" accName chainId
+        Just AccountStatus_DoesNotExist -> Validation_Failure $ T.pack $
+          printf "Account %s does not exist on chain %s" accName chainId
+        Just AccountStatus_Unknown -> Validation_Failure $ T.pack $
+          printf "Account status unknown for account %s, chain %s" accName chainId
+        Just (AccountStatus_Exists accDetails) -> f accDetails
 
 data TransferMeta = TransferMeta
   { _transferMeta_senderAccount :: Maybe AccountName
@@ -1207,9 +1369,9 @@ transferMetaToPublicMeta tmeta chainId =
     sender = maybe "" unAccountName $ _transferMeta_senderAccount tmeta
   in PublicMeta chainId sender lim price ttl ct
 
-transferCapability :: AccountName -> AccountName -> Decimal -> SigCapability
-transferCapability from to amount = SigCapability
-  { _scName = QualifiedName { _qnQual = "coin", _qnName = "TRANSFER", _qnInfo = def }
+transferCapability :: ModuleName -> AccountName -> AccountName -> Decimal -> SigCapability
+transferCapability fungible from to amount = SigCapability
+  { _scName = QualifiedName { _qnQual = fungible, _qnName = "TRANSFER", _qnInfo = def }
   , _scArgs =
     [ PLiteral $ LString $ unAccountName from
     , PLiteral $ LString $ unAccountName to
@@ -1217,9 +1379,9 @@ transferCapability from to amount = SigCapability
     ]
   }
 
-crosschainCapability :: AccountName -> AccountName -> Decimal -> ChainId -> SigCapability
-crosschainCapability from to amount chain = SigCapability
-  { _scName = QualifiedName { _qnQual = "coin", _qnName = "TRANSFER_XCHAIN", _qnInfo = def }
+crosschainCapability :: ModuleName -> AccountName -> AccountName -> Decimal -> ChainId -> SigCapability
+crosschainCapability moduleName from to amount chain = SigCapability
+  { _scName = QualifiedName { _qnQual = moduleName, _qnName = "TRANSFER_XCHAIN", _qnInfo = def }
   , _scArgs = [ PLiteral $ LString $ unAccountName from
               , PLiteral $ LString $ unAccountName to
               , PLiteral $ LDecimal amount
@@ -1251,6 +1413,7 @@ transferMetadata
      ( MonadWidget t m, HasNetwork model t, HasNetworkCfg mConf t, Monoid mConf
      , HasLogger model t
      , HasCrypto key m
+     , HasWallet model key t
      )
   => model
   -> SharedNetInfo NodeInfo
@@ -1267,12 +1430,13 @@ transferMetadata model netInfo fks tks ti ty = do
       fromAccount = _ca_account $ _ti_fromAccount ti
       toChain = _ca_chain $ _ti_toAccount ti
       toAccount = _ca_account $ _ti_toAccount ti
+      fungible = _ti_fungible ti
       ks = Map.fromList [(fromChain, fks), (toChain, tks)]
 
   when (fromChain /= toChain) $ do
     dialogSectionHeading mempty "Important"
     divClass "group" $ text $ T.pack $ printf
-      "This is a cross-chain transfer.  You must choose an account that has coins on chain %s as the chain %s gas payer otherwise your coins will not arrive!  They will be stuck in transit.  If this happens, they can still be recovered.  Save the request key and get someone with coins on that chain to finish the cross-chain transfer for you." (_chainId toChain) (_chainId toChain)
+      "This is a cross-chain transfer.  You must choose an account that has kda on chain %s as the chain %s gas payer otherwise your coins will not arrive!  They will be stuck in transit.  If this happens, they can still be recovered.  Save the request key and get someone with coins on that chain to finish the cross-chain transfer for you." (_chainId toChain) (_chainId toChain)
     el "br" blank
 
   rec
@@ -1329,11 +1493,11 @@ transferMetadata model netInfo fks tks ti ty = do
       rawAmount = _ti_amount ti
       amount = if ty == SafeTransfer then rawAmount + safeTransferEpsilon else rawAmount
       transferCap = if fromChain == toChain
-                      then transferCapability fromAccount toAccount amount
-                      else crosschainCapability fromAccount toAccount amount toChain
+                      then transferCapability fungible fromAccount toAccount amount
+                      else crosschainCapability fungible fromAccount toAccount amount toChain
       fromCapsA = foldr (addCap transferCap) <$> gasCaps <*> fromTxKeys
       allFromCaps = if ty == SafeTransfer
-                      then foldr (addCap (transferCapability toAccount fromAccount safeTransferEpsilon))
+                      then foldr (addCap (transferCapability fungible toAccount fromAccount safeTransferEpsilon))
                              <$> fromCapsA <*> safeTxKeys
                       else fromCapsA
       toCaps = foldr (addCap gasCapability) mempty <$> toGasKeys

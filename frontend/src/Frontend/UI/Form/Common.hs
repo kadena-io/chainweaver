@@ -104,19 +104,16 @@ parseAmount t =
           | D.decimalPlaces x > maxCoinPrecision -> Left "Too many decimal places"
           | otherwise -> Right x
 
--- | The options shown by this widget are the union of the incoming dynamic
--- options, the initial option, and any changes to the selection passed in from
--- outside via the setValue event.
+-- | Convenience wrapper around `unsafeDropdownFormWidget`
 dropdownFormWidget
   :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m, Ord a)
-  => Dynamic t (Map a Text)
+  => Dynamic t [a]
+  -> (a -> Text)
   -> PrimFormWidgetConfig t a
   -> m (FormWidget t a)
-dropdownFormWidget options cfg = do
-  let k0 = _initialValue cfg
-      setK = fromMaybe never $ view setValue cfg
-  optionsWithAddedKeys <- fmap (zipDynWith Map.union options) $ foldDyn Map.union (k0 =: "") $ fmap (=: "") setK
-  unsafeDropdownFormWidget (Map.toList <$> optionsWithAddedKeys) cfg
+dropdownFormWidget optionsList showFn cfg = do
+  let optionsWithAddedKeys = map (\a -> (a, showFn a)) <$> optionsList
+  unsafeDropdownFormWidget optionsWithAddedKeys cfg
 
 -- | This dropdown widget does not ensure that the selected value exists in the
 -- options list. It is your responsibility to make sure the dynamic map of

@@ -11,10 +11,13 @@ import Data.Dependent.Sum (DSum(..))
 import qualified Data.Dependent.Map as DMap
 import Data.Functor.Identity (Identity(Identity), runIdentity)
 import qualified Data.IntMap as IntMap
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
-import Data.Text (Text)
+import Data.Text (Text, pack)
+
+import Pact.Types.Names (ModuleName(..))
 
 import Common.Foundation
 import Common.Wallet
@@ -27,6 +30,7 @@ import qualified Frontend.VersionedStore.V0 as V0
 import qualified Frontend.VersionedStore.V0.Wallet as V0
 import Frontend.VersionedStore.MigrationUtils
 import Frontend.Crypto.Class
+import Frontend.UI.Common
 
 -- WARNING: Upstream deps. Check this when we bump pact and obelisk!
 -- May be worth storing this in upstream independent datatypes.
@@ -36,6 +40,7 @@ import Obelisk.OAuth.Common (AccessToken, OAuthState)
 
 data StoreFrontend key a where
   StoreFrontend_Wallet_Keys :: StoreFrontend key (KeyStorage key)
+  StoreFrontend_Wallet_Tokens :: StoreFrontend key TokenStorage
   StoreFrontend_Wallet_Accounts :: StoreFrontend key AccountStorage
 
   StoreFrontend_Network_PublicMeta :: StoreFrontend key PublicMeta
@@ -67,6 +72,8 @@ deriving instance Show (StoreFrontend key a)
 upgradeFromV0 :: (Monad m, HasCrypto key m) => DMap (V0.StoreFrontend key) Identity -> m (DMap (StoreFrontend key) Identity)
 upgradeFromV0 v0 = do
   (newKeysList, newAccountStorage) <- foldMapM splitOldKey oldKeysList
+  let tokens = -- mempty
+        Map.fromList $ zip (Map.keys $ unAccountStorage newAccountStorage) $ repeat defaultTokenList
   let newKeys = IntMap.fromList newKeysList
   pure $ DMap.fromList . catMaybes $
     [ copyKeyDSum V0.StoreNetwork_PublicMeta StoreFrontend_Network_PublicMeta v0
@@ -82,6 +89,7 @@ upgradeFromV0 v0 = do
 
     , Just (StoreFrontend_Wallet_Keys :=> Identity newKeys)
     , Just (StoreFrontend_Wallet_Accounts :=> Identity newAccountStorage)
+    , Just (StoreFrontend_Wallet_Tokens :=> Identity tokens)
     , newNetworks
     ]
   where
@@ -144,6 +152,7 @@ instance ArgDict c (StoreFrontend key) where
   type ConstraintsFor (StoreFrontend key) c
     = ( c (KeyStorage key)
       , c AccountStorage
+      , c TokenStorage
       , c PublicMeta
       , c (Map NetworkName [NodeRef])
       , c NetworkName
@@ -155,6 +164,7 @@ instance ArgDict c (StoreFrontend key) where
   argDict = \case
     StoreFrontend_Wallet_Keys {} -> Dict
     StoreFrontend_Wallet_Accounts {} -> Dict
+    StoreFrontend_Wallet_Tokens {} -> Dict
     StoreFrontend_Network_PublicMeta {} -> Dict
     StoreFrontend_Network_Networks {} -> Dict
     StoreFrontend_Network_SelectedNetwork {} -> Dict

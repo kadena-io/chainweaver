@@ -89,6 +89,7 @@ library
     , servant-jsaddle
     , split
     , string-qq
+    , system-locale
     , template-haskell
     , text
     , th-extras
@@ -162,6 +163,7 @@ library
                  , Frontend.UI.Dialogs.DeployConfirmation
                  , Frontend.UI.Dialogs.ExportWallet
                  , Frontend.UI.Dialogs.LogoutConfirmation
+                 , Frontend.UI.Dialogs.ManageTokens
                  , Frontend.UI.Dialogs.NetworkEdit
                  , Frontend.UI.Dialogs.Receive
                  , Frontend.UI.Dialogs.Receive.Legacy

@@ -81,6 +81,7 @@ import           Pact.Types.Term                 as PactTerm (FieldKey,
 ------------------------------------------------------------------------------
 import           Common.Modules
 import           Common.RefPath                  as MP
+import           Common.Wallet
 import           Frontend.Foundation
 import           Frontend.ModuleExplorer.Example
 import           Frontend.ModuleExplorer.File
@@ -88,6 +89,7 @@ import           Frontend.ModuleExplorer.Module (nameOfModule)
 import           Frontend.Network
 import           Frontend.Log
 import           Frontend.Crypto.Class
+import           Frontend.UI.Common
 
 -- | A `Module` can come from a number of sources.
 --

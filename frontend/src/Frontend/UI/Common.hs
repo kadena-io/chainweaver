@@ -6,7 +6,6 @@ import qualified Data.Map.Strict as Map
 import           Data.String
 import           Data.Text                   (Text)
 import           Reflex.Dom.Contrib.CssClass
-------------------------------------------------------------------------------
 
 -- | Attributes which will turn off all autocomplete/autofill/autocorrect
 -- functions, including the OS-level suggestions on macOS.
