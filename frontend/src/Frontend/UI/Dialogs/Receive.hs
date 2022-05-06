@@ -120,7 +120,7 @@ receiveToNonexistentAccount model account chain mdetails = do
           case mks1 of
             Nothing -> do
               dialogSectionHeading mempty "Define Keyset"
-              divClass "group" $ keysetFormWidget (mkCfg Nothing)
+              divClass "group" $ keysetFormWidget (model ^. wallet_keys) (mkCfg Nothing)
             Just ks -> pure (constDyn $ Just ks)
         fmap join $ holdDyn (constDyn Nothing) res
   where

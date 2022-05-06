@@ -73,15 +73,17 @@ userFromPactKeyset (KeySet ks p) = UserKeyset (Set.map fromPactPublicKey ks) (pa
 -- | Uses thin wrapper around Text so callers can distinguish between empty
 -- string and an invalid public key.
 pubKeyFormWidget
-  :: forall t m. MonadWidget t m
-  => FormWidgetConfig t PublicKeyText
+  :: MonadWidget t m
+  => Dynamic t (KeyStorage key)
+  -> FormWidgetConfig t PublicKeyText
   -> m (FormWidget t PublicKeyText)
-pubKeyFormWidget cfg = do
+pubKeyFormWidget suggestedKeys cfg = do
   let
     cfg2 = unPublicKeyText <$> cfg
     iv = _initialValue cfg2
+    dKeyText = fmap (keyToText . _keyPair_publicKey . _key_pair) . IntMap.elems <$> suggestedKeys
     inp c = do
-      ie <- mkLabeledInput False mempty (uiComboBoxGlobalDatalist keyListId iv) c
+      ie <- mkLabeledInput False mempty (uiComboBox iv dKeyText) c
       pure (ie,  _inputElement_input ie)
 
     inputCfg = fwc2iec id cfg2
@@ -143,9 +145,10 @@ prettyPred p = p
 
 keysetFormWidget
   :: (MonadWidget t m)
-  => FormWidgetConfig t (Maybe UserKeyset)
+  => Dynamic t (KeyStorage key)
+  -> FormWidgetConfig t (Maybe UserKeyset)
   -> m (Dynamic t (Maybe UserKeyset))
-keysetFormWidget cfg = do
+keysetFormWidget suggestedKeys cfg = do
   let
     selectMsgKey = PublicKeyText ""
     selectMsgMap = Map.singleton selectMsgKey "Select"
@@ -164,8 +167,10 @@ keysetFormWidget cfg = do
       setToIntMap = ifoldMap (\n a -> IntMap.singleton n $ PublicKeyText $ keyToText a) . Set.toList
 
       listCfg = maybe mempty (setToIntMap . _userKeyset_keys) <$> cfg
+  -- TODO: See if we can make filter out the suggestedKeys for each public key input
+  -- based on what keys are already selected in the list of inputs.
   ddKeys <- mkLabeledClsInput False "Public Keys" $ const $ growingList
-    (const pubKeyFormWidget)
+    (const (pubKeyFormWidget suggestedKeys))
     (AllowAddNewRow $ doAddDel (/=) . value)
     (AllowDeleteRow $ doAddDel (==) . value)
     selectMsgKey

@@ -157,7 +157,7 @@ uiChainAccount model cfg = do
   return (runMaybeT $ ChainAccount <$> lift cd <*> MaybeT a, onPaste)
 
 toFormWidget
-  :: (MonadWidget t m, HasNetwork model t)
+  :: (MonadWidget t m, HasNetwork model t, HasWallet model key t)
   => model
   -> FormWidgetConfig t (Maybe ChainAccount, Maybe UserKeyset)
   -> m (FormWidget t (Maybe ChainAccount), Dynamic t (Maybe UserKeyset))
@@ -181,7 +181,7 @@ toFormWidget model cfg = mdo
     , const True <$ pastedBuilder
     ]
   (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty (accordionHeaderBtn "Owner Keyset") $ do
-    keysetFormWidget $ (snd <$> cfg)
+    keysetFormWidget (model ^. wallet_keys) $ (snd <$> cfg)
       & setValue %~ modSetValue (Just (fmap userFromPactKeyset . _txBuilder_keyset <$> pastedBuilder))
 
   return (tca,k)
