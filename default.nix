@@ -46,6 +46,7 @@ in obApp // rec {
         obApp.ghcjs.frontend
         obApp.passthru.staticFiles
         obApp.passthru.__closureCompilerOptimizationLevel
+        obApp.passthru.externjs
         version;
       nixos = import (pkgs.path + /nixos);
     in nixos {
