@@ -416,6 +416,7 @@ impactSummary payloadReqs mNetId signerSet = do
     scrapeSigner signer (tokenMap, unscoped, paysGas) =
       let capList = signer^.siCapList
           tokenTransfers = mapMaybe parseFungibleTransferCap capList
+            <> mapMaybe parseFungibleXChainTransferCap capList
           tokenMap' = foldr (\(k, v) m -> Map.insertWith (+) k v m) tokenMap tokenTransfers
           signerHasGasCap = isJust $ find (\cap -> asString (_scName cap) == "coin.GAS") capList
           isUnscoped = capList == []
