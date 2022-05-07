@@ -571,8 +571,12 @@ checkModuleFungibleXChain
   -> Map AccountName (AccountStatus AccountDetails)
   -> Workflow t m (mConf, Event t ())
 checkModuleFungibleXChain model netInfo ti ty fks tks =
-  case moduleName == "coin" of
+  let toChain = _ca_chain $ _ti_toAccount ti
+      fromChain = _ca_chain $ _ti_fromAccount ti
+   in case moduleName == "coin" of
     True -> nextW
+    False
+      | (fromChain == toChain) -> nextW
     False -> Workflow $ do
       pb <- getPostBuild
       req <- mkSimpleReadReq interfaceCheckPact networkName defMeta $ ChainRef Nothing toChain
