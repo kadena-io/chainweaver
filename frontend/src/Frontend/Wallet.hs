@@ -284,14 +284,18 @@ makeWallet mChangePassword model conf = do
       ]
     let
         newBalances :: Event t [(NetworkName, AccountName, ChainId, AccountStatus AccountDetails)]
-        newBalances =
-          fforMaybe newStatuses $ \(cid, mBalances) ->
-            ffor mBalances $ \(_, bals) ->
-              ffor bals $ \(net, accName, stat) -> (net, accName, cid, stat)
+        newBalances = fforMaybe (attach (current dFungible) newStatuses)
+          $ \(currentTok, (reqTok, cid, mBalances)) ->
+            -- This prevents stale responses from an old token from coming in and messing
+            -- up the state if a user switches the token too fast
+            case currentTok == reqTok of
+              False -> Nothing
+              True -> ffor mBalances $ \(_, bals) ->
+                ffor bals $ \(net, accName, stat) -> (net, accName, cid, stat)
 
         moduleStatusUpdates :: Event t (ChainId, Maybe Text)
         moduleStatusUpdates =
-          ffor newStatuses $ \(cid, mBalances) -> (cid, fst <$> mBalances)
+          ffor newStatuses $ \(_, cid, mBalances) -> (cid, fst <$> mBalances)
 
         accountStatuses =
           _AccountData . traversed . traversed .
@@ -313,7 +317,8 @@ makeWallet mChangePassword model conf = do
       , ffor (_walletCfg_delAccount conf) removeAccount
       , foldr (.) id . fmap updateAccountStatus <$> newBalances
       -- zero out account balance on new fungible
-      , ffor (updated dFungible) $ \_ accs-> accs & accountStatuses .~ AccountStatus_Unknown
+      , ffor (updated dFungible) $ \_ accs->
+          accs & accountStatuses .~ AccountStatus_Unknown
       ]
     dModuleData <- foldDyn ($) mempty $ leftmost
       [ ffor moduleStatusUpdates $ \(cid, mHash) -> Map.insert cid (Just mHash)
@@ -399,7 +404,7 @@ getAccountStatus
   => model
   -> Dynamic t ModuleName
   -> Event t AccountData
-  -> m (Event t (ChainId, Maybe (Text, [(NetworkName, AccountName, AccountStatus AccountDetails)])))
+  -> m (Event t (ModuleName, ChainId, Maybe (Text, [(NetworkName, AccountName, AccountStatus AccountDetails)])))
 getAccountStatus model dFungible accStore = performEventAsync $ flip push accStore $ \(AccountData networkAccounts) -> do
   nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
   net <- sample $ current $ model ^. network_selectedNetwork
@@ -449,10 +454,10 @@ getAccountStatus model dFungible accStore = performEventAsync $ flip push accSto
               Right (hash, balances) -> liftIO $ do
                 putLog model LevelInfo $ "getAccountStatus: success:"
                 putLog model LevelInfo $ tshow balances
-                liftIO $ cb $ (chain, Just (hash, ffor (Map.toList balances) $ \(name, balance) -> (net, name, balance)))
+                liftIO $ cb $ (fungible, chain, Just (hash, ffor (Map.toList balances) $ \(name, balance) -> (net, name, balance)))
             Pact.PactResult (Left (PactError EvalError _ _ doc))
               | "Cannot resolve " `Text.isPrefixOf` (tshow doc) ->
-                liftIO $ cb (chain, Nothing)
+                liftIO $ cb (fungible, chain, Nothing)
             Pact.PactResult (Left e) -> putLog model LevelInfo $ "getAccountStatus failed:" <> tshow e
       -- Perform the requests on a forked thread
       void $ liftJSM $ forkJSM $ void $ sequence requests
