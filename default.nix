@@ -13,7 +13,7 @@ let
   pkgs = obelisk.reflex-platform.nixpkgs;
   # All the versions that the user cares about are here so that they can
   # be changed in one place
-  chainweaverVersion = "2.2.1";
+  chainweaverVersion = "2.2.2";
   appName = "Kadena Chainweaver";
   macReleaseNumber = "0";
   linuxReleaseNumber = "0";
@@ -46,6 +46,7 @@ in obApp // rec {
         obApp.ghcjs.frontend
         obApp.passthru.staticFiles
         obApp.passthru.__closureCompilerOptimizationLevel
+        obApp.passthru.externjs
         version;
       nixos = import (pkgs.path + /nixos);
     in nixos {

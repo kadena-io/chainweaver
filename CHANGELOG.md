@@ -1,5 +1,17 @@
 # Chainweaver Changelog
 
+## 2.2.2 (2022-05-10)
+* Add TRANSFER\_XCHAIN interface support
+* Fix MacOS build for BigSur/Monterrey
+* Added support for monitoring and transferring of 'fungibles'
+* Added SigBuilder workflow for summarizing and signing raw requests
+* Added Quicksign UI for summarizing and signing multiple requests
+* Pact bump to 4.3
+* Significatntly improved browser load-time
+* Minor bug fixes in various generic-transfer widgets
+* Gas payer validation widget
+* Prevent modals from closing when clicking on the backdrop
+
 ## 2.2.1 (2021-12-17)
 * k: account support
 * Copy buttons for accounts and keys
@@ -41,7 +53,7 @@ numerous other features and smaller improvements.
 ### UX/UI improvements
 
 * Improved the general ease of use on main work flows
-* More meaningful and accurate in-app guides and descriptions 
+* More meaningful and accurate in-app guides and descriptions
 * Automatic generation of an initial key & account on the first launch
 * Streamlined frequently used functionalities such as accounts and coin transfers
 * Add a dedicated receive button with auto generation of TX builder information
