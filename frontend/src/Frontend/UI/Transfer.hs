@@ -382,9 +382,11 @@ getAccountDetails model eca = do
                    nodes chain [acct] fung
       pure $ extractDetails <$> ks
 
-transferModalTitle :: TransferType -> Text
-transferModalTitle NormalTransfer = "Transfer"
-transferModalTitle SafeTransfer = "Safe Transfer"
+transferModalTitle :: TransferType -> ModuleName -> Text
+transferModalTitle tt modName = case tt of
+  NormalTransfer -> "Transfer" <> modTxt
+  SafeTransfer -> "Safe Transfer" <> modTxt
+  where modTxt = " (" <> renderTokenName modName <> ")"
 
 lookupAndTransfer
   :: ( MonadWidget t m, Monoid mConf, Flattenable mConf t
@@ -430,9 +432,9 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
           mConf <- flatten =<< tagOnPostBuild conf
           let close = switch $ current closes
           pure (mConf, close)
-        eWrapper (_, Nothing) = msgModal (transferModalTitle ty) $ text "Loading..."
-        eWrapper (Nothing, _) = msgModal (transferModalTitle ty) $ text "Loading..."
-    (conf, closes) <- splitDynPure <$> networkHold (msgModal (transferModalTitle ty) $ text "Querying keysets...")
+        eWrapper (_, Nothing) = msgModal (transferModalTitle ty fungible) $ text "Loading..."
+        eWrapper (Nothing, _) = msgModal (transferModalTitle ty fungible) $ text "Loading..."
+    (conf, closes) <- splitDynPure <$> networkHold (msgModal (transferModalTitle ty fungible) $ text "Querying keysets...")
                         (eWrapper <$> ffilter (\(a,b) -> isJust a && isJust b) (updated allKeys))
     mConf <- flatten =<< tagOnPostBuild conf
     return (mConf, switch $ current closes)
@@ -816,7 +818,8 @@ transferDialog
 transferDialog model netInfo ti ty fks tks unused = Workflow $ do
     -- TODO Clean up the unused parameter
     -- It contains the from account name and details retrieved from blockchain
-    close <- modalHeader $ text $ transferModalTitle ty
+    let fungible = _ti_fungible ti
+    close <- modalHeader $ text $ transferModalTitle ty fungible
     rec
       (currentTab, _done) <- transferTabs newTab
       (conf, meta, payload, dSignedCmd, destChainInfo) <- mainSection currentTab
@@ -1347,9 +1350,9 @@ gasPayerValidation chainId lookupFunc textEv = do
     withAccountDetails (AccountName accName) (ChainId chainId) maybeAccDetails f =
       case maybeAccDetails of
         Nothing -> Validation_Failure $ T.pack $
-          printf "Couldn't find account %s on chain %s" accName chainId
+          printf "Couldn't find 'coin' account %s on chain %s" accName chainId
         Just AccountStatus_DoesNotExist -> Validation_Failure $ T.pack $
-          printf "Account %s does not exist on chain %s" accName chainId
+          printf "'coin' account %s does not exist on chain %s" accName chainId
         Just AccountStatus_Unknown -> Validation_Failure $ T.pack $
           printf "Account status unknown for account %s, chain %s" accName chainId
         Just (AccountStatus_Exists accDetails) -> f accDetails
