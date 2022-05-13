@@ -95,6 +95,7 @@ import qualified Data.Text as T
 import qualified Pact.Types.Capability as PC
 import qualified Pact.Types.ChainId as Pact
 import qualified Pact.Types.Command as Pact
+import           Pact.Types.Names (ModuleName)
 import qualified Pact.Types.Info as PI
 import qualified Pact.Types.Names as PN
 
@@ -238,6 +239,7 @@ buildDeploymentSettingsResult
 buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkName <- lift $ m ^. network_selectedNetwork
+  fungible <- lift $ m^. wallet_fungible
   networkId <- mkNetworkName . nodeVersion <$> failWith DeploymentSettingsResultError_NoNodesAvailable (headMay $ rights selNodes)
 
   chainId <- cChainId !? DeploymentSettingsResultError_NoChainIdSelected
@@ -272,6 +274,8 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
   gasPayer <- lift mSender
   case gasPayer of
     Nothing -> pure () -- No gas payer selected, move along
+    Just gp | (fungible /= kdaToken) ->  pure () -- You can't pay gas with non-kda, and we don't store that data
+                                               -- In the future perhaps we can perform a live check
     Just gp ->  for_ (lookupAccountBalance gp chainId allAccounts) $ \case
       -- Gas Payer selected but they're not an account?!
       -- TODO: More precise error types for better (any) user feedback on config tab ?
@@ -697,9 +701,9 @@ uiMetaData m mTTL mGasLimit = do
                 & inputElementConfig_initialValue .~ showTtl initTTL
           sliderEl <- uiSlider "" (text $ prettyTTL minTTL) (text "1 day") $ conf
             & initialAttributes .~ "min" =: (tshow minTTL) <> "max" =: T.pack (show secondsInDay) <> "step" =: "1"
-            & inputElementConfig_setValue .~ _inputElement_input inputEl
+            & inputElementConfig_setValue .~ leftmost [_inputElement_input inputEl, showTtl <$> pbTTL]
           (inputEl, inputEv) <- dimensionalInputFeedbackWrapper (Just "Seconds") $ uiIntInputElement (Just minTTL) (Just maxTTL) $ conf
-            & inputElementConfig_setValue .~ _inputElement_input sliderEl
+            & inputElementConfig_setValue .~ leftmost [_inputElement_input sliderEl, showTtl <$> pbTTL]
             & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
           preventScrollWheel $ _inputElement_raw inputEl
           pure $ leftmost
@@ -712,7 +716,6 @@ uiMetaData m mTTL mGasLimit = do
     onTTL <- divClass "deploy-meta-cfg__request-expires"
       $ mkLabeledClsInput True "Request Expires (TTL)" ttlInput
     ttl <- holdDyn initTTL $ leftmost [onTTL, pbTTL]
-
     pure
       ( mempty
         & networkCfg_setGasPrice .~ onGasPrice

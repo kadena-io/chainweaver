@@ -25,6 +25,7 @@ import Data.Aeson (FromJSON, ToJSON)
 import Data.Default (Default (..))
 import qualified Data.IntMap as IntMap
 import Data.Some (Some(..))
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text (Text)
 import GHCJS.DOM.EventM (on)
 import GHCJS.DOM.GlobalEventHandlers (keyPress)
@@ -39,6 +40,7 @@ import Pact.Repl
 import Pact.Repl.Types
 import Pact.Server.ApiClient (HasTransactionLogger)
 import Pact.Types.Lang
+import Pact.Types.Pretty
 import Reflex
 import Reflex.Dom.ACE.Extended hiding (Annotation (..))
 import Reflex.Dom.Core
@@ -58,6 +60,7 @@ import Frontend.OAuth
 import Frontend.Network
 import Frontend.Repl
 import Frontend.Storage
+import Frontend.UI.FormWidget
 import qualified Frontend.VersionedStore as Store
 import Frontend.UI.Button
 import Frontend.UI.Dialogs.AddVanityAccount (uiWatchAccountButton)
@@ -124,11 +127,12 @@ app sidebarExtra fileFFI wcSignReqErrEv appCfg = Store.versionedFrontend (Store.
               _ -> Nothing
         netCfg <- networkBar ideL sigPopup
         (transferVisible, barCfg) <- controlBar "Accounts You Are Watching" $ do
+          manageTokens <- uiManageTokensButton ideL
           refreshCfg <- uiWalletRefreshButton
           watchCfg <- uiWatchRequestButton ideL
           addCfg <- uiWatchAccountButton ideL
           xferVisible <- uiTransferButton
-          pure $ (xferVisible, watchCfg <> addCfg <> refreshCfg)
+          pure $ (xferVisible, manageTokens <> watchCfg <> addCfg <> refreshCfg)
         divClass "wallet-scroll-wrapper" $ do
           transferCfg <- uiGenericTransfer ideL $ TransferCfg transferVisible never never
           accountsCfg <- uiAccountsTable ideL startOpen
@@ -183,6 +187,7 @@ app sidebarExtra fileFFI wcSignReqErrEv appCfg = Store.versionedFrontend (Store.
 
     accountDatalist ideL
     keyDatalist ideL
+    moduleDatalist ideL
     flatten =<< tagOnPostBuild routedCfg
 
   modalCfg <- showModal ideL
@@ -350,12 +355,28 @@ networkBar
   -> m (ModalIdeCfg m key t)
 networkBar m sign = do
   signingPopupCfg <- sigBuilderCfg m sign
-  networkCfg <- divClass "main-header main-header__network-bar" $ do
+  barCfg <- divClass "main-header main-header__network-bar" $ do
   -- Present the dropdown box for selecting one of the configured networks.
-    divClass "page__network-bar-select" $ do
-      selectEv <- uiNetworkSelectTopBar "select_type_special" (m ^. network_selectedNetwork) (m ^. network_networks)
+    netCfg <- divClass "page__network-bar-select" $ do
+      selectEv <- uiNetworkSelectTopBar "select_type_special"
+        (m ^. network_selectedNetwork)
+        (m ^. network_networks)
       pure $ mempty & networkCfg_selectNetwork .~ selectEv
-  pure $ networkCfg <> signingPopupCfg
+    tokenCfg <- divClass "page__network-bar-token" $ do
+      divClass "page__network-bar-token-text" $ do
+        text "Current Token:       "
+        initToken <- sample $ current $ m ^. wallet_fungible
+        let cfg = mkCfg initToken
+              & primFormWidgetConfig_initialAttributes <>~ ("class" =: "select select_type_special")
+        newToken <- uiTokenDropdown m cfg $ do
+          tMap <- m^.wallet_tokenList
+          tNet <- m^.network_selectedNetwork
+          pure $ fromMaybe defaultTokenList $ Map.lookup tNet tMap
+        -- When we switch networks we need to make the default token KDA again
+        let newNetworkToken = kdaToken <$ (updated $ m^.network_selectedNetwork)
+        pure $ mempty & walletCfg_fungibleModule .~ leftmost [newNetworkToken, updated newToken ]
+    pure $ netCfg <> tokenCfg
+  pure $ barCfg <> signingPopupCfg
 
 
 controlBar

@@ -175,6 +175,7 @@ bipWallet fileFFI signingReqEv mkAppCfg = do
             liftIO $ _transactionLogger_rotateLogFile txLogger
             removeItemStorage localStorage StoreFrontend_Wallet_Keys
             removeItemStorage localStorage StoreFrontend_Wallet_Accounts
+            removeItemStorage localStorage StoreFrontend_Wallet_Tokens
           pure $ LockScreen_Unlocked ==> (x, p)
         Left _ ->
           for mPrv $ fmap (pure . (LockScreen_Locked ==>)) . sample

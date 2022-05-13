@@ -30,7 +30,6 @@
   position: relative;
   width: 100%;
   flex: 1;
-  overflow: hidden;
 }
 
 .page__content {
@@ -64,4 +63,16 @@
 
 .page__network-bar-select {
   margin-left: 22px;
+}
+
+.page__network-bar-token {
+  display: flex;
+  color: black;
+  font-family: "WorkSans-Regular", sans-serif;
+  margin-left: 75px;
+}
+
+.page__network-bar-token-text {
+  align-items: center;
+  display: flex;
 }

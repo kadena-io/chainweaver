@@ -28,6 +28,8 @@
 
 .wallet__table-heading {
   @extend .table__heading;
+  overflow:hidden;
+  text-overflow: ellipsis;
   padding: 5px;
   padding-top: 20px;
   padding-bottom: 20px;

@@ -182,7 +182,7 @@ newHead routeText = do
   -- Allows importing private keys
   js (static @"js/nacl-fast.min-v1.0.0.js")
   -- Allows for BIP39-based key generation and encrypted storage of private keys
-  js (static @"js/kadena-crypto.js")
+  js (static @"js/kadena-crypto.min.js")
   js (static @"js/wallet-connect/umd/index.min.js")
   (bowser, _) <- js' (static @"js/bowser.min.js")
   pure $ domEvent Load bowser

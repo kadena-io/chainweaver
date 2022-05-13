@@ -41,6 +41,7 @@ module Common.Wallet
   , toPactKeyset
   , UnfinishedCrossChainTransfer(..)
   , KeyStorage
+  , TokenStorage
   , AccountStatus (..)
   , _AccountStatus_Exists
   , _AccountStatus_Unknown
@@ -48,6 +49,9 @@ module Common.Wallet
   , AccountDetails (..)
   , accountDetails_balance
   , accountDetails_guard
+  , kdaToken
+  , defaultTokenList
+  , renderTokenName
     -- * Prisms for working directly with Account
   , AccountStorage(..)
   , _AccountStorage
@@ -77,12 +81,16 @@ module Common.Wallet
   , parseWrappedBalanceChecks
   , getDetailsCode
   , accountDetailsObject
+  , accountDetailsObjectWithHash
+  , accountDetailsObjectCoin
   , parseAccountDetails
+  , parseAccountDetailsWithHash
   ) where
 
 import Control.Applicative (liftA2, (<|>))
 import Control.Monad.Fail (MonadFail)
 import Control.Lens hiding ((.=))
+import Control.Error (hush, headMay)
 import Control.Monad
 import Control.Monad.Except (MonadError, throwError)
 import Control.Newtype.Generics    (Newtype (..))
@@ -94,6 +102,7 @@ import Data.Decimal (Decimal, roundTo)
 import Data.Default
 import Data.Function (on)
 import Data.IntMap (IntMap)
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (Map)
 import Data.Ord (comparing)
 import Data.Set (Set)
@@ -124,6 +133,7 @@ import qualified Pact.Types.Term as Pact
 import qualified Pact.Types.Type as Pact
 
 import Common.Foundation
+import Common.Modules
 import Common.Network (NetworkName)
 import Common.Orphans ()
 
@@ -387,6 +397,18 @@ instance FromJSON key => FromJSON (Key key) where
 
 type KeyStorage key = IntMap (Key key)
 
+kdaToken :: ModuleName
+kdaToken = ModuleName "coin" Nothing
+
+defaultTokenList :: NonEmpty ModuleName
+defaultTokenList = kdaToken :| []
+
+-- | For the "coin" module show "KDA", for other tokens use `renderCompactText`
+renderTokenName :: ModuleName -> T.Text
+renderTokenName t
+  | t == kdaToken = "KDA"
+  | otherwise     = renderCompactText t
+
 -- | Predefined predicates in Pact.
 --
 --   Userdefined ones are possible too, although the UI currently does not support them.
@@ -507,6 +529,8 @@ instance FromJSON VanityAccount where
       , _vanityAccount_unfinishedCrossChainTransfer = unfinishedCrossChainTransfer
       }
 
+type TokenStorage = Map NetworkName (NonEmpty ModuleName)
+
 newtype AccountStorage = AccountStorage
   { unAccountStorage :: Map NetworkName (Map AccountName (AccountInfo VanityAccount)) }
   deriving (Eq, Show)
@@ -557,25 +581,39 @@ parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
 forceDecimalPoint :: Decimal -> Decimal
 forceDecimalPoint d = if d == roundTo 0 d then roundTo 1 d else d
 
--- | Turn the object of account->balance into a map
 parseAccountDetails :: PactValue -> Either Text (Map AccountName (AccountStatus AccountDetails))
 parseAccountDetails = first ("parseAccountDetails: " <>) . \case
-  (PObject (ObjectMap obj)) -> do
-    m <- for (Map.toAscList obj) $ \(FieldKey accountText, pv) -> do
-      bal <- case pv of
-        PObject (ObjectMap details) -> maybe (Left "Missing key") Right $ do
-          PLiteral (LDecimal balance) <- Map.lookup "balance" details
-          PGuard pactGuard <- Map.lookup "guard" details
-          pure $ AccountStatus_Exists $ AccountDetails
-            { _accountDetails_balance = AccountBalance $ forceDecimalPoint balance
-            , _accountDetails_guard = fromPactGuard Nothing pactGuard
-            }
-        PLiteral (LBool False) -> pure AccountStatus_DoesNotExist
-        t -> Left $ "Unexpected PactValue (expected decimal): " <> renderCompactText t
-      acc <- mkAccountName accountText
-      pure (acc, bal)
-    pure $ Map.fromList m
+  (PObject (ObjectMap obj)) -> parseAccountBalances obj
   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
+
+-- | Turn the object of account->balance into a map
+-- Assumes fieldKey 'modHash' was used
+parseAccountDetailsWithHash :: PactValue -> Either Text (Text, (Map AccountName (AccountStatus AccountDetails)))
+parseAccountDetailsWithHash = first ("parseAccountDetailsWithHash: " <>) . \case
+  (PObject (ObjectMap obj)) -> do
+    let mhKey = FieldKey "modHash"
+    case Map.lookup mhKey obj of
+      Just (PLiteral (LString modHash)) ->
+        second (\a -> (modHash, a)) $ parseAccountBalances $ Map.delete mhKey obj
+      otherwise -> Left $ "'modHash' field-key unavailable or does not contain a string value"
+  v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
+
+parseAccountBalances :: Map FieldKey PactValue -> Either Text (Map AccountName (AccountStatus AccountDetails))
+parseAccountBalances obj = do
+  m <- for (Map.toAscList obj) $ \(FieldKey accountText, pv) -> do
+    bal <- case pv of
+      PObject (ObjectMap details) -> maybe (Left "Missing key") Right $ do
+        PLiteral (LDecimal balance) <- Map.lookup "balance" details
+        PGuard pactGuard <- Map.lookup "guard" details
+        pure $ AccountStatus_Exists $ AccountDetails
+          { _accountDetails_balance = AccountBalance $ forceDecimalPoint balance
+          , _accountDetails_guard = fromPactGuard Nothing pactGuard
+          }
+      PLiteral (LBool False) -> pure AccountStatus_DoesNotExist
+      t -> Left $ "Unexpected PactValue (expected decimal): " <> renderCompactText t
+    acc <- mkAccountName accountText
+    pure (acc, bal)
+  pure $ Map.fromList m
 
 -- | Get the last result, as we would under unwrapped deployment.
 parseResults :: PactValue -> Either Text PactValue
@@ -585,15 +623,17 @@ parseResults = first ("parseResults: " <>) . \case
 
 -- | Code to get the details of the given account.
 -- Returns a key suitable for indexing on if you add this to an object.
-getDetailsCode :: Text -> (FieldKey, Term Name)
-getDetailsCode accountName = (FieldKey accountName, TApp
-  { _tApp = App
-    { _appFun = TVar (QName $ QualifiedName "coin" "details" def) def
-    , _appArgs = [TLiteral (LString accountName) def]
-    , _appInfo = def
-    }
-  , _tInfo = def
-  })
+getDetailsCode :: ModuleName -> Text -> (FieldKey, Term Name)
+getDetailsCode moduleName accountName = (FieldKey accountName, tokenDetails)
+   where
+     tokenDetails = TApp
+       { _tApp = App
+         { _appFun = TVar (QName $ QualifiedName moduleName "details" def) def
+         , _appArgs = [TLiteral (LString accountName) def]
+         , _appInfo = def
+         }
+       , _tInfo = def
+       }
 
 tryTerm :: Term Name -> Term Name -> Term Name
 tryTerm defaultTo expr = TApp
@@ -606,10 +646,11 @@ tryTerm defaultTo expr = TApp
   }
 
 -- | Produce an object from account names to account details function calls
-accountDetailsObject :: [Text] -> Term Name
-accountDetailsObject accounts = TObject
+accountDetailsObject :: ModuleName -> [Text] -> Term Name
+accountDetailsObject fungibleName accounts = TObject
   { _tObject = Pact.Types.Term.Object
-    { _oObject = ObjectMap $ Map.fromList $ map (fmap (tryTerm (TLiteral (LBool False) def)) . getDetailsCode) accounts
+    { _oObject = ObjectMap $ Map.fromList $
+       map (fmap (tryTerm (TLiteral (LBool False) def)) . getDetailsCode fungibleName ) accounts
     , _oObjectType = TyPrim TyDecimal
     , _oKeyOrder = Nothing
     , _oInfo = def
@@ -617,12 +658,32 @@ accountDetailsObject accounts = TObject
   , _tInfo = def
   }
 
+accountDetailsObjectWithHash :: ModuleName -> [Text] -> Term Name
+accountDetailsObjectWithHash fungibleName accounts = TObject
+  { _tObject = Pact.Types.Term.Object
+    { _oObject = ObjectMap $ Map.fromList $ [ ("modHash", modHashExpr)]  <>
+       map (fmap (tryTerm (TLiteral (LBool False) def)) . getDetailsCode fungibleName ) accounts
+    , _oObjectType = TyPrim TyDecimal
+    , _oKeyOrder = Nothing
+    , _oInfo = def
+    }
+  , _tInfo = def
+  }
+  where
+    qModName = "\"" <> renderCompactText fungibleName <> "\""
+    modHashExpr =
+      let (Right [res]) = compileCode $ "(at 'hash (describe-module " <> qModName <> "))"
+      in res
+
+accountDetailsObjectCoin :: [Text] -> Term Name
+accountDetailsObjectCoin = accountDetailsObject "coin"
+
 -- | Wrap the code with a let binding to get the balances of the given accounts
 -- before and after executing the code.
 wrapWithBalanceChecks :: Set AccountName -> Text -> Either String Text
 wrapWithBalanceChecks accounts code = wrapped <$ compileCode code
   where
-    accountBalances = accountDetailsObject $ fmap unAccountName $ Set.toAscList accounts
+    accountBalances = accountDetailsObjectCoin $ fmap unAccountName $ Set.toAscList accounts
     -- It would be nice to parse and compile the code and shove it into a
     -- giant 'Term' so we can serialise it, but 'pretty' is not guaranteed to
     -- produce valid pact code. It at least produces bad type sigs and let

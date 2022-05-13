@@ -49,6 +49,7 @@ module Frontend.Wallet
   , getSigningPairs
   , genZeroKeyPrefix
   , addDecimalPoint
+  , ModuleData
   , module Common.Wallet
   ) where
 
@@ -60,6 +61,7 @@ import Data.Aeson
 import Data.Decimal
 import Data.Either (rights)
 import Data.IntMap (IntMap)
+import Data.List (nub)
 import Data.Map (Map)
 import Data.Maybe (fromMaybe)
 import Data.Set (Set)
@@ -68,16 +70,20 @@ import GHC.Generics (Generic)
 import Kadena.SigningTypes (AccountName(..), mkAccountName)
 import Pact.Types.ChainId
 import Pact.Types.Pretty
+import Pact.Types.PactError
 import Reflex
 import Reflex.Dom.Core ((=:))
 
+import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Text as Text
 import qualified Data.IntMap as IntMap
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import qualified Data.Map.Monoidal as MonoidalMap
 import qualified Data.Set as Set
 import qualified Pact.Server.ApiClient as Api
 import qualified Pact.Types.ChainMeta as Pact
+import           Pact.Types.Names (ModuleName(..), NamespaceName(..), parseModuleName)
 import qualified Pact.Types.Command as Pact
 
 import Common.Network (NetworkName)
@@ -92,6 +98,7 @@ import Frontend.Storage
 import Frontend.Network
 import Frontend.VersionedStore
 import Frontend.Log
+import Frontend.UI.Common
 
 data WalletCfg key t = WalletCfg
   { _walletCfg_genKey :: Event t ()
@@ -107,6 +114,9 @@ data WalletCfg key t = WalletCfg
   -- recover when something goes badly wrong in the middle, since it's
   -- immediately stored with all info we need to retry.
   , _walletCfg_updateAccountNotes :: Event t (NetworkName, AccountName, Maybe ChainId, Maybe AccountNotes)
+  , _walletCfg_fungibleModule :: Event t ModuleName
+  , _walletCfg_moduleList :: Event t (NetworkName, NonEmpty ModuleName)
+  -- ^ Update the token list in the wallet
   }
   deriving Generic
 
@@ -121,8 +131,16 @@ data Wallet key t = Wallet
     -- ^ Accounts added and removed by the user
   , _wallet_accounts :: Dynamic t AccountData
     -- ^ Accounts added and removed by the user
+  , _wallet_fungible :: Dynamic t ModuleName
+  , _wallet_moduleData :: Dynamic t ModuleData
+  , _wallet_tokenList :: Dynamic t TokenStorage
   }
   deriving Generic
+
+-- Holds the contract hash of the currrent fungible
+-- The outer Maybe means the fungible has changed but we haven't fetched details yet, and the innner
+-- Maybe represents whether the contract exists on the chain yet
+type ModuleData = Map ChainId (Maybe (Maybe Text))
 
 data Account = Account
   { _account_status :: AccountStatus AccountDetails
@@ -222,7 +240,8 @@ makeWallet mChangePassword model conf = do
   pb <- getPostBuild
   initialKeys <- fromMaybe IntMap.empty <$> loadKeys
   initialAccounts <- maybe (AccountData mempty) fromStorage <$> loadAccounts
-
+  initialTokens <- fromMaybe mempty <$> loadTokens
+  tokens <- foldDyn id initialTokens $ fmap (uncurry Map.insert) $ _walletCfg_moduleList conf
 
   rec
     onNewKey <- performEvent $ leftmost
@@ -249,32 +268,75 @@ makeWallet mChangePassword model conf = do
   initialLoad <- getPostBuild >>= delay 0.5
   fullRefresh <- throttle 3 $ leftmost [_walletCfg_refreshBalances conf, newNetwork, initialLoad]
 
+  dFungible <- holdDyn kdaToken $ _walletCfg_fungibleModule conf
+  fetchFungStatus <- delay 0.1 $ updated dFungible
+
+  let newAccountWithNodes = attach
+        (fmap rights (current $ model ^. network_selectedNodes))
+        (_walletCfg_importAccount conf)
+
   rec
-    newStatuses <- getAccountStatus model $ leftmost
+    newStatuses <- getAccountStatus model dFungible $ leftmost
       [ current accounts <@ fullRefresh
+      , current accounts <@ fetchFungStatus
       -- Get details for a new account
       , ffor (_walletCfg_importAccount conf) $ \(net, name) -> AccountData $ net =: name =: mempty
       ]
-    accounts <- foldDyn id initialAccounts $ leftmost
-      [ ffor (_walletCfg_importAccount conf) $ \(net, name) ->
-        ((<>) (AccountData $ net =: name =: mempty))
+    let
+        newBalances :: Event t [(NetworkName, AccountName, ChainId, AccountStatus AccountDetails)]
+        newBalances = fforMaybe (attach (current dFungible) newStatuses)
+          $ \(currentTok, (reqTok, cid, mBalances)) ->
+            -- This prevents stale responses from an old token from coming in and messing
+            -- up the state if a user switches the token too fast
+            case currentTok == reqTok of
+              False -> Nothing
+              True -> ffor mBalances $ \(_, bals) ->
+                ffor bals $ \(net, accName, stat) -> (net, accName, cid, stat)
 
+        moduleStatusUpdates :: Event t (ChainId, Maybe Text)
+        moduleStatusUpdates =
+          ffor newStatuses $ \(_, cid, mBalances) -> (cid, fst <$> mBalances)
+
+        accountStatuses =
+          _AccountData . traversed . traversed .
+            accountInfo_chains . traversed . account_status
+
+    -- TODO: Need to enforce the following invariants
+    --  1) An "AccountInfo Account" structure must always contain 20 / <max chains> entries in its
+    --  map
+    --  2) Accounts cannot be deleted except for with "removeAccount" event
+    --  3) An Account status update should only be applied if the fungible used to create the
+    --  request is still the active fungible
+    accounts <- foldDyn id initialAccounts $ leftmost
+      [ ffor newAccountWithNodes $ \(nodes, (net, name)) ->
+          ((<>) (AccountData $ net =: name =: (newAccountView nodes)))
       -- Add the public key as an account to get people started
       , attachWith addStarterAccount (current $ model ^. network_selectedNetwork) (updated keys)
       , ffor (_walletCfg_updateAccountNotes conf) updateAccountNotes
-      , foldr (.) id . fmap updateAccountStatus <$> newStatuses
       , ffor (_walletCfg_setCrossChainTransfer conf) updateCrossChain
       , ffor (_walletCfg_delAccount conf) removeAccount
+      , foldr (.) id . fmap updateAccountStatus <$> newBalances
+      -- zero out account balance on new fungible
+      , ffor (updated dFungible) $ \_ accs->
+          accs & accountStatuses .~ AccountStatus_Unknown
+      ]
+    dModuleData <- foldDyn ($) mempty $ leftmost
+      [ ffor moduleStatusUpdates $ \(cid, mHash) -> Map.insert cid (Just mHash)
+      , ffor (updated dFungible) $ \_ -> fmap (const Nothing)
       ]
 
   performEvent_ $ storeKeys <$> updated keys
   store <- holdUniqDyn $ toStorage <$> accounts
   performEvent_ $ storeAccounts <$> updated store
+  performEvent_ $ storeTokens <$> updated tokens
 
 
   pure $ Wallet
     { _wallet_keys = keys
     , _wallet_accounts = accounts
+    , _wallet_fungible = dFungible
+    , _wallet_moduleData = dModuleData
+    , _wallet_tokenList = tokens
     }
   where
     addStarterKey m = if IntMap.null m then Just (addNewKey m) else Nothing
@@ -291,6 +353,9 @@ makeWallet mChangePassword model conf = do
                      else ad
         _ -> ad
 
+    -- Creates a new AccountInfo Account with all 20 chains
+    newAccountView nodes = AccountInfo Nothing $
+      Map.fromList $ zip (nub $ foldMap getChains nodes) $ repeat emptyAccount
 
     addNewKey :: IntMap a -> Performable m (Key key)
     addNewKey = createKey . nextKey
@@ -336,13 +401,22 @@ getAccountStatus
     , HasLogger model t
     , HasNetwork model t, HasCrypto key (Performable m)
     )
-  => model -> Event t AccountData -> m (Event t [(NetworkName, AccountName, ChainId, AccountStatus AccountDetails)])
-getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(AccountData networkAccounts) -> do
+  => model
+  -> Dynamic t ModuleName
+  -> Event t AccountData
+  -> m (Event t (ModuleName, ChainId, Maybe (Text, [(NetworkName, AccountName, AccountStatus AccountDetails)])))
+getAccountStatus model dFungible accStore = performEventAsync $ flip push accStore $ \(AccountData networkAccounts) -> do
   nodes <- fmap rights $ sample $ current $ model ^. network_selectedNodes
   net <- sample $ current $ model ^. network_selectedNetwork
-  pure . Just $ mkRequests nodes net (Map.lookup net networkAccounts)
+  -- This works because A) we are inside a `push` which means we sample at the
+  -- time of firing, and B) because the dFungible event is used as a trigger
+  -- for the accStore event. That being said, this code probably should be
+  -- refactored and cleaned up so that we arent dependent on dFungible being a
+  -- basis event for accStore.
+  fungible <- sample $ current $ dFungible
+  pure . Just $ mkRequests fungible nodes net (Map.lookup net networkAccounts)
   where
-    mkRequests nodes net mAccounts cb = do
+    mkRequests fungible nodes net mAccounts cb = do
       -- Transform the accounts structure into a map from chain ID to
       -- set of account names. We grab balances accounts on all chains,
       -- but only if the user has actually clicked Add Account for that
@@ -357,7 +431,7 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
 
         chainsToAccounts = MonoidalMap.fromSet (const allAccounts) allChains
 
-        code = renderCompactText . accountDetailsObject . Set.toList
+        code = renderCompactText . accountDetailsObjectWithHash fungible . Set.toList
         pm chain = Pact.PublicMeta
           { Pact._pmChainId = chain
           , Pact._pmSender = "chainweaver"
@@ -375,12 +449,15 @@ getAccountStatus model accStore = performEventAsync $ flip push accStore $ \(Acc
         pure $ doReqFailover envs (Api.local Api.apiV1Client cmd) >>= \case
           Left es -> putLog model LevelInfo $ "getAccountStatus: request failure: " <> tshow es
           Right cr -> case Pact._crResult cr of
-            Pact.PactResult (Right pv) -> case parseAccountDetails pv of
+            Pact.PactResult (Right pv) -> case parseAccountDetailsWithHash pv of
               Left e -> putLog model LevelInfo $ "getAccountStatus: failed to parse balances:" <> tshow e
-              Right balances -> liftIO $ do
+              Right (hash, balances) -> liftIO $ do
                 putLog model LevelInfo $ "getAccountStatus: success:"
                 putLog model LevelInfo $ tshow balances
-                liftIO $ cb $ ffor (Map.toList balances) $ \(name, balance) -> (net, name, chain, balance)
+                liftIO $ cb $ (fungible, chain, Just (hash, ffor (Map.toList balances) $ \(name, balance) -> (net, name, balance)))
+            Pact.PactResult (Left (PactError EvalError _ _ doc))
+              | "Cannot resolve " `Text.isPrefixOf` (tshow doc) ->
+                liftIO $ cb (fungible, chain, Nothing)
             Pact.PactResult (Left e) -> putLog model LevelInfo $ "getAccountStatus failed:" <> tshow e
       -- Perform the requests on a forked thread
       void $ liftJSM $ forkJSM $ void $ sequence requests
@@ -412,6 +489,14 @@ storeKeys = setItemStorage localStorage StoreFrontend_Wallet_Keys
 -- | Load key pairs from localstorage.
 loadKeys :: (FromJSON key, HasStorage m, Functor m) => m (Maybe (KeyStorage key))
 loadKeys = getItemStorage localStorage StoreFrontend_Wallet_Keys
+
+-- | Write tokens to localstorage.
+storeTokens :: HasStorage m => TokenStorage -> m ()
+storeTokens = setItemStorage localStorage StoreFrontend_Wallet_Tokens
+
+-- | Load tokens from localstorage.
+loadTokens :: (HasStorage m, Functor m) => m (Maybe TokenStorage)
+loadTokens = getItemStorage localStorage StoreFrontend_Wallet_Tokens
 
 -- | Write key pairs to localstorage.
 storeAccounts :: HasStorage m => AccountStorage -> m ()
@@ -449,10 +534,18 @@ instance Reflex t => Semigroup (WalletCfg key t) where
       [ _walletCfg_updateAccountNotes c1
       , _walletCfg_updateAccountNotes c2
       ]
+    , _walletCfg_fungibleModule = leftmost
+      [ _walletCfg_fungibleModule c1
+      , _walletCfg_fungibleModule c2
+      ]
+    , _walletCfg_moduleList = leftmost
+      [ _walletCfg_moduleList c1
+      , _walletCfg_moduleList c2
+      ]
     }
 
 instance Reflex t => Monoid (WalletCfg key t) where
-  mempty = WalletCfg never never never never never never
+  mempty = WalletCfg never never never never never never never never
   mappend = (<>)
 
 instance Flattenable (WalletCfg key t) t where
@@ -464,16 +557,18 @@ instance Flattenable (WalletCfg key t) t where
       <*> doSwitch never (_walletCfg_refreshBalances <$> ev)
       <*> doSwitch never (_walletCfg_setCrossChainTransfer <$> ev)
       <*> doSwitch never (_walletCfg_updateAccountNotes <$> ev)
+      <*> doSwitch never (_walletCfg_fungibleModule <$> ev)
+      <*> doSwitch never (_walletCfg_moduleList <$> ev)
 
-instance Reflex t => Semigroup (Wallet key t) where
-  wa <> wb = Wallet
-    { _wallet_keys = _wallet_keys wa <> _wallet_keys wb
-    , _wallet_accounts = _wallet_accounts wa <> _wallet_accounts wb
-    }
-
-instance Reflex t => Monoid (Wallet key t) where
-  mempty = Wallet mempty mempty
-  mappend = (<>)
+-- instance Reflex t => Semigroup (Wallet key t) where
+--   wa <> wb = Wallet
+--     { _wallet_keys = _wallet_keys wa <> _wallet_keys wb
+--     , _wallet_accounts = _wallet_accounts wa <> _wallet_accounts wb
+--     }
+--
+-- instance Reflex t => Monoid (Wallet key t) where
+--   mempty = Wallet mempty mempty
+--   mappend = (<>)
 
 -- Helper for getting around the fact that the coin contract doesn't allow
 -- integer amounts.  Can't think of a better place to put this.
