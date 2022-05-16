@@ -139,7 +139,7 @@ uiSigningWorkflow ideL signingRequest writeSigningResponse onCloseExternal = Wor
 
   let response = deploymentResToResponse <$> result
 
-  finished <- (performEvent . fmap (liftJSM . writeSigningResponse)) <=< headE $
+  finished <- writeSigningResponse <=< headE $
     maybe (Left "Cancelled") Right <$> leftmost
       [ Just <$> response
       , Nothing <$ onCloseExternal
