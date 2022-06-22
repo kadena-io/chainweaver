@@ -22,6 +22,7 @@ import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 
 import WalletConnect.Wallet hiding (PublicKey)
 import Frontend.AppCfg
+import Frontend.Foundation hiding (Request)
 import Frontend.UI.Form.Common
 import Frontend.UI.Modal
 import Frontend.UI.Widgets
@@ -44,9 +45,9 @@ uiWalletConnect wc@(WalletConnect pairings sessions _ _ _) _ = do
       dialogSectionHeading mempty "New Pairing"
 
     uiGroupHeader mempty $ do
-      el "p" $ text "Please paste the URI (beginning with 'wc:') and click Pair"
-      el "p" $ do
-        ie <- uiInputElement def
+      divClass "group" $ do
+        ie <- mkLabeledClsInput False "Please paste the URI (beginning with 'wc:') and click Pair" $ \cls -> uiTextAreaElement $ def
+          & initialAttributes .~ "class" =: renderClass cls
         ev <- uiButton btnCfgPrimary $ text "Pair"
         doNewPairing wc (tag (current $ value ie) ev)
 
