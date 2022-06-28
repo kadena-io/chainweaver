@@ -45,6 +45,7 @@ import           Snap                      (Method (POST), Request (..), Snap,
                                             readRequestBody, setResponseStatus,
                                             writeBS, writeLBS)
 import qualified Snap
+import qualified Snap.Internal.Core as Snap
 import qualified Snap.Util.CORS            as CORS
 import           System.Environment        (getArgs)
 import           System.Exit               (exitFailure)
@@ -173,7 +174,11 @@ backend = Backend
         cfg <- buildCfg
         networks <- getConfig networksPath
         let hasServerList = isJust networks
-            serveIt = serve $ serveBackendRoute networks cfg
+            logRequests = Snap.sget >>=
+              liftIO . print . Snap._snapRequest
+            serveIt = serve $ \br -> do
+              logRequests
+              serveBackendRoute networks cfg br
 
         if hasServerList
            -- Production mode:
@@ -204,7 +209,8 @@ serveBackendRoute networks cfg = \case
     -> requestToken cfg providerId
   BackendRoute_Css :/ ()
     -> requestCss
-  _ -> pure ()
+  _ -> do
+    pure ()
 
 requestCss :: Snap ()
 requestCss = do
