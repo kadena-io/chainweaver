@@ -49,7 +49,7 @@ import qualified Snap.Internal.Core as Snap
 import qualified Snap.Util.CORS            as CORS
 import           System.Environment        (getArgs)
 import           System.Exit               (exitFailure)
-import           System.IO                 (stderr)
+import           System.IO                 (stderr, stdout, hFlush)
 import qualified Text.Sass                 as Sass
 import           TH.RelativePaths          (withCabalPackageWorkDir)
 import "template-haskell" Language.Haskell.TH.Lib   (stringE)
@@ -174,8 +174,12 @@ backend = Backend
         cfg <- buildCfg
         networks <- getConfig networksPath
         let hasServerList = isJust networks
-            logRequests = Snap.sget >>=
-              liftIO . print . Snap._snapRequest
+            logRequests = do
+              snapReq <- Snap._snapRequest <$> Snap.sget
+              liftIO $ putStrLn "======== Req Begin ========"
+              liftIO $ print snapReq
+              liftIO $ putStrLn "======== Req End ========"
+              liftIO $ hFlush stdout
             serveIt = serve $ \br -> do
               logRequests
               serveBackendRoute networks cfg br
