@@ -46,6 +46,7 @@ let
     , backendArgs ? "--port=${toString internalPort}"
     , ...
     }: {...}: {
+
     services.nginx = {
       enable = true;
       package = pkgs.nginx-1-22;
@@ -72,6 +73,7 @@ let
         limit_conn_log_level info;
       '';
     };
+    systemd.services.nginx.serviceConfig.ReadWritePaths = [ "/var/spool/nginx/logs/" ];
     systemd.services.${name} = {
       wantedBy = [ "multi-user.target" ];
       after = [ "network.target" ];
