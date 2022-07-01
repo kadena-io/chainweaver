@@ -33,6 +33,7 @@ let
   linuxApp = (import ./linux.nix) {
     inherit obApp pkgs appName sass homeManagerModule chainweaverVersion linuxReleaseNumber ovaReleaseNumber;
   };
+  nginx-1-17 = pkgs.nginxUnstable;
 
   mkObeliskAppWithNginx =
     { exe
@@ -48,6 +49,7 @@ let
     }: {...}: {
     services.nginx = {
       enable = true;
+      package = nginx-1-17;
       recommendedProxySettings = true;
       virtualHosts."${routeHost}" = {
         enableACME = enableHttps;
@@ -58,15 +60,17 @@ let
           extraConfig = ''
             access_log off;
             limit_req zone=one;
-            limit_conn addr 10;
+            limit_conn addr 50;
           '';
         };
       };
       appendHttpConfig = ''
-      limit_req_dry_run on;
-      limit_req_log_level info ;
-      limit_req_zone $binary_remote_addr zone=one:200m rate=30r/m;
-      limit_conn_zone $binary_remote_addr zone=addr:200m;
+        limit_req_dry_run on;
+        limit_req_log_level info;
+        limit_req_zone $binary_remote_addr zone=one:200m rate=30r/m;
+        limit_conn_zone $binary_remote_addr zone=addr:10m;
+        limit_conn_dry_run on;
+        limit_conn_log_level info;
       '';
     };
     systemd.services.${name} = {
@@ -101,6 +105,7 @@ let
 
 in obApp // rec {
   inherit sass;
+  inherit pkgs nginx-1-17;
   inherit (macApp) mac deployMac;
   inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem;
 
@@ -156,7 +161,7 @@ in obApp // rec {
         };
       };
     };
-    
+
 
   ci =
     let cross = {
