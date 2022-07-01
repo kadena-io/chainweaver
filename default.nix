@@ -59,21 +59,22 @@ let
           proxyWebsockets = true;
           extraConfig = ''
             access_log off;
-            limit_req zone=one;
-            limit_conn addr 50;
           '';
+            # limit_req zone=one;
+            # limit_conn addr 50;
+          # '';
         };
       };
-      appendHttpConfig = ''
-        limit_req_dry_run on;
-        limit_req_log_level info;
-        limit_req_zone $binary_remote_addr zone=one:200m rate=30r/m;
-        limit_conn_zone $binary_remote_addr zone=addr:10m;
-        limit_conn_dry_run on;
-        limit_conn_log_level info;
-      '';
+      # appendHttpConfig = ''
+      #   limit_req_dry_run on;
+      #   limit_req_log_level info;
+      #   limit_req_zone $binary_remote_addr zone=one:200m rate=30r/m;
+      #   limit_conn_zone $binary_remote_addr zone=addr:10m;
+      #   limit_conn_dry_run on;
+      #   limit_conn_log_level info;
+      # '';
     };
-    systemd.services.nginx.serviceConfig.ReadWritePaths = [ "/var/spool/nginx/logs/" ];
+    # systemd.services.nginx.serviceConfig.ReadWritePaths = [ "/var/spool/nginx/logs/" ];
     systemd.services.${name} = {
       wantedBy = [ "multi-user.target" ];
       after = [ "network.target" ];
