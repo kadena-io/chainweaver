@@ -23,7 +23,6 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class (lift)
 import qualified Data.Aeson                as Aeson
 import qualified Data.ByteString           as BS
-import           Data.IORef
 import qualified Data.CaseInsensitive      as CI
 import           Data.Default
 import           Data.Dependent.Sum        (DSum ((:=>)))
@@ -173,7 +172,6 @@ backend = Backend
     { _backend_run = \serve -> do
         cfg <- buildCfg
         networks <- getConfig networksPath
-        reqCounter <- newIORef 0
         let hasServerList = isJust networks
             serveIt = serve $ serveBackendRoute networks cfg
         if hasServerList

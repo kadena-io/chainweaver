@@ -63,8 +63,10 @@ let
         };
       };
       appendHttpConfig = ''
-      limit_req_zone $binary_remote_addr zone=one:10m rate=30r/m;
-      limit_conn_zone $binary_remote_addr zone=addr:10m;
+      limit_req_dry_run on;
+      limit_req_log_level info ;
+      limit_req_zone $binary_remote_addr zone=one:200m rate=30r/m;
+      limit_conn_zone $binary_remote_addr zone=addr:200m;
       '';
     };
     systemd.services.${name} = {
