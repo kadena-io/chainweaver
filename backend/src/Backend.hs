@@ -23,6 +23,7 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Class (lift)
 import qualified Data.Aeson                as Aeson
 import qualified Data.ByteString           as BS
+import           Data.IORef
 import qualified Data.CaseInsensitive      as CI
 import           Data.Default
 import           Data.Dependent.Sum        (DSum ((:=>)))
@@ -173,10 +174,12 @@ backend = Backend
     { _backend_run = \serve -> do
         cfg <- buildCfg
         networks <- getConfig networksPath
+        reqCounter <- newIORef 0
         let hasServerList = isJust networks
             logRequests = do
+              count <- liftIO $ atomicModifyIORef' reqCounter $ \a -> (a+1, a)
               snapReq <- Snap._snapRequest <$> Snap.sget
-              liftIO $ putStrLn "======== Req Begin ========"
+              liftIO $ putStrLn $ "======== Req " <> show count <> " Begin ========"
               liftIO $ print snapReq
               liftIO $ putStrLn "======== Req End ========"
               liftIO $ hFlush stdout
