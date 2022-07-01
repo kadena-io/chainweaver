@@ -46,7 +46,6 @@ import           Snap                      (Method (POST), Request (..), Snap,
                                             readRequestBody, setResponseStatus,
                                             writeBS, writeLBS)
 import qualified Snap
-import qualified Snap.Internal.Core as Snap
 import qualified Snap.Util.CORS            as CORS
 import           System.Environment        (getArgs)
 import           System.Exit               (exitFailure)
@@ -176,17 +175,7 @@ backend = Backend
         networks <- getConfig networksPath
         reqCounter <- newIORef 0
         let hasServerList = isJust networks
-            logRequests = do
-              count <- liftIO $ atomicModifyIORef' reqCounter $ \a -> (a+1, a)
-              snapReq <- Snap._snapRequest <$> Snap.sget
-              liftIO $ putStrLn $ "======== Req " <> show count <> " Begin ========"
-              liftIO $ print snapReq
-              liftIO $ putStrLn "======== Req End ========"
-              liftIO $ hFlush stdout
-            serveIt = serve $ \br -> do
-              logRequests
-              serveBackendRoute networks cfg br
-
+            serveIt = serve $ serveBackendRoute networks cfg
         if hasServerList
            -- Production mode:
            then serveIt
@@ -216,8 +205,7 @@ serveBackendRoute networks cfg = \case
     -> requestToken cfg providerId
   BackendRoute_Css :/ ()
     -> requestCss
-  _ -> do
-    pure ()
+  _ -> pure ()
 
 requestCss :: Snap ()
 requestCss = do
