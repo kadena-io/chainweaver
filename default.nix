@@ -33,7 +33,6 @@ let
   linuxApp = (import ./linux.nix) {
     inherit obApp pkgs appName sass homeManagerModule chainweaverVersion linuxReleaseNumber ovaReleaseNumber;
   };
-  nginx-1-17 = pkgs.nginxUnstable;
 
   mkObeliskAppWithNginx =
     { exe
@@ -49,7 +48,7 @@ let
     }: {...}: {
     services.nginx = {
       enable = true;
-      package = nginx-1-17;
+      package = pkgs.nginx-1-22;
       recommendedProxySettings = true;
       virtualHosts."${routeHost}" = {
         enableACME = enableHttps;
@@ -105,7 +104,7 @@ let
 
 in obApp // rec {
   inherit sass;
-  inherit pkgs nginx-1-17;
+  inherit pkgs;
   inherit (macApp) mac deployMac;
   inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem;
 
@@ -125,6 +124,7 @@ in obApp // rec {
         imports = [
           (module { inherit exe hostName adminEmail routeHost enableHttps version; nixosPkgs = pkgs; })
           (obelisk.serverModules.mkDefaultNetworking args)
+          (obelisk.serverModules.mkObeliskApp (args // { inherit exe; }))
           (mkObeliskAppWithNginx (args // { inherit exe; }))
           ./acme.nix  # Backport of ACME upgrades from 20.03
           # (pactServerModule {
