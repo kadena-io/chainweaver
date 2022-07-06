@@ -54,6 +54,11 @@ let
       virtualHosts."${routeHost}" = {
         enableACME = enableHttps;
         forceSSL = enableHttps;
+        locations.${"/"}.extraConfig = ''
+          limit_req zone=one;
+          limit_conn addr 50;
+        '';
+
         locations.${baseUrl} = {
           proxyPass = "http://127.0.0.1:" + toString internalPort;
           proxyWebsockets = true;
