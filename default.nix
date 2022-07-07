@@ -55,7 +55,7 @@ in obApp // rec {
         imports = [
           (module { inherit exe hostName adminEmail routeHost enableHttps version; nixosPkgs = pkgs; })
           (obelisk.serverModules.mkDefaultNetworking args)
-          (obelisk.serverModules.mkObeliskApp (args // { inherit exe; }))
+          (obelisk.serverModules.mkObeliskApp (args // { inherit exe; enableHttps = false; }))
           ./acme.nix  # Backport of ACME upgrades from 20.03
           # (pactServerModule {
           #   hostName = routeHost;
