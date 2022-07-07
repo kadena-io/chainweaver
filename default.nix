@@ -41,6 +41,7 @@ in obApp // rec {
 
   server = { hostName, adminEmail, routeHost, enableHttps, version, module ? obelisk.serverModules.mkBaseEc2 }@args:
     let
+      argsNoHTTPS = args // { enableHttps = false; };
       exe = serverExe
         obApp.ghc.backend
         obApp.ghcjs.frontend
@@ -53,9 +54,11 @@ in obApp // rec {
       system = "x86_64-linux";
       configuration = {
         imports = [
-          (module { inherit exe hostName adminEmail routeHost enableHttps version; nixosPkgs = pkgs; })
-          (obelisk.serverModules.mkDefaultNetworking args)
-          (obelisk.serverModules.mkObeliskApp (args // { inherit exe; enableHttps = false; }))
+          (module { inherit exe hostName adminEmail routeHost version; nixosPkgs = pkgs; enableHttps
+        = false;})
+          # (module { inherit exe hostName adminEmail routeHost enableHttps version; nixosPkgs = pkgs; })
+          (obelisk.serverModules.mkDefaultNetworking argsNoHTTPS)
+          (obelisk.serverModules.mkObeliskApp (argsNoHTTPS // { inherit exe; }))
           ./acme.nix  # Backport of ACME upgrades from 20.03
           # (pactServerModule {
           #   hostName = routeHost;
