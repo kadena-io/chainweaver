@@ -34,78 +34,6 @@ let
     inherit obApp pkgs appName sass homeManagerModule chainweaverVersion linuxReleaseNumber ovaReleaseNumber;
   };
 
-  mkObeliskAppWithNginx =
-    { exe
-    , routeHost
-    , enableHttps
-    , name ? "backend"
-    , user ? name
-    , group ? user
-    , baseUrl ? "/"
-    , internalPort ? 8000
-    , backendArgs ? "--port=${toString internalPort}"
-    , ...
-    }: {...}: {
-
-    services.nginx = {
-      enable = true;
-      package = pkgs.nginx-1-22;
-      recommendedProxySettings = true;
-      virtualHosts."${routeHost}" = {
-        # enableACME = enableHttps;
-        # forceSSL = enableHttps;
-        enableACME = false;
-        forceSSL = false;
-        locations.${baseUrl} = {
-          proxyPass = "http://127.0.0.1:" + toString internalPort;
-          proxyWebsockets = true;
-          extraConfig = ''
-            access_log off;
-            limit_req zone=one;
-            limit_conn addr 50;
-          '';
-        };
-      };
-      appendHttpConfig = ''
-        limit_req_dry_run on;
-        limit_req_log_level info;
-        limit_req_zone $binary_remote_addr zone=one:200m rate=30r/m;
-        limit_conn_zone $binary_remote_addr zone=addr:10m;
-        limit_conn_dry_run on;
-        limit_conn_log_level info;
-      '';
-    };
-    systemd.services.nginx.serviceConfig.ReadWritePaths = [ "/var/spool/nginx/logs/" ];
-    systemd.services.${name} = {
-      wantedBy = [ "multi-user.target" ];
-      after = [ "network.target" ];
-      restartIfChanged = true;
-      path = [ pkgs.gnutar ];
-      script = ''
-        ln -sft . '${exe}'/*
-        mkdir -p log
-        exec ./backend ${backendArgs} </dev/null
-      '';
-      serviceConfig = {
-        User = user;
-        KillMode = "process";
-        WorkingDirectory = "~";
-        Restart = "always";
-        RestartSec = 5;
-      };
-    };
-    users = {
-      users.${user} = {
-        description = "${user} service";
-        home = "/var/lib/${user}";
-        createHome = true;
-        isSystemUser = true;
-        group = group;
-      };
-      groups.${group} = {};
-    };
-  };
-
 in obApp // rec {
   inherit sass;
   inherit (macApp) mac deployMac;
@@ -127,8 +55,7 @@ in obApp // rec {
         imports = [
           (module { inherit exe hostName adminEmail routeHost enableHttps version; nixosPkgs = pkgs; })
           (obelisk.serverModules.mkDefaultNetworking args)
-          (mkObeliskAppWithNginx (args // { inherit exe; }))
-          # (obelisk.serverModules.mkObeliskApp (args // { inherit exe; }))
+          (obelisk.serverModules.mkObeliskApp (args // { inherit exe; }))
           ./acme.nix  # Backport of ACME upgrades from 20.03
           # (pactServerModule {
           #   hostName = routeHost;
