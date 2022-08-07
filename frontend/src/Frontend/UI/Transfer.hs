@@ -67,6 +67,8 @@ import qualified Codec.QRCode.JuicyPixels as QR
 import qualified Data.YAML.Aeson as Y
 
 import           Pact.Types.SigData
+import           Pact.Types.Term (KeySet (..))
+import           Pact.Types.Util (asString)
 import           Kadena.SigningTypes (AccountName(..))
 import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
@@ -183,6 +185,7 @@ toFormWidget model cfg = mdo
     divClass "labeled-input__input account-chain-input" $ uiChainAccount model $ mkPfwc (fst <$> cfg)
       & initialAttributes %~ (<> "placeholder" =: "Account Name or Paste Tx Builder")
       & setValue %~ modSetValue (Just (Just . mkChainAccount <$> pastedBuilder))
+      -- & setValue .~ modSetValue (Just (Just . mkChainAccount <$> pastedBuilder))
 
   let keysetStartsOpen = case snd (_initialValue cfg) of
                            Nothing -> False
@@ -195,7 +198,26 @@ toFormWidget model cfg = mdo
     keysetFormWidget $ (snd <$> cfg)
       & setValue %~ modSetValue (Just (fmap userFromPactKeyset . _txBuilder_keyset <$> pastedBuilder))
 
+  -- let
+    -- dKS::_ = attach (current $ value tca) (updated $ fmapMaybe id k)
+    -- x =
+    --   -- Dynamic t (Maybe UserKeyset)
+    --   ffor (fmapMaybe id k) $ \mUKS ->
+    --       _
   return (tca,k)
+
+createKSPrincipal :: KeySet -> Text
+createKSPrincipal (KeySet ks pf) =
+  case (toList ks,asString pf) of
+    ([k],"keys-all") -> "k:" <> asString k
+    (l,fun) -> do
+      let a = mkHash $ map Pact._pubKey l
+       in  "w:" <> asString a <> ":" <> fun
+  where
+    mkHash = pactHash . mconcat
+
+validateKSPrincipal :: KeySet -> Text -> Bool
+validateKSPrincipal ks name = createKSPrincipal ks == name
 
 data TransferInfo = TransferInfo
   { _ti_fromAccount :: ChainAccount
