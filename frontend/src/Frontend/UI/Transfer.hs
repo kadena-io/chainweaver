@@ -169,23 +169,26 @@ uiChainAccount model cfg = do
                                   (maybe (ChainId "0") _ca_chain <$> cfg)
   return (runMaybeT $ ChainAccount <$> lift cd <*> MaybeT a, onPaste)
 
+modSetValue :: Reflex t => Maybe (Event t a) -> Maybe (Event t a) -> Maybe (Event t a)
+modSetValue (Just e1) (Just e2) = Just $ leftmost [e1, e2]
+modSetValue Nothing a = a
+modSetValue a Nothing = a
+
 toFormWidget
   :: (MonadWidget t m, HasNetwork model t)
   => model
+  -> Event t ()
   -> FormWidgetConfig t (Maybe ChainAccount, Maybe UserKeyset)
   -> m (FormWidget t (Maybe ChainAccount), Dynamic t (Maybe UserKeyset))
-toFormWidget model cfg = mdo
+toFormWidget model eClear cfg = mdo
   let pastedBuilder = fmapMaybe ((decode' . LB.fromStrict . T.encodeUtf8) =<<) $ onPaste
       mkChainAccount b = ChainAccount (_txBuilder_chainId b) (_txBuilder_accountName b)
-      modSetValue (Just e1) (Just e2) = Just $ leftmost [e1, e2]
-      modSetValue Nothing a = a
-      modSetValue a Nothing = a
   (tca,onPaste) <- elClass "div" ("segment segment_type_tertiary labeled-input-inline") $ do
     divClass ("label labeled-input__label-inline") $ text "Account"
     divClass "labeled-input__input account-chain-input" $ uiChainAccount model $ mkPfwc (fst <$> cfg)
       & initialAttributes %~ (<> "placeholder" =: "Account Name or Paste Tx Builder")
       & setValue %~ modSetValue (Just (Just . mkChainAccount <$> pastedBuilder))
-      -- & setValue .~ modSetValue (Just (Just . mkChainAccount <$> pastedBuilder))
+      & setValue %~ modSetValue (Just $ leftmost [Nothing <$ eClear, Just <$> eNewPrincipal])
 
   let keysetStartsOpen = case snd (_initialValue cfg) of
                            Nothing -> False
@@ -197,14 +200,23 @@ toFormWidget model cfg = mdo
   (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty (accordionHeaderBtn "Owner Keyset") $ do
     keysetFormWidget $ (snd <$> cfg)
       & setValue %~ modSetValue (Just (fmap userFromPactKeyset . _txBuilder_keyset <$> pastedBuilder))
+      & setValue %~ modSetValue (Just $ Nothing <$ eClear)
 
-  -- let
-    -- dKS::_ = attach (current $ value tca) (updated $ fmapMaybe id k)
-    -- x =
-    --   -- Dynamic t (Maybe UserKeyset)
-    --   ffor (fmapMaybe id k) $ \mUKS ->
-    --       _
+  let
+    eKSAndChainAddr = attach (current $ value tca) $ updated k
+    eNewPrincipal = fforMaybe eKSAndChainAddr $ \(mCa, mKS) ->
+      case (mCa, mKS) of
+        (Nothing, Just ks) -> Just $ ChainAccount (ChainId "0") $ toPrincipalAccName ks
+        (Just (ChainAccount cid (AccountName an)), Just ks) ->
+          if isPrincipalAccName an
+            then Just $ ChainAccount cid $ toPrincipalAccName  ks
+            else Nothing
+        otherwise -> Nothing
+
   return (tca,k)
+  where
+    isPrincipalAccName = (==) ':' . flip T.index 1
+    toPrincipalAccName = AccountName . createKSPrincipal . userToPactKeyset
 
 createKSPrincipal :: KeySet -> Text
 createKSPrincipal (KeySet ks pf) =
@@ -278,8 +290,8 @@ uiGenericTransfer model cfg = do
     -- Destination
     toAccountWidget eClear = divClass "transfer__right-pane" $ do
       el "h4" $ text "To"
-      toFormWidget model $ mkCfg (Nothing, Nothing)
-        & setValue .~ (Just $ (Nothing, Nothing) <$ eClear)
+      toFormWidget model eClear $ mkCfg (Nothing, Nothing)
+        -- & setValue .~ (Just $ (Nothing, Nothing) <$ eClear)
 
     -- Submit
     submitOrClearWidget transferInfo =  divClass "transfer-fields submit" $ do
@@ -1551,7 +1563,7 @@ transferMetadata model netInfo fks tks ti ty = do
           then Just 1200
           else if fromChain == toChain
             then Just 600
-            else Just 450  -- Cross-chains need to be under 450 in order to use gas-station
+            else Just 465  -- Cross-chains need to be under 500 in order to use gas-station
     (conf, ttl, lim, price) <- uiMetaData model Nothing defaultLimit
     elAttr "div" ("style" =: "margin-top: 10px") $ do
       now <- fmap round $ liftIO $ getPOSIXTime
