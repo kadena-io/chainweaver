@@ -72,7 +72,7 @@ import Data.IntMap (IntMap)
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
-import Data.These (These(This))
+import Data.These
 import Data.Traversable (for, sequence)
 import Kadena.SigningApi
 import Pact.Compile (compileExps, mkTextInfo)
@@ -1029,14 +1029,7 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
     mkBuildCmd code0 = buildCmd nonce networkId publicMeta signingPairs
       extraSigners code0 jsondata publicKeyCapabilities
 
-  eCmds <- performEvent $ ffor (current dIsChainWebNode <@ pb) $ \onChainweb -> do
-    c <- mkBuildCmd code
-    wc <-
-      if onChainweb then
-        Just <$> for (wrapWithBalanceChecks (Set.singleton sender) code) mkBuildCmd
-      else
-        pure Nothing
-    pure (c, wc)
+  eCmd <- performEvent $ ffor pb $ const $ mkBuildCmd code
 
   void $ runWithReplace
     (text "Preparing transaction preview...")
@@ -1044,10 +1037,10 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       <$> current (model ^. network_selectedNetwork)
       <*> current (model ^. wallet_accounts)
       <*> current dIsChainWebNode
-      <@> eCmds
+      <@> eCmd
     )
   where
-    uiPreviewResponses networkName accountData isChainwebNode (cmd, mWrappedCmd) = do
+    uiPreviewResponses networkName accountData isChainwebNode cmd = do
       pb <- getPostBuild
 
       for_ resultError $ \err -> do
@@ -1071,76 +1064,57 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do
         uiAccountFixed sender
 
-      let accountsToTrack = getAccounts networkName accountData
-          localReq =
-            if isChainwebNode then
-              case mWrappedCmd of
-                Nothing -> []
-                Just (Left _e) -> []
-                Just (Right cmd0) -> pure $ NetworkRequest
-                  { _networkRequest_cmd = cmd0
-                  , _networkRequest_chainRef = ChainRef Nothing chainId
-                  , _networkRequest_endpoint = Endpoint_Local
-                  }
-            else
-              pure $ NetworkRequest
-                { _networkRequest_cmd = cmd
-                , _networkRequest_chainRef = ChainRef Nothing chainId
-                , _networkRequest_endpoint = Endpoint_Local
-                }
-
-          parseChainwebWrapped =
-            if isChainwebNode then
-              parseWrappedBalanceChecks
-            else
-              -- Non-chainweb nodes won't have the expected contracts to utilise wrapped
-              -- balance checks, so we don't know what structure to expect here.
-              -- Kuro returns a (PLiteral (LString ...))
-              -- Chainweb returns a (PObject ...)
-              \pv -> Right (fmap (const Nothing) accountsToTrack, pv)
+      let localReq =
+            pure $ NetworkRequest
+              { _networkRequest_cmd = cmd
+              , _networkRequest_chainRef = ChainRef Nothing chainId
+              , _networkRequest_endpoint = Endpoint_Local
+              }
 
       responses <- performLocalRead (model ^. logger) (model ^. network) $ localReq <$ pb
       (errors, resp) <- fmap fanThese $ performEvent $ ffor responses $ \case
-        [(_, errorResult)] -> parseNetworkErrorResult
-          (model ^. logger)
-          parseChainwebWrapped
-          errorResult
+        [(networkReq, errorResult)] -> pure $ case errorResult of
+                                         -- TODO: Treat as bifunctor
+          That (_gas, pactValue) -> That $ renderCompactText pactValue
+          This e -> This $ prettyPrintNetworkErrors e
+          These errs (_gas, pactValue) -> These (prettyPrintNetworkErrors errs) $ renderCompactText pactValue
         n -> do
           putLog model LevelWarn $ "Expected 1 response, but got " <> tshow (length n)
           pure $ This "Couldn't get a response from the node"
 
-      dialogSectionHeading mempty "Anticipated Transaction Impact"
-      divClass "group segment" $ do
-        let tableAttrs = "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
-        elAttr "table" tableAttrs $ do
-          el "thead" $ el "tr" $ do
-            let th = elClass "th" "table__heading" . text
-            th "Account Name"
-            th "Public Key"
-            th "Change in Balance"
-          accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pks -> do
-            bal <- holdDyn Nothing $ leftmost
-              [ Just Nothing <$ errors
-              , Just . join . Map.lookup acc . fst <$> resp
-              ]
-            pure (pks, bal)
-          el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pks, balance) -> el "tr" $ do
-            let displayBalance = \case
-                  Nothing -> "Loading..."
-                  Just Nothing -> "Error"
-                  Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
+      -- dialogSectionHeading mempty "Anticipated Transaction Impact"
+      -- divClass "group segment" $ do
+      --   let tableAttrs = "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
+      --   elAttr "table" tableAttrs $ do
+      --     el "thead" $ el "tr" $ do
+      --       let th = elClass "th" "table__heading" . text
+      --       th "Account Name"
+      --       th "Public Key"
+      --       th "Change in Balance"
+      --     accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pks -> do
+      --       bal <- holdDyn Nothing $ leftmost
+      --         [ Just Nothing <$ errors
+      --         , Just . join . Map.lookup acc . fst <$> resp
+      --         ]
+      --       pure (pks, bal)
+      --     el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pks, balance) -> el "tr" $ do
+      --       let displayBalance = \case
+      --             Nothing -> "Loading..."
+      --             Just Nothing -> "Error"
+      --             Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
 
-                wrapEllipsis =
-                  elClass "div" "preview-acc-key" . text
+      --           wrapEllipsis =
+      --             elClass "div" "preview-acc-key" . text
 
-            el "td" $ wrapEllipsis $ unAccountName acc
-            el "td" $ for_ pks $ \pk -> divClass "wallet__key" $ wrapEllipsis $ keyToText pk
-            el "td" $ dynText $ displayBalance <$> balance
+      --       el "td" $ wrapEllipsis $ unAccountName acc
+      --       el "td" $ for_ pks $ \pk -> divClass "wallet__key" $ wrapEllipsis $ keyToText pk
+      --       el "td" $ dynText $ displayBalance <$> balance
 
       dialogSectionHeading mempty "Raw Response"
       void $ divClass "group segment transaction_details__raw-response"
         $ runWithReplace (text "Loading...") $ leftmost
-        [ text . renderCompactText . snd <$> resp
+        -- [ text . renderCompactText . snd <$> resp
+        [ text <$> resp
         , text <$> errors
         ]
 
