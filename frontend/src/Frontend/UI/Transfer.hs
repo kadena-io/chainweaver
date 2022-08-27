@@ -1526,9 +1526,9 @@ transferMetadata model netInfo fks tks ti ty = do
   dialogSectionHeading mempty "Transaction Settings"
   divClass "group" $ do
     let defaultLimit = if ty == SafeTransfer
-          then Just 1200
+          then Just 4600
           else if fromChain == toChain
-            then Just 600
+            then Just 2300
             else Just 450  -- Cross-chains need to be under 450 in order to use gas-station
     (conf, ttl, lim, price) <- uiMetaData model Nothing defaultLimit
     elAttr "div" ("style" =: "margin-top: 10px") $ do
