@@ -488,7 +488,8 @@ lookupKeySets logL networkName nodes chain accounts fung = do
           pure Nothing
 
     resolvedReq <- for initReq $ imapM $ \(AccountName name) details -> do
-            let mref = details ^? _AccountStatus_Exists . accountDetails_guard . _AccountGuard_Other . Pact._GKeySetRef . to (\(Pact.KeySetName name) -> name)
+            --TODO -- do we need to do somethign with mNS here?
+            let mref = details ^? _AccountStatus_Exists . accountDetails_guard . _AccountGuard_Other . Pact._GKeySetRef . to (\(Pact.KeySetName name mNs) -> name)
                 mbal = details ^? _AccountStatus_Exists . accountDetails_balance . (to unAccountBalance)
                 updateBal old new = if old == new then old else new
             fmap (fromMaybe details) $ for (liftA2 (,) mbal mref) $ \(bal,ref) -> do

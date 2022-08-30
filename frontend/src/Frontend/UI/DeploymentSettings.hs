@@ -790,7 +790,7 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
       [(TApp (App (TVar (QName q) _) as _) _)] -> SigCapability q <$> mapM toPV as
       _ -> Left $ "Sig capability parse failed: Expected single qualified capability in form (qual.DEFCAP arg arg ...)"
     compiled parsedPactCode = fmapL (("Sig capability parse failed: " ++) . show) $
-      compileExps (mkTextInfo $ Pact._pcCode parsedPactCode) (Pact._pcExps parsedPactCode)
+      compileExps def (mkTextInfo $ Pact._pcCode parsedPactCode) (Pact._pcExps parsedPactCode)
     parsed = parsePact txt
     toPV a = fmapL (("Sig capability argument parse failed, expected simple pact value: " ++) . T.unpack)
       $ toPactValue a
