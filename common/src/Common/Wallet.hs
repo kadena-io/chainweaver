@@ -78,7 +78,6 @@ module Common.Wallet
   , lenientLookup
   -- * Balance checks
   , wrapWithBalanceChecks
-  -- , parseWrappedBalanceChecks
   , getDetailsCode
   , accountDetailsObject
   , accountDetailsObjectWithHash
@@ -559,21 +558,6 @@ lenientLookup o t = pure $ case HM.lookup t o of
 -- | Helper function for compiling pact code to a list of terms
 compileCode :: Text -> Either String [Term Name]
 compileCode = first show . compileExps mkEmptyInfo <=< parseExprs
-
--- | Parse the balance checking object into a map of account balance changes and
--- the result from the inner code
--- parseWrappedBalanceChecks :: PactValue -> Either Text (Map AccountName (Maybe AccountBalance), PactValue)
--- parseWrappedBalanceChecks = first ("parseWrappedBalanceChecks: " <>) . \case
---   (PObject (ObjectMap obj)) -> do
---     let lookupErr k = case Map.lookup (FieldKey k) obj of
---           Nothing -> Left $ "Missing key '" <> k <> "' in map: " <> renderCompactText (ObjectMap obj)
---           Just v -> pure v
---         f = (^? _AccountStatus_Exists . accountDetails_balance)
---     before <- (fmap . fmap) f . parseAccountDetails =<< lookupErr "before"
---     result <- parseResults =<< lookupErr "results"
---     after <- (fmap . fmap) f . parseAccountDetails =<< lookupErr "after"
---     pure (Map.unionWith (liftA2 subtract) before after, result)
---   v -> Left $ "Unexpected PactValue (expected object): " <> renderCompactText v
 
 -- Should Pact even have amounts that don't have a decimal place?  It's possible to
 -- receive amounts that are 'LDecimal 10' that will cause a transaction to fail if used in
