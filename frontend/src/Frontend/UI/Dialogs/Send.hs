@@ -881,6 +881,7 @@ continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPaye
       pm = publicMeta
         { _pmChainId = toChain
         , _pmSender = sender
+        , _pmGasLimit = 750 --TODO: This is ok for an emergency fix but we need to grant finer-grain control to the user for the second txn that takes place
         }
       signingSet = snd gasPayer ^. _AccountStatus_Exists . accountDetails_guard . _AccountGuard_KeySetLike . ksh_keys
       signingPairs = filterKeyPairs signingSet keys

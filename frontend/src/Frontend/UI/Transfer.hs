@@ -1529,7 +1529,7 @@ transferMetadata model netInfo fks tks ti ty = do
           then Just 4600
           else if fromChain == toChain
             then Just 2300
-            else Just 800  -- Cross-chains need to be under 800 in order to use gas-station
+            else Just 1800
     (conf, ttl, lim, price) <- uiMetaData model Nothing defaultLimit
     elAttr "div" ("style" =: "margin-top: 10px") $ do
       now <- fmap round $ liftIO $ getPOSIXTime
