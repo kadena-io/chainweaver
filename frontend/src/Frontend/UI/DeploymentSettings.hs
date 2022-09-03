@@ -1029,8 +1029,7 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
     mkBuildCmd code0 = buildCmd nonce networkId publicMeta signingPairs
       extraSigners code0 jsondata publicKeyCapabilities
 
-  eCmd <- performEvent $ ffor pb $ const $ mkBuildCmd code
-
+  eCmd <- performEvent $ mkBuildCmd code <$ pb
   void $ runWithReplace
     (text "Preparing transaction preview...")
     ( uiPreviewResponses
@@ -1065,16 +1064,15 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
         uiAccountFixed sender
 
       let localReq =
-            pure $ NetworkRequest
+            NetworkRequest
               { _networkRequest_cmd = cmd
               , _networkRequest_chainRef = ChainRef Nothing chainId
               , _networkRequest_endpoint = Endpoint_Local
               }
 
-      responses <- performLocalRead (model ^. logger) (model ^. network) $ localReq <$ pb
+      responses <- performLocalRead (model ^. logger) (model ^. network) $ [localReq] <$ pb
       (errors, resp) <- fmap fanThese $ performEvent $ ffor responses $ \case
         [(networkReq, errorResult)] -> pure $ case errorResult of
-                                         -- TODO: Treat as bifunctor
           That (_gas, pactValue) -> That $ renderCompactText pactValue
           This e -> This $ prettyPrintNetworkErrors e
           These errs (_gas, pactValue) -> These (prettyPrintNetworkErrors errs) $ renderCompactText pactValue
@@ -1082,38 +1080,9 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
           putLog model LevelWarn $ "Expected 1 response, but got " <> tshow (length n)
           pure $ This "Couldn't get a response from the node"
 
-      -- dialogSectionHeading mempty "Anticipated Transaction Impact"
-      -- divClass "group segment" $ do
-      --   let tableAttrs = "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
-      --   elAttr "table" tableAttrs $ do
-      --     el "thead" $ el "tr" $ do
-      --       let th = elClass "th" "table__heading" . text
-      --       th "Account Name"
-      --       th "Public Key"
-      --       th "Change in Balance"
-      --     accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pks -> do
-      --       bal <- holdDyn Nothing $ leftmost
-      --         [ Just Nothing <$ errors
-      --         , Just . join . Map.lookup acc . fst <$> resp
-      --         ]
-      --       pure (pks, bal)
-      --     el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pks, balance) -> el "tr" $ do
-      --       let displayBalance = \case
-      --             Nothing -> "Loading..."
-      --             Just Nothing -> "Error"
-      --             Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
-
-      --           wrapEllipsis =
-      --             elClass "div" "preview-acc-key" . text
-
-      --       el "td" $ wrapEllipsis $ unAccountName acc
-      --       el "td" $ for_ pks $ \pk -> divClass "wallet__key" $ wrapEllipsis $ keyToText pk
-      --       el "td" $ dynText $ displayBalance <$> balance
-
       dialogSectionHeading mempty "Raw Response"
       void $ divClass "group segment transaction_details__raw-response"
         $ runWithReplace (text "Loading...") $ leftmost
-        -- [ text . renderCompactText . snd <$> resp
         [ text <$> resp
         , text <$> errors
         ]
