@@ -91,7 +91,7 @@ in with obelisk;
             cp ${openssl-static}/lib/libcrypto.a openssl-static-libs
             cp ${openssl-static}/lib/libssl.a openssl-static-libs
           '';
-            
+
           configureFlags = [
             "--ghc-option=-optl=-Lopenssl-static-libs"
             "--ghc-option=-optl=-lcrypto"
@@ -146,9 +146,26 @@ in with obelisk;
         } {});
         direct-sqlite = dontCheck (self.callHackageDirect {
           pkg = "direct-sqlite";
-          ver = "2.3.26";
-          sha256 = "1kdkisj534nv5r0m3gmxy2iqgsn6y1dd881x77a87ynkx1glxfva";
+          ver = "2.3.27";
+          sha256 = "0w8wj3210h08qlws40qhidkscgsil3635zk83kdlj929rbd8khip";
         } {});
+        sbv = dontCheck (self.callHackageDirect {
+          pkg = "sbv";
+          ver = "9.0";
+          sha256 = "14g2qax1vc7q4g78fa562dviqvcd0l52kd5jmgv90g3g3ci15bnl";
+        } {});
+        # sbv requires this even though it is not used in the build (and the hash is invalid)
+        tasty-bench = dontCheck (self.callHackageDirect {
+          pkg = "tasty-bench";
+          ver = "0.3.1";
+          sha256 = "0000000000000000000000000000000000000000000000000000";
+        } {});
+
+        libBF = doJailbreak (dontCheck (self.callHackageDirect {
+          pkg = "libBF";
+          ver = "0.6.3";
+          sha256 = "0j0i39jb389rnrkkw2xqz10471afxys79nf31hhlqr4fk6ddhjf7";
+        } {}));
 
       };
     in self: super: lib.foldr lib.composeExtensions (_: _: {}) [

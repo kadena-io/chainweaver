@@ -427,7 +427,7 @@ accountGuardSummary :: AccountGuard -> Text
 accountGuardSummary (AccountGuard_Other pactGuard) =
   case pactGuard ^? Pact._GKeySetRef of
     Nothing -> gType <> " : " <> Pact.renderCompactText pactGuard
-    Just (Pact.KeySetName name) -> "ref: " <> name
+    Just ksName@(Pact.KeySetName _ _) -> "ref: " <> Pact.renderCompactText ksName
   where
     gType = pactGuardTypeText $ Pact.guardTypeOf pactGuard
 

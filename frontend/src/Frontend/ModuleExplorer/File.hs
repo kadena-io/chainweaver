@@ -44,6 +44,7 @@ import           Control.Arrow                   ((***), (&&&))
 import           Control.Lens
 import           Control.Monad
 import qualified Data.Aeson                      as A
+import           Data.Default
 import           Data.List.NonEmpty              (NonEmpty ((:|)))
 import           Data.Map                        (Map)
 import qualified Data.Map                        as Map
@@ -193,7 +194,7 @@ fetchFile m onFileRef = do
 {-          else pure $ Just req -}
 
 codeModules :: Code -> Either Text (Map ModuleName (ModuleDef (Term Name)))
-codeModules (Code c) = case Pact.compileExps (Pact.mkTextInfo c) <$> Pact.parseExprs c of
+codeModules (Code c) = case Pact.compileExps def (Pact.mkTextInfo c) <$> Pact.parseExprs c of
   Left err -> Left $ "Parsing failed: " <> tshow err
   Right (Left err) -> Left $ "Compilation failed: " <> tshow err
   Right (Right terms) -> Right $ Map.fromList $ mapMaybe getModule terms

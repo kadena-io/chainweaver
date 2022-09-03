@@ -558,7 +558,7 @@ lenientLookup o t = pure $ case HM.lookup t o of
 
 -- | Helper function for compiling pact code to a list of terms
 compileCode :: Text -> Either String [Term Name]
-compileCode = first show . compileExps mkEmptyInfo <=< parseExprs
+compileCode = first show . compileExps def mkEmptyInfo <=< parseExprs
 
 -- | Parse the balance checking object into a map of account balance changes and
 -- the result from the inner code
