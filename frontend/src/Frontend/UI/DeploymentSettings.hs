@@ -676,7 +676,6 @@ uiGasMeta m mGasLimit = do
           & initialAttributes %~ Map.insert "disabled" ""
     _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
       ffor gasSettings $ \(gl, gp) -> showGasPrice $ fromIntegral gl * gp
-    horizontalDashedSeparator
     pure
       (
         gasLimit
