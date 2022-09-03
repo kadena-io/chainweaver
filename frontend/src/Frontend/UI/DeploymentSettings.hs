@@ -47,6 +47,7 @@ module Frontend.UI.DeploymentSettings
   , uiDeployMetaData
   , uiCfg
   , uiSenderCapabilities
+  , uiGasMeta
   , uiMetaData
   , uiDeployPreview
 
@@ -607,6 +608,110 @@ transactionInputSection code cmd = do
 transactionDisplayNetwork :: (MonadWidget t m, HasNetwork model t) => model -> m ()
 transactionDisplayNetwork m = void $ mkLabeledClsInput True "Network" $ \_ -> do
   dynText $ textNetworkName <$> m ^. network_selectedNetwork
+
+-- TODO: Dedup shared logic with uiMetaData
+-- | ui for gasprice and gaslimit
+uiGasMeta
+  :: forall t m model
+     . ( DomBuilder t m, MonadHold t m, MonadFix m, PostBuild t m
+       , HasNetwork model t
+       , MonadJSM m, MonadJSM (Performable m)
+       , PerformEvent t m
+       , GhcjsDomSpace ~ DomBuilderSpace m
+       )
+  => model
+  -> Maybe GasLimit
+  -> m (
+         Dynamic t GasLimit
+       , Dynamic t GasPrice
+       )
+uiGasMeta m mGasLimit = do
+    pbGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
+
+    let
+      txnSpeedSliderEl setExternal cls = uiSlider cls (text "Slow") (text "Fast") $ def
+        & inputElementConfig_initialValue .~ (showGasPrice $ scaleGPtoTxnSpeed defaultTransactionGasPrice)
+        & initialAttributes .~ "min" =: "1" <> "max" =: "1001" <> "step" =: "1"
+        & inputElementConfig_setValue .~ leftmost
+          [ setExternal
+          , showGasPrice . scaleGPtoTxnSpeed <$> pbGasPrice -- Initial value (from storage)
+          ]
+
+      gasPriceInputBox
+        :: Event t Text
+        -> InputElementConfig EventResult t (DomBuilderSpace m)
+        -> m (Event t GasPrice)
+      gasPriceInputBox setExternal conf = fmap (view _3) $ uiGasPriceInputField never $ conf
+        & initialAttributes %~ addToClassAttr "input-units"
+        & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
+        & inputElementConfig_setValue .~ leftmost
+          [ setExternal
+          , showGasPrice <$> pbGasPrice -- Initial value (from storage)
+          ]
+
+    onGasPrice <- mdo
+      tsEl <- divClass "deploy-meta-cfg__txn-speed" $
+        mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
+      let setSpeed = fmapMaybe (fmap scaleTxnSpeedToGP . parseGasPrice) $ _inputElement_input tsEl
+      gpInput <- mkLabeledInput True "Gas Price" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
+      let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
+      pure $ leftmost [gpInput, setSpeed]
+    gasPrice <- holdDyn defaultTransactionGasPrice $ leftmost [pbGasPrice, onGasPrice]
+
+    let
+      mkGasLimitInput
+        :: InputElementConfig EventResult t (DomBuilderSpace m)
+        -> m (Event t Integer)
+      mkGasLimitInput conf = dimensionalInputFeedbackWrapper (Just "Units") $ do
+        (i, e) <- uiIntInputElement (Just 0) (Just chainwebGasLimitMaximum) $ conf
+          & inputElementConfig_initialValue .~ showGasLimit (GasLimit 750)
+          -- & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
+          & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+        preventScrollWheel $ _inputElement_raw i
+        pure e
+    onGasLimit <- (fmap . fmap) (GasLimit . ParsedInteger) $ mkLabeledInput True "Gas Limit" mkGasLimitInput def
+    gasLimit <- holdDyn (GasLimit 750) $ leftmost [onGasLimit]
+    let gasSettings = (,) <$> gasLimit <*> gasPrice
+    let mkTransactionFee c = fmap (view _1) $ uiGasPriceInputField never $ c
+          & initialAttributes %~ Map.insert "disabled" ""
+    _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
+      ffor gasSettings $ \(gl, gp) -> showGasPrice $ fromIntegral gl * gp
+    pure
+      (
+        gasLimit
+      , gasPrice
+      )
+
+  where
+
+      shiftGP :: GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice
+      shiftGP oldMin oldMax newMin newMax x =
+        let GasPrice (ParsedDecimal gp) = (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
+         in GasPrice $ ParsedDecimal $ roundTo maxCoinPrecision gp
+
+      slowGasPrice = 1e-8
+      fastGasPrice = 1e-5
+
+      scaleTxnSpeedToGP :: GasPrice -> GasPrice
+      scaleTxnSpeedToGP = shiftGP 1 1001 slowGasPrice fastGasPrice
+
+      scaleGPtoTxnSpeed :: GasPrice -> GasPrice
+      scaleGPtoTxnSpeed = shiftGP slowGasPrice fastGasPrice 1 1001
+
+      parseGasPrice :: Text -> Maybe GasPrice
+      parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPrecision <$> readMay (T.unpack t)
+
+      showGasLimit :: GasLimit -> Text
+      showGasLimit (GasLimit (ParsedInteger i)) = tshow i
+
+      showGasPrice :: GasPrice -> Text
+      showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
+
+      showTtl :: TTLSeconds -> Text
+      showTtl (TTLSeconds (ParsedInteger i)) = tshow i
+
+      readPact wrapper =  fmap wrapper . readMay . T.unpack
+
 
 -- | ui for asking the user about meta data needed for the transaction.
 uiMetaData
