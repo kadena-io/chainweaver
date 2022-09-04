@@ -380,9 +380,9 @@ maxCoinPrecision = 12
 defaultTransactionTTL :: TTLSeconds
 defaultTransactionTTL = TTLSeconds (8 * 60 * 60) -- 8 hours
 
--- Taken from https://github.com/kadena-io/chainweb-node/blob/85688ea0182d1b1ab0d8d784a48b4851a950ec7a/src/Chainweb/Chainweb.hs#L344
+-- Taken from https://github.com/kadena-io/chainweb-node/blob/master/src/Chainweb/Chainweb/Configuration.hs#L414
 chainwebGasLimitMaximum :: Num a => a
-chainwebGasLimitMaximum = 1e5
+chainwebGasLimitMaximum = 1.5e5
 
 defaultTransactionGasLimit :: GasLimit
 defaultTransactionGasLimit = GasLimit 600

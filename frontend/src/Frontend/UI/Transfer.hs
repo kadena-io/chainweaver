@@ -522,7 +522,8 @@ lookupKeySets logL networkName nodes chain accounts fung = do
           pure Nothing
 
     resolvedReq <- for initReq $ imapM $ \(AccountName name) details -> do
-            let mref = details ^? _AccountStatus_Exists . accountDetails_guard . _AccountGuard_Other . Pact._GKeySetRef . to (\(Pact.KeySetName name) -> name)
+            --TODO -- do we need to do somethign with mNS here?
+            let mref = details ^? _AccountStatus_Exists . accountDetails_guard . _AccountGuard_Other . Pact._GKeySetRef . to (\(Pact.KeySetName name mNs) -> name)
                 mbal = details ^? _AccountStatus_Exists . accountDetails_balance . (to unAccountBalance)
                 updateBal old new = if old == new then old else new
             fmap (fromMaybe details) $ for (liftA2 (,) mbal mref) $ \(bal,ref) -> do
@@ -856,7 +857,7 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
     close <- modalHeader $ text $ transferModalTitle ty fungible
     rec
       (currentTab, _done) <- transferTabs newTab
-      (conf, meta, payload, dSignedCmd, destChainInfo) <- mainSection currentTab
+      (conf, meta, payload, dSignedCmd, destChainInfo, mdDstGasSettings) <- mainSection currentTab
       (cancel, newTab, next) <- footerSection currentTab meta dSignedCmd disableNext
       let disableNext = let noSender = isNothing . _transferMeta_senderAccount <$> meta
                        in maybe noSender (\(dgp, _) -> (||) <$> (isNothing <$> dgp) <*> noSender) destChainInfo
@@ -870,20 +871,29 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
         pure ((conf, close <> cancel), nextScreen)
 
       Just (dgp, dss) -> do
-        let allDyns = (,,,,)
+        let
+          metaXChain = fromMaybe meta $ ffor mdDstGasSettings $ \dXChainGas -> do
+            meta' <- meta
+            (gLimit, gPrice) <- dXChainGas
+            pure $ meta' {
+                          _transferMeta_gasPrice = gPrice
+                        , _transferMeta_gasLimit = gLimit
+                        }
+        let allDyns = (,,,,,)
               <$> current payload
               <*> current dSignedCmd
               <*> current dgp
               <*> current dss
               <*> current meta
+              <*> current metaXChain
         let nextScreen = ffor (tag allDyns next) $ \case
-              (_,Nothing,_,_,_) -> Workflow $ pure (mempty, never)
-              (p,Just sc,gp,ss,meta') -> previewDialog model netInfo ti payload sc backW $
-                                           crossChainTransferAndStatus model netInfo ti sc gp ss meta'
+              (_,Nothing,_,_,_,_) -> Workflow $ pure (mempty, never)
+              (p,Just sc,gp,ss,meta, metaXChain') -> previewDialog model netInfo ti payload sc backW $
+                                           crossChainTransferAndStatus model netInfo ti sc gp ss metaXChain'
         pure ((conf, close <> cancel), nextScreen)
   where
     mainSection currentTab = elClass "div" "modal__main" $ do
-      (conf, meta, destChainInfo) <- tabPane mempty currentTab TransferTab_Metadata $
+      (conf, meta, destChainInfo, mDstGasSettings) <- tabPane mempty currentTab TransferTab_Metadata $
         transferMetadata model netInfo fks tks ti ty
       let payload = buildUnsignedCmd netInfo ti ty <$> meta
       ddSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
@@ -899,7 +909,7 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
           $ produceSigsIfSigTab
               <$> (attach signingData $ updated currentTab)
       sc <- holdUniqDyn $ join ddSigned
-      return (conf, meta, payload, sc, destChainInfo)
+      return (conf, meta, payload, sc, destChainInfo, mDstGasSettings)
     footerSection currentTab meta sc disableNext = modalFooter $ do
       let (lbl, fanTag) = splitDynPure $ ffor currentTab $ \case
             TransferTab_Metadata -> ("Cancel", Left ())
@@ -1046,10 +1056,10 @@ crossChainTransferAndStatus
   -> [Signer]
   -> TransferMeta
   -> Workflow t m (mConf, Event t ())
-crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners meta = Workflow $ do
+crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners toMeta = Workflow $ do
     let logL = model ^. logger
         nodeInfos = _sharedNetInfo_nodes netInfo
-        toChainMeta = transferMetaToPublicMeta meta toChain
+        toChainMeta = transferMetaToPublicMeta toMeta toChain
     close <- modalHeader $ text "Cross Chain Transfer"
     (resultOk, errMsg) <- elClass "div" "modal__main" $ do
       elAttr "div" ("style" =: "margin-top: 30px; margin-bottom: 30px") $ do
@@ -1282,14 +1292,16 @@ gasPayersSection model netInfo fks tks ti = do
         then Just defaultGasPayerCoin
         else Nothing
 
+      allowGasStation = fungible == kdaToken
+
     (dmgp1, mdmgp2) <- if fromChain == toChain
       then do
-        dgp1 <- gasPayerInput "Gas Paying Account" True initialSourceGasPayer fromChain $ getGasPayerKeys fromChain
+        dgp1 <- gasPayerInput "Gas Paying Account" True initialSourceGasPayer allowGasStation fromChain $ getGasPayerKeys fromChain
         pure $ (dgp1, Nothing)
       else do
         let mkLabel c = T.pack $ printf "Gas Paying Account (Chain %s)" (T.unpack $ _chainId c)
-        dgp1 <- gasPayerInput (mkLabel fromChain) True initialSourceGasPayer fromChain $ getGasPayerKeys fromChain
-        dgp2 <- gasPayerInput (mkLabel toChain) True mDefaultDestGasPayer toChain $ getGasPayerKeys toChain
+        dgp1 <- gasPayerInput (mkLabel fromChain) True initialSourceGasPayer allowGasStation fromChain $ getGasPayerKeys fromChain
+        dgp2 <- gasPayerInput (mkLabel toChain) True mDefaultDestGasPayer allowGasStation toChain $ getGasPayerKeys toChain
         pure $ (dgp1, Just dgp2)
 
     gp1 <-
@@ -1343,14 +1355,15 @@ gasPayerInput
   => Text                       -- ^ The label for this input
   -> Bool                       -- ^ Should the label be inline?
   -> Maybe AccountName -- ^ Initial Value for the input
+  -> Bool
   -> ChainId
   -> (Maybe AccountName -> m (Event t (Maybe (AccountStatus AccountDetails))))
   -> m (Dynamic t (Maybe (AccountName, AccountDetails)))
-gasPayerInput label inlineLabel initVal chainId lookupFunc = do
+gasPayerInput label inlineLabel initVal allowGasStation chainId lookupFunc = do
   let
     initPopState = maybe (PopoverState_Error "Gas Payer Required") (const PopoverState_Disabled) initVal
     initVal' = unAccountName <$> initVal
-    gasPayerValidator = gasPayerValidation chainId lookupFunc
+    gasPayerValidator = gasPayerValidation allowGasStation chainId lookupFunc
   pb <- getPostBuild
   (gpInput, _) <- mkLabeledInput inlineLabel label
     (textFormAsyncValidationWidget initPopState accountListId gasPayerValidator Nothing) $
@@ -1366,14 +1379,19 @@ gasPayerValidation ::
   , MonadJSM (Performable m)
   , MonadFix m
   )
-  => ChainId
+  => Bool
+  -> ChainId
   -> (Maybe AccountName -> m (Event t (Maybe (AccountStatus AccountDetails))))
   -> Event t Text
   -> m (Event t (ValidationResult Text (AccountName, AccountDetails)))
-gasPayerValidation chainId lookupFunc textEv = do
+gasPayerValidation allowGasStation chainId lookupFunc textEv = do
   -- Only start validating after the user is definitely done typing
   textEv' <- debounce 1.25 textEv
-  let (errorEv, accEv) = fanEither $ mkAccountName <$> textEv'
+  let (errorEv, accEv) = fanEither $ ffor textEv' $ \txt -> do
+        accName <- mkAccountName txt
+        case not allowGasStation && (unAccountName accName == "kadena-xchain-gas") of
+          True -> Left "Can not use gas-station to pay for a token that is not KDA"
+          False -> pure accName
   validationDynEv <- networkHold (pure never) $ accEv <&> \acc -> do
     accDetailsEv <- lookupFunc $ Just acc
     pure $ accDetailsEv <&> \maybeAccDetails ->
@@ -1465,7 +1483,9 @@ transferMetadata
   -> m (mConf,
         Dynamic t TransferMeta,
         -- Destination chain gas payer and signer information when there is a cross-chain transfer
-        Maybe (Dynamic t (Maybe (AccountName, AccountStatus AccountDetails)), Dynamic t [Signer]))
+        Maybe (Dynamic t (Maybe (AccountName, AccountStatus AccountDetails)), Dynamic t [Signer]),
+        Maybe (Dynamic t (GasLimit, GasPrice))
+       )
 transferMetadata model netInfo fks tks ti ty = do
   let fromChain = _ca_chain $ _ti_fromAccount ti
       fromAccount = _ca_account $ _ti_fromAccount ti
@@ -1558,12 +1578,12 @@ transferMetadata model netInfo fks tks ti ty = do
                           , toSigners )
 
   dialogSectionHeading mempty "Transaction Settings"
-  divClass "group" $ do
+  (conf, meta, destChainSigners) <- divClass "group" $ do
     let defaultLimit = if ty == SafeTransfer
-          then Just 1200
+          then Just 4720
           else if fromChain == toChain
-            then Just 600
-            else Just 465  -- Cross-chains need to be under 500 in order to use gas-station
+            then Just 2320
+            else Just 1800
     (conf, ttl, lim, price) <- uiMetaData model Nothing defaultLimit
     elAttr "div" ("style" =: "margin-top: 10px") $ do
       now <- fmap round $ liftIO $ getPOSIXTime
@@ -1579,6 +1599,15 @@ transferMetadata model netInfo fks tks ti ty = do
              <*> (TxCreationTime . ParsedInteger <$> ct)
              <*> fromSigners
       return (conf, meta, destChainSigners)
+  mdDstGasSettings <- case fromChain == toChain of
+    True -> pure Nothing
+    False -> do
+      dialogSectionHeading mempty "Finish Crosschain Gas Settings"
+      divClass "group" $ do
+        (gL, gP) <- uiGasMeta model $ Just $ GasLimit 750
+        pure $ Just $ (,) <$> gL <*> gP
+  pure (conf, meta, destChainSigners, mdDstGasSettings )
+
 
 combineStatus :: AccountStatus a -> AccountStatus a -> AccountStatus a
 combineStatus a@(AccountStatus_Exists _) _ = a
