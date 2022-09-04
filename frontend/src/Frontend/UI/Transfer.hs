@@ -461,7 +461,7 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
           let tks = fromMaybe mempty t
           modHashMap <- sample $ current $ model ^. wallet_moduleData
           (conf, closes) <- fmap splitDynPure $ workflow $
-            -- checkSendingAccountExists model netInfo ti ty fks tks
+            -- checkSendingAccountExists model netInfo ti ty fks tks <|>
             checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap
           mConf <- flatten =<< tagOnPostBuild conf
           let close = switch $ current closes
@@ -1071,14 +1071,15 @@ crossChainTransferAndStatus model netInfo ti cmd mdestGP destSigners toMeta = Wo
       let listenDone = ffilter (==Status_Done) $ updated $ _transactionSubmitFeedback_listenStatus fbk
           -- Not sure whether this should be when the listen is done or when the send is done
           rk = RequestKey (toUntypedHash $ _cmdHash cmd) <$ listenDone
-      (resultOk0, errMsg0, retry0) <- divClass "group" $ do
-        elClass "ol" "transaction_status" $ do
-          let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
-          item (_transactionSubmitFeedback_sendStatus fbk) $
-            el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
+      rec widgetHold_ blank $ ffor eContReqKey $ \contCmd -> contHashSection contCmd
+          (resultOk0, errMsg0, retry0, eContReqKey) <- divClass "group" $ do
+            elClass "ol" "transaction_status" $ do
+              let item ds = elDynAttr "li" (ffor ds $ \s -> "class" =: statusText s)
+              item (_transactionSubmitFeedback_sendStatus fbk) $
+                el "p" $ text $ "Cross chain transfer initiated on chain " <> _chainId fromChain
 
-          keys <- sample $ current $ model ^. wallet_keys
-          runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mdestGP rk toChainMeta
+              keys <- sample $ current $ model ^. wallet_keys
+              runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mdestGP rk toChainMeta
 
       let isError = \case
             Just (Left _) -> True

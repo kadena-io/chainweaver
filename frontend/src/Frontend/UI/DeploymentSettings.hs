@@ -53,6 +53,7 @@ module Frontend.UI.DeploymentSettings
 
   , transactionInputSection
   , transactionHashSection
+  , contHashSection
   , transactionDisplayNetwork
     -- * Useful re-exports
   , Identity (runIdentity)
@@ -584,6 +585,11 @@ advancedAccordion m active = do
     -- with the given elements and their dynamic
     dialogSectionHeading mempty "Data"
     uiJsonDataSetFocus (\_ _ -> pure ()) (\_ _ -> pure ()) (m ^. wallet) (m ^. jsonData)
+
+contHashSection :: MonadWidget t m => Pact.RequestKey -> m ()
+contHashSection hsh = void $ do
+  mkLabeledInput True "Request Key (p2)" (\c -> uiInputElement $ c & initialAttributes %~ Map.insert "disabled" "") $ def
+    & inputElementConfig_initialValue .~ Pact.requestKeyToB16Text hsh
 
 transactionHashSection :: MonadWidget t m => Pact.Command Text -> m ()
 transactionHashSection cmd = void $ do
