@@ -668,6 +668,7 @@ checkContractHashOnBothChains
   -> ModuleData
   -> Workflow t m (mConf, Event t ())
 checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap = do
+  -- TODO: Need to check for blessed hashes too;
   let toChain = _ca_chain $ _ti_toAccount ti
       fromChain = _ca_chain $ _ti_fromAccount ti
       --TODO: Just pass this val in as arg instead of passing around the whole map

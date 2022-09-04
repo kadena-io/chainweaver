@@ -92,10 +92,17 @@ amountFormWidget
   => PrimFormWidgetConfig t (Either String Decimal)
   -> m (FormWidget t (Either String Decimal))
 amountFormWidget cfg = do
-    parsingFormWidget parseAmount (either (const "") tshow) cfg
+    parsingFormWidget parseTransferAmount (either (const "") tshow) cfg
+
+-- parseAmount that cant be 0
+parseTransferAmount :: Text -> Either String Decimal
+parseTransferAmount t = parseAmount t >>= \a ->
+  case a == 0 of
+    True -> Left "Cant transfer amount of 0"
+    False -> pure a
 
 parseAmount :: Text -> Either String Decimal
-parseAmount t = 
+parseAmount t =
   let tNoLeadingDecimal = if "." `T.isPrefixOf` t then "0" <> t else t in
   case D.normalizeDecimal <$> readMaybe (T.unpack tNoLeadingDecimal) of
         Nothing -> Left "Not a valid number"
