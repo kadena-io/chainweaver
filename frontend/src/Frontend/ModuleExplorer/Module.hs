@@ -43,6 +43,7 @@ module Frontend.ModuleExplorer.Module
 ------------------------------------------------------------------------------
 import qualified Bound
 import           Control.Lens
+import           Data.Default
 import           Data.Text           (Text)
 import qualified Pact.Compile        as Pact
 import qualified Pact.Parse          as Pact
@@ -126,7 +127,7 @@ makePactLenses ''PactFunction
 -- | Functions of a `Module`
 functionsOfModule :: ModuleDef g -> [PactFunction]
 functionsOfModule m =
-  case Pact.compileExps Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode $ m ^. codeOfModule) of
+  case Pact.compileExps def Pact.mkEmptyInfo <$> Pact.parseExprs (_unCode $ m ^. codeOfModule) of
     Right (Right terms) -> getFunctions =<< terms
     _                   -> []
   where

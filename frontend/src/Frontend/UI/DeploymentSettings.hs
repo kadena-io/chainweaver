@@ -47,6 +47,7 @@ module Frontend.UI.DeploymentSettings
   , uiDeployMetaData
   , uiCfg
   , uiSenderCapabilities
+  , uiGasMeta
   , uiMetaData
   , uiDeployPreview
 
@@ -72,7 +73,7 @@ import Data.IntMap (IntMap)
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Text (Text)
-import Data.These (These(This))
+import Data.These
 import Data.Traversable (for, sequence)
 import Kadena.SigningApi
 import Pact.Compile (compileExps, mkTextInfo)
@@ -608,6 +609,110 @@ transactionDisplayNetwork :: (MonadWidget t m, HasNetwork model t) => model -> m
 transactionDisplayNetwork m = void $ mkLabeledClsInput True "Network" $ \_ -> do
   dynText $ textNetworkName <$> m ^. network_selectedNetwork
 
+-- TODO: Dedup shared logic with uiMetaData
+-- | ui for gasprice and gaslimit
+uiGasMeta
+  :: forall t m model
+     . ( DomBuilder t m, MonadHold t m, MonadFix m, PostBuild t m
+       , HasNetwork model t
+       , MonadJSM m, MonadJSM (Performable m)
+       , PerformEvent t m
+       , GhcjsDomSpace ~ DomBuilderSpace m
+       )
+  => model
+  -> Maybe GasLimit
+  -> m (
+         Dynamic t GasLimit
+       , Dynamic t GasPrice
+       )
+uiGasMeta m mGasLimit = do
+    pbGasPrice <- tag (current $ _pmGasPrice <$> m ^. network_meta) <$> getPostBuild
+
+    let
+      txnSpeedSliderEl setExternal cls = uiSlider cls (text "Slow") (text "Fast") $ def
+        & inputElementConfig_initialValue .~ (showGasPrice $ scaleGPtoTxnSpeed defaultTransactionGasPrice)
+        & initialAttributes .~ "min" =: "1" <> "max" =: "1001" <> "step" =: "1"
+        & inputElementConfig_setValue .~ leftmost
+          [ setExternal
+          , showGasPrice . scaleGPtoTxnSpeed <$> pbGasPrice -- Initial value (from storage)
+          ]
+
+      gasPriceInputBox
+        :: Event t Text
+        -> InputElementConfig EventResult t (DomBuilderSpace m)
+        -> m (Event t GasPrice)
+      gasPriceInputBox setExternal conf = fmap (view _3) $ uiGasPriceInputField never $ conf
+        & initialAttributes %~ addToClassAttr "input-units"
+        & inputElementConfig_initialValue .~ showGasPrice defaultTransactionGasPrice
+        & inputElementConfig_setValue .~ leftmost
+          [ setExternal
+          , showGasPrice <$> pbGasPrice -- Initial value (from storage)
+          ]
+
+    onGasPrice <- mdo
+      tsEl <- divClass "deploy-meta-cfg__txn-speed" $
+        mkLabeledClsInput True "Transaction Speed" (txnSpeedSliderEl setPrice)
+      let setSpeed = fmapMaybe (fmap scaleTxnSpeedToGP . parseGasPrice) $ _inputElement_input tsEl
+      gpInput <- mkLabeledInput True "Gas Price" (gasPriceInputBox $ fmap showGasPrice setSpeed) def
+      let setPrice = fmap (showGasPrice . scaleGPtoTxnSpeed) gpInput
+      pure $ leftmost [gpInput, setSpeed]
+    gasPrice <- holdDyn defaultTransactionGasPrice $ leftmost [pbGasPrice, onGasPrice]
+
+    let
+      mkGasLimitInput
+        :: InputElementConfig EventResult t (DomBuilderSpace m)
+        -> m (Event t Integer)
+      mkGasLimitInput conf = dimensionalInputFeedbackWrapper (Just "Units") $ do
+        (i, e) <- uiIntInputElement (Just 0) (Just chainwebGasLimitMaximum) $ conf
+          & inputElementConfig_initialValue .~ showGasLimit (GasLimit 750)
+          -- & inputElementConfig_setValue .~ fmap showGasLimit pbGasLimit
+          & inputElementConfig_elementConfig . elementConfig_eventSpec %~ preventUpAndDownArrow @m
+        preventScrollWheel $ _inputElement_raw i
+        pure e
+    onGasLimit <- (fmap . fmap) (GasLimit . ParsedInteger) $ mkLabeledInput True "Gas Limit" mkGasLimitInput def
+    gasLimit <- holdDyn (GasLimit 750) $ leftmost [onGasLimit]
+    let gasSettings = (,) <$> gasLimit <*> gasPrice
+    let mkTransactionFee c = fmap (view _1) $ uiGasPriceInputField never $ c
+          & initialAttributes %~ Map.insert "disabled" ""
+    _ <- mkLabeledInputView True "Max Transaction Fee"  mkTransactionFee $
+      ffor gasSettings $ \(gl, gp) -> showGasPrice $ fromIntegral gl * gp
+    pure
+      (
+        gasLimit
+      , gasPrice
+      )
+
+  where
+
+      shiftGP :: GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice -> GasPrice
+      shiftGP oldMin oldMax newMin newMax x =
+        let GasPrice (ParsedDecimal gp) = (newMax-newMin)/(oldMax-oldMin)*(x-oldMin)+newMin
+         in GasPrice $ ParsedDecimal $ roundTo maxCoinPrecision gp
+
+      slowGasPrice = 1e-8
+      fastGasPrice = 1e-5
+
+      scaleTxnSpeedToGP :: GasPrice -> GasPrice
+      scaleTxnSpeedToGP = shiftGP 1 1001 slowGasPrice fastGasPrice
+
+      scaleGPtoTxnSpeed :: GasPrice -> GasPrice
+      scaleGPtoTxnSpeed = shiftGP slowGasPrice fastGasPrice 1 1001
+
+      parseGasPrice :: Text -> Maybe GasPrice
+      parseGasPrice t = GasPrice . ParsedDecimal . roundTo maxCoinPrecision <$> readMay (T.unpack t)
+
+      showGasLimit :: GasLimit -> Text
+      showGasLimit (GasLimit (ParsedInteger i)) = tshow i
+
+      showGasPrice :: GasPrice -> Text
+      showGasPrice (GasPrice (ParsedDecimal i)) = tshow i
+
+      showTtl :: TTLSeconds -> Text
+      showTtl (TTLSeconds (ParsedInteger i)) = tshow i
+
+      readPact wrapper =  fmap wrapper . readMay . T.unpack
+
+
 -- | ui for asking the user about meta data needed for the transaction.
 uiMetaData
   :: forall t m model mConf
@@ -790,7 +895,7 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
       [(TApp (App (TVar (QName q) _) as _) _)] -> SigCapability q <$> mapM toPV as
       _ -> Left $ "Sig capability parse failed: Expected single qualified capability in form (qual.DEFCAP arg arg ...)"
     compiled parsedPactCode = fmapL (("Sig capability parse failed: " ++) . show) $
-      compileExps (mkTextInfo $ Pact._pcCode parsedPactCode) (Pact._pcExps parsedPactCode)
+      compileExps def (mkTextInfo $ Pact._pcCode parsedPactCode) (Pact._pcExps parsedPactCode)
     parsed = parsePact txt
     toPV a = fmapL (("Sig capability argument parse failed, expected simple pact value: " ++) . T.unpack)
       $ toPactValue a
@@ -1029,25 +1134,17 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
     mkBuildCmd code0 = buildCmd nonce networkId publicMeta signingPairs
       extraSigners code0 jsondata publicKeyCapabilities
 
-  eCmds <- performEvent $ ffor (current dIsChainWebNode <@ pb) $ \onChainweb -> do
-    c <- mkBuildCmd code
-    wc <-
-      if onChainweb then
-        Just <$> for (wrapWithBalanceChecks (Set.singleton sender) code) mkBuildCmd
-      else
-        pure Nothing
-    pure (c, wc)
-
+  eCmd <- performEvent $ mkBuildCmd code <$ pb
   void $ runWithReplace
     (text "Preparing transaction preview...")
     ( uiPreviewResponses
       <$> current (model ^. network_selectedNetwork)
       <*> current (model ^. wallet_accounts)
       <*> current dIsChainWebNode
-      <@> eCmds
+      <@> eCmd
     )
   where
-    uiPreviewResponses networkName accountData isChainwebNode (cmd, mWrappedCmd) = do
+    uiPreviewResponses networkName accountData isChainwebNode cmd = do
       pb <- getPostBuild
 
       for_ resultError $ \err -> do
@@ -1071,76 +1168,27 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
       _ <- divClass "group segment" $ mkLabeledClsInput True "Account" $ \_ -> do
         uiAccountFixed sender
 
-      let accountsToTrack = getAccounts networkName accountData
-          localReq =
-            if isChainwebNode then
-              case mWrappedCmd of
-                Nothing -> []
-                Just (Left _e) -> []
-                Just (Right cmd0) -> pure $ NetworkRequest
-                  { _networkRequest_cmd = cmd0
-                  , _networkRequest_chainRef = ChainRef Nothing chainId
-                  , _networkRequest_endpoint = Endpoint_Local
-                  }
-            else
-              pure $ NetworkRequest
-                { _networkRequest_cmd = cmd
-                , _networkRequest_chainRef = ChainRef Nothing chainId
-                , _networkRequest_endpoint = Endpoint_Local
-                }
+      let localReq =
+            NetworkRequest
+              { _networkRequest_cmd = cmd
+              , _networkRequest_chainRef = ChainRef Nothing chainId
+              , _networkRequest_endpoint = Endpoint_Local
+              }
 
-          parseChainwebWrapped =
-            if isChainwebNode then
-              parseWrappedBalanceChecks
-            else
-              -- Non-chainweb nodes won't have the expected contracts to utilise wrapped
-              -- balance checks, so we don't know what structure to expect here.
-              -- Kuro returns a (PLiteral (LString ...))
-              -- Chainweb returns a (PObject ...)
-              \pv -> Right (fmap (const Nothing) accountsToTrack, pv)
-
-      responses <- performLocalRead (model ^. logger) (model ^. network) $ localReq <$ pb
+      responses <- performLocalRead (model ^. logger) (model ^. network) $ [localReq] <$ pb
       (errors, resp) <- fmap fanThese $ performEvent $ ffor responses $ \case
-        [(_, errorResult)] -> parseNetworkErrorResult
-          (model ^. logger)
-          parseChainwebWrapped
-          errorResult
+        [(networkReq, errorResult)] -> pure $ case errorResult of
+          That (_gas, pactValue) -> That $ renderCompactText pactValue
+          This e -> This $ prettyPrintNetworkErrors e
+          These errs (_gas, pactValue) -> These (prettyPrintNetworkErrors errs) $ renderCompactText pactValue
         n -> do
           putLog model LevelWarn $ "Expected 1 response, but got " <> tshow (length n)
           pure $ This "Couldn't get a response from the node"
 
-      dialogSectionHeading mempty "Anticipated Transaction Impact"
-      divClass "group segment" $ do
-        let tableAttrs = "style" =: "table-layout: fixed; width: 100%" <> "class" =: "table"
-        elAttr "table" tableAttrs $ do
-          el "thead" $ el "tr" $ do
-            let th = elClass "th" "table__heading" . text
-            th "Account Name"
-            th "Public Key"
-            th "Change in Balance"
-          accountBalances <- flip Map.traverseWithKey accountsToTrack $ \acc pks -> do
-            bal <- holdDyn Nothing $ leftmost
-              [ Just Nothing <$ errors
-              , Just . join . Map.lookup acc . fst <$> resp
-              ]
-            pure (pks, bal)
-          el "tbody" $ void $ flip Map.traverseWithKey accountBalances $ \acc (pks, balance) -> el "tr" $ do
-            let displayBalance = \case
-                  Nothing -> "Loading..."
-                  Just Nothing -> "Error"
-                  Just (Just b) -> tshow (unAccountBalance b) <> " KDA"
-
-                wrapEllipsis =
-                  elClass "div" "preview-acc-key" . text
-
-            el "td" $ wrapEllipsis $ unAccountName acc
-            el "td" $ for_ pks $ \pk -> divClass "wallet__key" $ wrapEllipsis $ keyToText pk
-            el "td" $ dynText $ displayBalance <$> balance
-
       dialogSectionHeading mempty "Raw Response"
       void $ divClass "group segment transaction_details__raw-response"
         $ runWithReplace (text "Loading...") $ leftmost
-        [ text . renderCompactText . snd <$> resp
+        [ text <$> resp
         , text <$> errors
         ]
 
