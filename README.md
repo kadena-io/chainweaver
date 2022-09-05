@@ -221,3 +221,4 @@ The nice aspect of using a virtual machine is taking advantage of virtualbox's a
 To take a snapshot (if the machine is running), Click on the "Machine" menu of Virtualbox and click "Take Snapshot".
 
 To restore from a snapshot, go to the VirtualBox manager, click "Snapshot" and click "Restore".
+
