@@ -35,7 +35,6 @@ Design Requirements:
 {-# LANGUAGE TypeFamilies #-}
 
 module Frontend.UI.Transfer where
-
 import           Control.Applicative
 import           Control.Error hiding (bool, note)
 import           Control.Lens hiding ((.=))
@@ -456,13 +455,19 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
       [ (\ks (_,b) -> (Just ks, b)) <$> efks
       , (\ks (a,_) -> (a, Just ks)) <$> etks
       ]
-    let eWrapper (Just f, Just t) = do
+
+    mAccs <- sample $ current $ Map.lookup <$>
+      (model ^. network_selectedNetwork) <*>
+      (fmap unAccountData $ model ^. wallet_accounts)
+    let toSimilarKeysets = constructKSFromOthers toAccount mAccs
+        eWrapper (Just f, Just t) = do
           let fks = fromMaybe mempty f
           let tks = fromMaybe mempty t
           modHashMap <- sample $ current $ model ^. wallet_moduleData
+
           (conf, closes) <- fmap splitDynPure $ workflow $
             -- checkSendingAccountExists model netInfo ti ty fks tks <|>
-            checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap
+            checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap toSimilarKeysets
           mConf <- flatten =<< tagOnPostBuild conf
           let close = switch $ current closes
           pure (mConf, close)
@@ -475,6 +480,25 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
   where
     setify :: Ord a => [a] -> [a]
     setify = Set.toList . Set.fromList
+
+    constructKSFromOthers toAccount mAccs = do
+      let
+        accExists a = case a of
+         AccountStatus_Exists a -> Just a
+         otherwise -> Nothing
+        guardToMKeyset ag = case ag of
+          AccountGuard_KeySetLike ks -> Just $ toPactKeyset ks
+          otherwise -> Nothing
+        mMultiKS = do
+          accMap <- mAccs
+          accDets <- Map.lookup toAccount accMap
+          dets <- headMay $ catMaybes $ fmap (accExists . _account_status) $ Map.elems $ _accountInfo_chains accDets
+          guardToMKeyset $ _accountDetails_guard dets
+       in case mMultiKS of
+            Just ks
+              | (validateKSPrincipal ks $ unAccountName toAccount) -> Just $ userFromPactKeyset ks
+            otherwise -> Nothing
+
 
 msgModal :: (DomBuilder t m, PostBuild t m, Monoid mConf) => Text -> m a -> m (mConf, Event t ())
 msgModal headerMsg body = do
@@ -576,12 +600,13 @@ checkSendingAccountExists
   -> TransferType
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
+  -> Maybe UserKeyset
   -> Workflow t m (mConf, Event t ())
-checkSendingAccountExists model netInfo ti ty fks tks = do
+checkSendingAccountExists model netInfo ti ty fks tks toLKS = do
     let fromAccount = _ca_account $ _ti_fromAccount ti
     case Map.lookup fromAccount fks of
-      Just (AccountStatus_Exists ad) ->
-        checkReceivingAccount model netInfo ti ty fks tks (fromAccount, ad)
+      Just (AccountStatus_Exists ad) -> do
+        checkReceivingAccount model netInfo ti ty fks tks (fromAccount, ad) toLKS
       _ -> Workflow $ do
         cancel <- fatalTransferError $
           text $ "Sending account " <> unAccountName fromAccount <> " does not exist."
@@ -606,8 +631,9 @@ checkModuleFungibleXChain
   -> TransferType
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
+  -> Maybe UserKeyset
   -> Workflow t m (mConf, Event t ())
-checkModuleFungibleXChain model netInfo ti ty fks tks =
+checkModuleFungibleXChain model netInfo ti ty fks tks toLKS =
   let toChain = _ca_chain $ _ti_toAccount ti
       fromChain = _ca_chain $ _ti_fromAccount ti
    in case moduleName == "coin" of
@@ -635,7 +661,7 @@ checkModuleFungibleXChain model netInfo ti ty fks tks =
     networkName = _sharedNetInfo_network netInfo
     moduleName = renderCompactText $ _ti_fungible ti
     interfaceCheckPact = "(contains 'fungible-xchain-v1 (at 'interfaces (describe-module \"" <> moduleName <> "\")))"
-    nextW = checkSendingAccountExists model netInfo ti ty fks tks
+    nextW = checkSendingAccountExists model netInfo ti ty fks tks toLKS
     defMeta = (_sharedNetInfo_meta netInfo)
         { _pmChainId = toChain
         , _pmSender  = "sender00"
@@ -666,8 +692,9 @@ checkContractHashOnBothChains
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> ModuleData
+  -> Maybe UserKeyset
   -> Workflow t m (mConf, Event t ())
-checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap = do
+checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap toLKS = do
   -- TODO: Need to check for blessed hashes too;
   let toChain = _ca_chain $ _ti_toAccount ti
       fromChain = _ca_chain $ _ti_fromAccount ti
@@ -676,7 +703,7 @@ checkContractHashOnBothChains model netInfo ti ty fks tks modHashMap = do
       --doesn't even exist), and the outer Maybe from the ModuleData map, (where Nothing implies
       --that our onchain lookup has not returned yet)
       hashPair = (,) <$> (join $ Map.lookup fromChain modHashMap) <*> (join $ Map.lookup toChain modHashMap)
-      nextW = checkModuleFungibleXChain model netInfo ti ty fks tks
+      nextW = checkModuleFungibleXChain model netInfo ti ty fks tks toLKS
   case hashPair of
     -- This case implies likely occurs during throttling, so we will continue and allow it
     -- to fail on-chain if there is actually an issue
@@ -715,73 +742,94 @@ checkReceivingAccount
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> (AccountName, AccountDetails)
+  -> Maybe UserKeyset
   -> Workflow t m (mConf, Event t ())
-checkReceivingAccount model netInfo ti ty fks tks fromPair = do
-    let toAccount = _ca_account $ _ti_toAccount ti
-    case (Map.lookup toAccount tks, _ti_toKeyset ti) of
-      -- TODO Might need more checks for cross-chain error cases
-      (Just (AccountStatus_Exists (AccountDetails _ g)), Just userKeyset) -> do
-        -- Use transfer-create, but check first to see whether it will fail
-        let AccountGuard_KeySetLike (KeySetHeritage ks p _ref) = g
-        let onChainKeyset = UserKeyset ks (parseKeysetPred p)
-        if onChainKeyset /= userKeyset
-          then Workflow $ do
-            cancel <- fatalTransferError $ do
-              el "div" $ text "Your keyset does not match the on-chain keyset.  Your transfer would fail."
-              el "hr" blank
-              el "div" $ do
-                mkLabeledView False "Keyset You Entered" $ divClass "group" $
-                  keysetWidget userKeyset
-                mkLabeledView False "On-chain Keyset" $ divClass "group" $
-                  keysetWidget onChainKeyset
-            return ((mempty, cancel), never)
-          else
-            transferDialog model netInfo ti ty fks tks fromPair
-      (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
-        let
-          transferDialogWithWarn model netInfo ti ty fks tks fromPair = Workflow $ do
-            close <- modalHeader $ text "Account Keyset"
-            _ <- elClass "div" "modal__main" $ do
-              el "h3" $ text "WARNING"
-              el "div" $ text $ "The on-chain keyset of the receiving account does not match the account name. This may be an indicator of foul-play; you should confirm that the receiving keyset is the expected keyset before continuing"
-              el "hr" blank
-              el "div" $ text $ "If you are doing a cross-chain transfer to yourself, and see this message, you may want to reconsider, as it is possible that you don't have control over the account on the destination chain"
-              el "hr" blank
-              el "div" $ do
-                dialogSectionHeading mempty "Destination Account Name:"
-                mkLabeledInput False "Account Name" uiInputElement $ def
-                  & initialAttributes .~ "disabled" =: "disabled"
-                  & inputElementConfig_initialValue .~ (unAccountName toAccount)
-                dialogSectionHeading mempty "Destination Account Guard:"
-                uiDisplayKeyset g
-            modalFooter $ do
-              cancel <- cancelButton def "No, take me back"
-              let cfg = def & uiButtonCfg_class <>~ "button_type_confirm"
-              next <- uiButtonDyn cfg $ text "Yes, proceed to transfer"
-              return ((mempty, close <> cancel),
-                      (transferDialog model netInfo ti ty fks tks fromPair) <$ next)
+checkReceivingAccount model netInfo ti ty fks tks fromPair toLKS = do
+  let toAccount = _ca_account $ _ti_toAccount ti
+  case (Map.lookup toAccount tks, _ti_toKeyset ti) of
+    -- TODO Might need more checks for cross-chain error cases
+    (Just (AccountStatus_Exists (AccountDetails _ g)), Just userKeyset) -> do
+      -- Use transfer-create, but check first to see whether it will fail
+      let AccountGuard_KeySetLike (KeySetHeritage ks p _ref) = g
+      let onChainKeyset = UserKeyset ks (parseKeysetPred p)
+      if onChainKeyset /= userKeyset
+        then Workflow $ do
+          cancel <- fatalTransferError $ do
+            el "div" $ text "Your keyset does not match the on-chain keyset.  Your transfer would fail."
+            el "hr" blank
+            el "div" $ do
+              mkLabeledView False "Keyset You Entered" $ divClass "group" $
+                keysetWidget userKeyset
+              mkLabeledView False "On-chain Keyset" $ divClass "group" $
+                keysetWidget onChainKeyset
+          return ((mempty, cancel), never)
+        else
+          transferDialog model netInfo ti ty fks tks fromPair
+    (Just (AccountStatus_Exists (AccountDetails _ g)), Nothing) -> do
+      let
+        transferDialogWithWarn model netInfo ti ty fks tks fromPair = Workflow $ do
+          close <- modalHeader $ text "Account Keyset"
+          _ <- elClass "div" "modal__main" $ do
+            el "h3" $ text "WARNING"
+            el "div" $ text $ "The on-chain keyset of the receiving account does not match the account name. This may be an indicator of foul-play; you should confirm that the receiving keyset is the expected keyset before continuing"
+            el "hr" blank
+            el "div" $ text $ "If you are doing a cross-chain transfer to yourself, and see this message, you may want to reconsider, as it is possible that you don't have control over the account on the destination chain"
+            el "hr" blank
+            el "div" $ do
+              dialogSectionHeading mempty "Destination Account Name:"
+              mkLabeledInput False "Account Name" uiInputElement $ def
+                & initialAttributes .~ "disabled" =: "disabled"
+                & inputElementConfig_initialValue .~ (unAccountName toAccount)
+              dialogSectionHeading mempty "Destination Account Guard:"
+              uiDisplayKeyset g
+          modalFooter $ do
+            cancel <- cancelButton def "No, take me back"
+            let cfg = def & uiButtonCfg_class <>~ "button_type_confirm"
+            next <- uiButtonDyn cfg $ text "Yes, proceed to transfer"
+            return ((mempty, close <> cancel),
+                    (transferDialog model netInfo ti ty fks tks fromPair) <$ next)
 
-          transferDialogWithKeysetCheck = case accountNameMatchesKeyset toAccount g of
-            True -> transferDialog
-            False -> transferDialogWithWarn
-        if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
-          then do
-            case g of
-              AccountGuard_KeySetLike (KeySetHeritage ks p _ref) ->
-                let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
-                in transferDialogWithKeysetCheck model netInfo ti2 ty fks tks fromPair
-              AccountGuard_Other _ -> transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
-          else
-            -- Use transfer, probably show the guard at some point
-            -- TODO check well-formedness of all keys in the keyset
-            transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
-      (_, Just userKeyset) -> do
-        -- Use transfer-create
-        transferDialog model netInfo ti ty fks tks fromPair
-      (_, Nothing) -> do
-        -- If the account name looks like a public key, ask about making a keyset
-        -- Otherwise throw an error
-        handleMissingKeyset model netInfo ti ty fks tks fromPair
+        transferDialogWithKeysetCheck = case accountNameMatchesKeyset toAccount g of
+          True -> transferDialog
+          False -> transferDialogWithWarn
+      if (_ca_chain $ _ti_fromAccount ti) /= (_ca_chain $ _ti_toAccount ti)
+        then do
+          case g of
+            AccountGuard_KeySetLike (KeySetHeritage ks p _ref) ->
+              let ti2 = ti { _ti_toKeyset = Just $ UserKeyset ks (parseKeysetPred p) }
+              in transferDialogWithKeysetCheck model netInfo ti2 ty fks tks fromPair
+            AccountGuard_Other _ -> transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
+        else
+          -- Use transfer, probably show the guard at some point
+          -- TODO check well-formedness of all keys in the keyset
+          transferDialogWithKeysetCheck model netInfo ti ty fks tks fromPair
+    (_, Just userKeyset) -> do
+      -- Use transfer-create
+      transferDialog model netInfo ti ty fks tks fromPair
+    (_, Nothing) -> do
+      -- Account name given but with no keyset. Let's see if we can deduce some info
+      -- otherwise throw an error
+        handleMissingKeyset model netInfo ti ty fks tks fromPair toLKS
+
+
+data AccountType =
+    SingleKey PublicKey --key
+  | MultiKey Text -- hash
+  | LegacyKey PublicKey
+  | OtherPrincipal Text
+  | Vanity Text
+  deriving (Show, Eq)
+
+
+parseAccountName :: AccountName -> Either Text AccountType
+parseAccountName (AccountName accName) =
+  case T.unpack accName of
+    'k':':':key -> fmap SingleKey $ parsePublicKey $ T.pack key
+    'w':':':hash -> Right $ MultiKey $ T.pack hash
+    _:':':_ -> Right $ OtherPrincipal accName
+    otherwise -> Right $ case parsePublicKey accName of
+      Right k -> LegacyKey k
+      Left _ -> Vanity accName
 
 handleMissingKeyset
   :: ( MonadWidget t m, Monoid mConf
@@ -800,38 +848,50 @@ handleMissingKeyset
   -> Map AccountName (AccountStatus AccountDetails)
   -> Map AccountName (AccountStatus AccountDetails)
   -> (AccountName, AccountDetails)
+  -> Maybe UserKeyset
   -> Workflow t m (mConf, Event t ())
-handleMissingKeyset model netInfo ti ty fks tks fromPair = do
-    let
-      toAccount = _ca_account $ _ti_toAccount ti
-      toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
-    case parsePubKeyOrKAccount toAccount of
-      -- Vanity account name
-      (_, Left _) -> Workflow $ do
-        cancel <- fatalTransferError $
-          el "div" $ text $ "Receiving account " <> toAccountText <> " does not exist. You must specify a keyset to create this account."
-        return ((mempty, cancel), never)
-      -- AccName "k:<pubkey>" --> Don't even ask approval to use it
-      (True, Right pk) -> do
+handleMissingKeyset model netInfo ti ty fks tks fromPair toLKS = do
+  case parseAccountName toAccount of
+    Right (SingleKey pk) -> do
+      let ti2 = ti { _ti_toKeyset = Just $ UserKeyset (Set.singleton pk) KeysAll }
+      transferDialog model netInfo ti2 ty fks tks fromPair
+    Right (MultiKey _) -> multisigWF
+    Right (LegacyKey pk) -> legacyKeysetWF pk
+    Right (OtherPrincipal accName) -> vanityWF
+    Right (Vanity accName) -> vanityWF
+    -- Edgecase: k-account but not a valid public key
+    Left _ -> vanityWF
+  where
+    toAccount = _ca_account $ _ti_toAccount ti
+    toAccountText = unAccountName $ _ca_account $ _ti_toAccount ti
+    vanityWF = Workflow $ do
+      cancel <- fatalTransferError $
+        el "div" $ text $ "Receiving account " <> toAccountText <> " does not exist. You must specify a keyset to create this account."
+      return ((mempty, cancel), never)
+
+    legacyKeysetWF pk = Workflow $ do
+      close <- modalHeader $ text "Account Keyset"
+      _ <- elClass "div" "modal__main" $ do
+        el "div" $ text $ "The receiving account name looks like a public key and you did not specify a keyset.  Would you like to use it as the keyset to send to?"
+        el "hr" blank
+        el "div" $
+          mkLabeledInput False "Public Key" uiInputElement $ def
+            & initialAttributes .~ "disabled" =: "disabled"
+            & inputElementConfig_initialValue .~ toAccountText
+      modalFooter $ do
+        cancel <- cancelButton def "No, take me back"
+        let cfg = def & uiButtonCfg_class <>~ "button_type_confirm"
+        next <- uiButtonDyn cfg $ text "Yes, proceed to transfer"
         let ti2 = ti { _ti_toKeyset = Just $ UserKeyset (Set.singleton pk) KeysAll }
-        transferDialog model netInfo ti2 ty fks tks fromPair
-      -- AccName: "<pubkey>" --> Ask for approval
-      (False, Right pk) -> Workflow $ do
-        close <- modalHeader $ text "Account Keyset"
-        _ <- elClass "div" "modal__main" $ do
-          el "div" $ text $ "The receiving account name looks like a public key and you did not specify a keyset.  Would you like to use it as the keyset to send to?"
-          el "hr" blank
-          el "div" $
-            mkLabeledInput False "Public Key" uiInputElement $ def
-              & initialAttributes .~ "disabled" =: "disabled"
-              & inputElementConfig_initialValue .~ toAccountText
-        modalFooter $ do
-          cancel <- cancelButton def "No, take me back"
-          let cfg = def & uiButtonCfg_class <>~ "button_type_confirm"
-          next <- uiButtonDyn cfg $ text "Yes, proceed to transfer"
-          let ti2 = ti { _ti_toKeyset = Just $ UserKeyset (Set.singleton pk) KeysAll }
-          return ((mempty, close <> cancel),
-                  (transferDialog model netInfo ti2 ty fks tks fromPair) <$ next)
+        return ((mempty, close <> cancel),
+                (transferDialog model netInfo ti2 ty fks tks fromPair) <$ next)
+
+    multisigWF = case toLKS of
+      Just ks ->
+        let ti2 = ti { _ti_toKeyset = Just ks }
+         in transferDialog model netInfo ti2 ty fks tks fromPair
+      otherwise -> vanityWF
+
 
 transferDialog
   :: ( MonadWidget t m, Monoid mConf
