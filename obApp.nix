@@ -50,6 +50,7 @@ in with obelisk;
           reflex-dom-core = reflex-dom-src + "/reflex-dom-core";
           reflex-dom-ace = hackGet ./dep/reflex-dom-ace;
           reflex-dom-contrib = hackGet ./dep/reflex-dom-contrib;
+          reflex-notifications = hackGet ./dep/reflex-notifications;
           dependent-sum-aeson-orphans = hackGet ./dep/dependent-sum-aeson-orphans;
           servant-github = hackGet ./dep/servant-github;
           obelisk-oauth-common = hackGet ./dep/obelisk-oauth + /common;
@@ -64,6 +65,7 @@ in with obelisk;
           desktop = ./desktop;
           mac = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./mac;
           linux = builtins.filterSource (path: type: !(builtins.elem (baseNameOf path) ["static"])) ./linux;
+          wallet-connect = hackGet ./dep/wallet-connect;
       };
 
     overrides = let

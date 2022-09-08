@@ -63,6 +63,7 @@ library
     , megaparsec
     , modern-uri
     , monoidal-containers
+    , mmorph
     , mtl
     , newtype-generics
     , obelisk-executable-config-lookup
@@ -81,6 +82,7 @@ library
     , reflex-dom
     , reflex-dom-ace
     , reflex-dom-contrib
+    , reflex-notifications
     , safe
     , scientific
     , servant
@@ -96,6 +98,7 @@ library
     , these
     , these-lens
     , time
+    , time-compat
     , transformers
     , trifecta
     , universe
@@ -105,6 +108,7 @@ library
     , unliftio-core
     , unordered-containers
     , vector
+    , wallet-connect
     , witherable
 
   if impl(ghcjs)
@@ -148,7 +152,9 @@ library
                  , Frontend.Routes
                  , Frontend.Setup.Browser
                  , Frontend.Setup.Common
+                 , Frontend.Setup.ImportExport
                  , Frontend.Setup.Password
+                 , Frontend.Setup.Setup
                  , Frontend.Setup.Widgets
                  , Frontend.Storage
                  , Frontend.Storage.Class
@@ -176,6 +182,7 @@ library
                  , Frontend.UI.Dialogs.AddVanityAccount.DefineKeyset
                  , Frontend.UI.Dialogs.AddVanityAccount
                  , Frontend.UI.Dialogs.TxLogs
+                 , Frontend.UI.Dialogs.WalletConnect
                  , Frontend.UI.Dialogs.WatchRequest
                  , Frontend.UI.ErrorList
                  , Frontend.UI.Form.Common
@@ -206,6 +213,7 @@ library
                  , Frontend.VersionedStore.V0.Wallet
                  , Frontend.VersionedStore.V1
                  , Frontend.Wallet
+                 , Frontend.WalletConnect
                  , Reflex.Class.Extended
                  , Reflex.Dom.ACE.Extended
                  , Reflex.Dom.Widget.Resize.Extended

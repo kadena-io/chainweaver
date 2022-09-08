@@ -28,15 +28,16 @@ walletServer
   :: MonadIO m
   => IO ()
   -> IO ()
-  -> m ( MVarHandler SigningRequest SigningResponse
-       , MVarHandler QuickSignRequest QuickSignResponse
+  -> Proxy a
+  -> m ( MVarHandler (SigningRequest, Maybe a) SigningResponse
+       , MVarHandler (QuickSignRequest, Maybe a) QuickSignResponse
        )
   -- Commented much of the old functionality out (vs. removing it) since we intend to revisit it in the near future
   -- -> m ( MVarHandler SigningRequest SigningResponse
   --      , MVarHandler () [PublicKey]
   --      , MVarHandler () (Map NetworkName [AccountName])
   --      )
-walletServer moveToForeground moveToBackground = do
+walletServer moveToForeground moveToBackground _ = do
   signingLock <- liftIO newEmptyMVar -- Only allow one signing request to be served at once
   h@(MVarHandler signingRequestMVar signingResponseMVar) <- liftIO newMVarHandler
   qs@(MVarHandler quickSignRequestMVar quickSignResponseMVar) <- liftIO newMVarHandler
@@ -44,10 +45,10 @@ walletServer moveToForeground moveToBackground = do
   -- accountsHandler <- liftIO newMVarHandler
   let
     runSign obj = mkServantHandler <=< liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
-        putMVar signingRequestMVar obj -- handoff to app
+        putMVar signingRequestMVar (obj, Nothing) -- handoff to app
         bracket moveToForeground (const $ moveToBackground) (\_ -> takeMVar signingResponseMVar)
     runQuickSign obj = mkServantHandler <=< liftIO $ bracket_ (putMVar signingLock ()) (takeMVar signingLock) $ do
-        putMVar quickSignRequestMVar obj -- handoff to app
+        putMVar quickSignRequestMVar (obj, Nothing) -- handoff to app
         bracket moveToForeground (const $ moveToBackground) (\_ -> takeMVar quickSignResponseMVar)
     -- runMVarHandler (MVarHandler req resp) = do
     --   mkServantHandler <=< liftIO $ do

@@ -46,6 +46,7 @@ library
                , hsass
                , template-haskell
                , th-utilities
+               , wallet-connect
 
   exposed-modules: Backend
                  , Backend.App

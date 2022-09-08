@@ -23,6 +23,7 @@ import Control.Monad.Reader (ask)
 import Control.Monad.State.Strict
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Default (Default (..))
+import qualified Data.IntMap as IntMap
 import Data.Some (Some(..))
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text (Text)
@@ -45,6 +46,7 @@ import Reflex.Dom.ACE.Extended hiding (Annotation (..))
 import Reflex.Dom.Core
 import qualified Data.Map as Map
 import qualified Data.Text as T
+import WalletConnect.Wallet (doNewPairing, Metadata, Request)
 
 import Common.OAuth (OAuthProvider (OAuthProvider_GitHub))
 import Common.Route
@@ -69,6 +71,7 @@ import Frontend.UI.Dialogs.DeployConfirmation (uiDeployConfirmation)
 import Frontend.UI.Dialogs.LogoutConfirmation (uiLogoutConfirmation)
 import Frontend.UI.Dialogs.NetworkEdit (uiNetworkSelectTopBar)
 import Frontend.UI.Dialogs.Signing (uiSigning, uiQuickSign)
+import Frontend.UI.Dialogs.WalletConnect (uiWalletConnectSigReqError)
 import Frontend.UI.IconGrid (IconGridCellConfig(..), iconGridLaunchLink)
 import Frontend.UI.Modal
 import Frontend.UI.Modal.Impl
@@ -78,6 +81,7 @@ import Frontend.UI.Transfer
 import Frontend.UI.Wallet
 import Frontend.UI.Widgets
 import Frontend.Wallet hiding (walletCfg)
+import Frontend.WalletConnect
 
 app
   :: forall js key t m.
@@ -94,12 +98,13 @@ app
   => RoutedT t (R FrontendRoute) m ()
   -- ^ Extra widget to display at the bottom of the sidebar
   -> FileFFI t (RoutedT t (R FrontendRoute) m)
+  -> Event t (Maybe Metadata, String, WalletConnect.Wallet.Request)
   -> AppCfg key t (RoutedT t (R FrontendRoute) m)
   -> RoutedT t (R FrontendRoute) m ()
-app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
+app sidebarExtra fileFFI wcSignReqErrEv appCfg = Store.versionedFrontend (Store.versionedStorage @key) $ void . mfix $ \ cfg -> do
   ideL <- makeIde fileFFI appCfg cfg
-  signingReq <- _appCfg_signingHandler appCfg
-  quickSignReq <- _appCfg_quickSignHandler appCfg
+  (signingReq, quickSignReq) <- _appCfg_signingHandler appCfg
+  let mWalletConnect = _enabledSettings_walletConnect (_appCfg_enabledSettings appCfg)
   sigPopup <- walletSidebar sidebarExtra
   updates <- divClass "page" $ do
     let mkPageContent c = divClass (c <> " page__content visible")
@@ -161,6 +166,24 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
         mainCfg <- elClass "main" "main page__main" $ do
           uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
         pure $ controlCfg <> mainCfg
+      FrontendRoute_WalletConnect -> do
+        controlCfg <- underNetworkBar "WalletConnect" (mempty <$ blank)
+        case mWalletConnect of
+          Nothing -> text "Wallet Connect is not available"
+          Just wc -> do
+            mUri <- askRoute >>= sample . current . fmap (\case
+              (FrontendRoute_WalletConnect :/ q) -> join $ Map.lookup "uri" q
+              _ -> Nothing)
+            case mUri of
+              Nothing -> text "Error in pairing, please try opening the pairing link again."
+              Just uri -> do
+                pairEv <- getPostBuild
+                resultEv <- doNewPairing wc (uri <$ pairEv)
+                widgetHold_ blank $ ffor pairEv $ \_ -> do
+                  widgetHold_ (text "Waiting for pairing to complete") $ ffor resultEv $ \case
+                    True -> setRoute . ((FrontendRoute_Accounts :/ mempty) <$) =<< getPostBuild
+                    False -> text "Pairing Failed"
+        pure controlCfg
 
     accountDatalist ideL
     keyDatalist ideL
@@ -169,6 +192,9 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
 
   modalCfg <- showModal ideL
 
+  let pubKeys = fmap (_keyPair_publicKey . _key_pair) . IntMap.elems <$> ideL ^. wallet_keys
+  wcModals <- mapM (handleWalletConnectPairings pubKeys (ideL ^. network_selectedNetwork)) mWalletConnect
+
   let
     onGistCreatedModal = Just . uiCreatedGist <$> ideL ^. gistStore_created
     gistModalCfg = mempty & modalCfg_setModal .~ onGistCreatedModal
@@ -176,6 +202,8 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     onQuickSignModal = Just . uiQuickSign ideL <$> quickSignReq
     signingModalCfg = mempty & modalCfg_setModal .~ onSigningModal
     quickSignModalCfg = mempty & modalCfg_setModal .~ onQuickSignModal
+    wcErrModalCfg = mempty & modalCfg_setModal .~ (Just . uiWalletConnectSigReqError <$> wcSignReqErrEv)
+    wcModalCfg = maybe mempty (\v -> mempty & modalCfg_setModal .~ (Just <$> v)) wcModals
 
   pure $ mconcat
     [ updates
@@ -183,6 +211,8 @@ app sidebarExtra fileFFI appCfg = Store.versionedFrontend (Store.versionedStorag
     , gistModalCfg
     , signingModalCfg
     , quickSignModalCfg
+    , wcErrModalCfg
+    , wcModalCfg
     , mempty & ideCfg_editor . editorCfg_loadCode .~ (snd <$> _fileFFI_externalFileOpened fileFFI)
     ]
 
@@ -236,6 +266,7 @@ routeIcon = \case
   FrontendRoute_Keys :/ _ -> static @"img/menu/keys.svg"
   FrontendRoute_Resources :/ _ -> static @"img/menu/resources.svg"
   FrontendRoute_Settings :/ _ -> static @"img/menu/settings.svg"
+  FrontendRoute_WalletConnect :/ _ -> "" -- Not applicable
 
 -- | Code editing (left hand side currently)
 codePanel :: forall r key t m a. (MonadWidget t m, Routed t r m) => AppCfg key t m -> Dynamic t CssClass -> Ide a key t -> m (IdeCfg a key t)

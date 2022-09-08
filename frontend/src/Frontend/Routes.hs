@@ -107,6 +107,7 @@ handleRoutes m = do
       FrontendRoute_Keys :/ () -> Nothing
       FrontendRoute_Resources :/ () -> Nothing
       FrontendRoute_Settings :/ () -> Nothing
+      FrontendRoute_WalletConnect :/ _ -> Nothing
 
     runRefParser = MP.parse parseRef "URL" . RefPath
 

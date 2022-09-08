@@ -11,6 +11,7 @@ import Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 
 import Kadena.SigningApi
 import Reflex
+import WalletConnect.Wallet
 
 import Common.Logger (LogLevel, LogStr)
 import Common.Network (NetworkName)
@@ -40,6 +41,7 @@ data ExportWallet t m = ExportWallet
 data EnabledSettings key t m = EnabledSettings
   { _enabledSettings_changePassword :: Maybe (ChangePassword key t m)
   , _enabledSettings_exportWallet :: Maybe (ExportWallet t m)
+  , _enabledSettings_walletConnect :: Maybe (WalletConnect t)
   , _enabledSettings_transactionLog :: Bool
   }
 
@@ -68,8 +70,10 @@ data AppCfg key t m = AppCfg
   -- ^ Initial code to load into editor
   , _appCfg_editorReadOnly :: Bool
   -- ^ Is the editor read only?
-  , _appCfg_signingHandler :: m (FRPHandler SigningRequest SigningResponse t)
-  , _appCfg_quickSignHandler :: m (FRPHandler QuickSignRequest QuickSignResponse t)
+  , _appCfg_signingHandler ::
+    m ( (FRPHandler (SigningRequest, Maybe Metadata) SigningResponse t)
+      , (FRPHandler (QuickSignRequest, Maybe Metadata) QuickSignResponse t)
+      )
   , _appCfg_enabledSettings :: EnabledSettings key t m
   , _appCfg_logMessage :: LogLevel -> LogStr -> IO ()
   -- ^ Logging Function
