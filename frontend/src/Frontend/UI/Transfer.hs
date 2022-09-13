@@ -459,6 +459,9 @@ lookupAndTransfer model netInfo ti ty onCloseExternal = do
     mAccs <- sample $ current $ Map.lookup <$>
       (model ^. network_selectedNetwork) <*>
       (fmap unAccountData $ model ^. wallet_accounts)
+    -- keysets for the to-account but on the chains not specified by the user
+    -- We use this for the case where the user needs to reconstruct a principal account name based
+    -- on data from other chains
     let toSimilarKeysets = constructKSFromOthers toAccount mAccs
         eWrapper (Just f, Just t) = do
           let fks = fromMaybe mempty f

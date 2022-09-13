@@ -203,10 +203,6 @@ parsePubKeyOrKAccount :: AccountName -> (Bool, Either Text PublicKey)
 parsePubKeyOrKAccount (AccountName accName) =
   second parsePublicKey $ maybe (False, accName) (\k -> (True, k)) $ T.stripPrefix "k:" accName
 
--- parsePrincipal :: AccountName -> Maybe Text
--- parsePrincipal (AccountName accName) =
---   T.stripPrefix "k:" accName <|> T.stripPrefix "w:" accName
-
 throwDecodingErr
   :: MonadError Text m
   => Maybe v
