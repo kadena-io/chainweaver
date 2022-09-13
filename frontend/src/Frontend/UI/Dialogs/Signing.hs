@@ -155,9 +155,9 @@ uiQuickSign
   -> Event t ()
   -> m (mConf, Event t ())
 uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> do
-  if _quickSignRequest_commands qsr == []
+  if _quickSignRequest_reqs qsr == []
      then sendResp =<< failWith "QuickSign request was empty" ""
-     else case partitionEithers $ fmap csdToSigData $ _quickSignRequest_commands qsr of
+     else case partitionEithers $ fmap csdToSigData $ _quickSignRequest_reqs qsr of
        ([], payloads) ->
          quickSignModal ideL sendResp payloads
        (es, _) -> sendResp =<<
