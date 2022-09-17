@@ -167,23 +167,24 @@ app sidebarExtra fileFFI wcSignReqErrEv appCfg = Store.versionedFrontend (Store.
           uiSettings (_appCfg_enabledSettings appCfg) ideL fileFFI
         pure $ controlCfg <> mainCfg
       FrontendRoute_WalletConnect -> do
-        controlCfg <- underNetworkBar "WalletConnect" (mempty <$ blank)
-        case mWalletConnect of
-          Nothing -> text "Wallet Connect is not available"
-          Just wc -> do
-            mUri <- askRoute >>= sample . current . fmap (\case
-              (FrontendRoute_WalletConnect :/ q) -> join $ Map.lookup "uri" q
-              _ -> Nothing)
-            case mUri of
-              Nothing -> text "Error in pairing, please try opening the pairing link again."
-              Just uri -> do
-                pairEv <- getPostBuild
-                resultEv <- doNewPairing wc (uri <$ pairEv)
-                widgetHold_ blank $ ffor pairEv $ \_ -> do
-                  widgetHold_ (text "Waiting for pairing to complete") $ ffor resultEv $ \case
-                    True -> setRoute . ((FrontendRoute_Accounts :/ mempty) <$) =<< getPostBuild
-                    False -> text "Pairing Failed"
-        pure controlCfg
+        pure mempty
+        -- controlCfg <- underNetworkBar "WalletConnect" (mempty <$ blank)
+        -- case mWalletConnect of
+        --   Nothing -> text "Wallet Connect is not available"
+        --   Just wc -> do
+        --     mUri <- askRoute >>= sample . current . fmap (\case
+        --       (FrontendRoute_WalletConnect :/ q) -> join $ Map.lookup "uri" q
+        --       _ -> Nothing)
+        --     case mUri of
+        --       Nothing -> text "Error in pairing, please try opening the pairing link again."
+        --       Just uri -> do
+        --         pairEv <- getPostBuild
+        --         resultEv <- doNewPairing wc (uri <$ pairEv)
+        --         widgetHold_ blank $ ffor pairEv $ \_ -> do
+        --           widgetHold_ (text "Waiting for pairing to complete") $ ffor resultEv $ \case
+        --             True -> setRoute . ((FrontendRoute_Accounts :/ mempty) <$) =<< getPostBuild
+        --             False -> text "Pairing Failed"
+        -- pure controlCfg
 
     accountDatalist ideL
     keyDatalist ideL

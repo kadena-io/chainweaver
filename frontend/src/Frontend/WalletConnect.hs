@@ -144,19 +144,20 @@ handleWalletConnectPairings
 handleWalletConnectPairings pubKeys network walletConnect = do
   let
     withNetwork = attach (current network) (_walletConnect_proposals walletConnect)
-  let approvedMethods = ["kadena_sign", "kadena_quicksign"]
+    approvedMethods = ["kadena_sign", "kadena_quicksign"]
 
   -- Reject the session without user input if the permissions are not correct
   proposalEv <- performEvent $ ffor withNetwork $ \(n, p) -> do
-    let
-      wrongMethods = filter (not . (flip elem $ approvedMethods)) methods
-      wrongChains = filter (/= walletConnectChainId n) chains
-      Permissions chains methods = _proposal_permissions p
-    if null wrongMethods && null wrongChains
-      then pure $ Right (n, p)
-      else do
-        liftJSM $ (_proposal_approval p) (Left ())
-        pure $ Left (wrongMethods, wrongChains, n, p)
+    -- let
+      -- wrongMethods = filter (not . (flip elem $ approvedMethods)) methods
+      -- wrongChains = filter (/= walletConnectChainId n) chains
+      -- Permissions chains methods = _proposal_permissions p
+    -- if null wrongMethods && null wrongChains
+    --   then pure $ Right (n, p)
+    --   else do
+    --     liftJSM $ (_proposal_approval p) (Left ())
+    --     pure $ Left (wrongMethods, wrongChains, n, p)
+    pure $ Right (n, p)
 
   let
     (proposalErrorEv, checkedProposalEv) = fanEither proposalEv

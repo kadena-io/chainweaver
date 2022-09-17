@@ -72,7 +72,7 @@ uiWalletConnectSessionProposal
   => ([PublicKey], (NetworkName, Proposal))
   -> Event t ()
   -> m (mConf, Event t ())
-uiWalletConnectSessionProposal (keys, (networkName, Proposal _ ttl (_, meta) _ respond)) _ = do
+uiWalletConnectSessionProposal (keys, (networkName, Proposal _ _ (_, meta) _ _ respond)) _ = do
   onClose <- modalHeader $ text "Wallet Connect Session"
 
   doneEv <- modalMain $ uiSegment mempty $ do
@@ -95,7 +95,8 @@ uiWalletConnectSessionProposal (keys, (networkName, Proposal _ ttl (_, meta) _ r
 
       el "p" $ do
         text "Duration: "
-        text $ T.pack $ formatShow (alternativeDurationTimeFormat ExtendedFormat) (calendarTimeTime $ fromIntegral ttl)
+        text "No TTL"
+        -- text $ T.pack $ formatShow (alternativeDurationTimeFormat ExtendedFormat) (calendarTimeTime $ fromIntegral ttl)
 
       let
         cfg = btnCfgPrimary
@@ -120,7 +121,7 @@ uiWalletConnectSessionPermissionError
   => ([Method], [Chain], NetworkName, Proposal)
   -> Event t ()
   -> m (mConf, Event t ())
-uiWalletConnectSessionPermissionError (methods, chains, networkName, Proposal _ _ (_, meta) _ respond) _ = do
+uiWalletConnectSessionPermissionError (methods, chains, networkName, Proposal _ _ (_, meta) _ _ respond) _ = do
   onClose <- modalHeader $ text "Wallet Connect Session"
 
   doneEv <- modalMain $ uiSegment mempty $ do
