@@ -7,6 +7,7 @@
 module Frontend.UI.Dialogs.WalletConnect where
 
 import Control.Monad (join, void, forM_, forM, unless)
+import qualified Data.Map as M
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -72,7 +73,7 @@ uiWalletConnectSessionProposal
   => ([PublicKey], (NetworkName, Proposal))
   -> Event t ()
   -> m (mConf, Event t ())
-uiWalletConnectSessionProposal (keys, (networkName, Proposal _ ttl (_, meta) _ respond)) _ = do
+uiWalletConnectSessionProposal (keys, (networkName, Proposal _ _ (_, meta) _ respond)) _ = do
   onClose <- modalHeader $ text "Wallet Connect Session"
 
   doneEv <- modalMain $ uiSegment mempty $ do
@@ -93,20 +94,18 @@ uiWalletConnectSessionProposal (keys, (networkName, Proposal _ ttl (_, meta) _ r
       dialogSectionHeading mempty "dApp metadata"
       showMetaData meta
 
-      el "p" $ do
-        text "Duration: "
-        text $ T.pack $ formatShow (alternativeDurationTimeFormat ExtendedFormat) (calendarTimeTime $ fromIntegral ttl)
-
       let
         cfg = btnCfgPrimary
           & uiButtonCfg_disabled .~ fmap null dSelAccs
       approve <- uiButtonDyn cfg $ text "Approve"
       reject <- uiButton btnCfgTertiary $ text "Reject"
       let
+        approvedMethods = ["kadena_sign", "kadena_quicksign"]
         toAccount a = walletConnectChainId networkName <> ":" <> a
         approveEv = fforMaybe (tag (current dSelAccs) approve) $ \case
           [] -> Nothing
-          vs -> Just $ Right $ map toAccount vs
+          vs -> Just $ Right $ M.singleton "kadena" $ Namespace
+            (BaseNamespace (map toAccount vs) approvedMethods []) Nothing
         rEv = leftmost [ Left () <$ reject, approveEv ]
 
       performEvent $ ffor rEv $ \v -> liftJSM $ respond v

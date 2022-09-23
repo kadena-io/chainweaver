@@ -149,10 +149,12 @@ handleWalletConnectPairings pubKeys network walletConnect = do
   -- Reject the session without user input if the permissions are not correct
   proposalEv <- performEvent $ ffor withNetwork $ \(n, p) -> do
     let
+      (methods, chains, hasKadena) = case M.lookup "kadena" (_proposal_requiredNamespaces p) of
+        Nothing -> (mempty, mempty, False)
+        Just (RequiredNamespace bn _) -> (_pBRN_methods bn, _pBRN_chains bn, True)
       wrongMethods = filter (not . (flip elem $ approvedMethods)) methods
       wrongChains = filter (/= walletConnectChainId n) chains
-      Permissions chains methods = _proposal_permissions p
-    if null wrongMethods && null wrongChains
+    if hasKadena && null wrongMethods && null wrongChains
       then pure $ Right (n, p)
       else do
         liftJSM $ (_proposal_approval p) (Left ())
