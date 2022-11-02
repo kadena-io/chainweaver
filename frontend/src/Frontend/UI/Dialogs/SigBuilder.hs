@@ -178,7 +178,8 @@ parseInputToSigDataWidget mInit =
     csdToSd :: CommandSigData -> SigData Text
     csdToSd (CommandSigData (SignatureList sl) payload) =
       let cmdHash = hash $ T.encodeUtf8 payload
-       in SigData cmdHash sl $ Just payload
+          sdSigList = ffor sl $ \(CSDSigner k mSig) -> (k, mSig)
+       in SigData cmdHash sdSigList $ Just payload
 
     parseAndAttachPayload sd =
       case parsePayload =<< (justErr "Payload missing" $ _sigDataCmd sd) of
@@ -336,7 +337,7 @@ approveSigDialog model srws psr = Workflow $ do
       SigBuilderTab_Summary ->
         updated . sequence <$>
           showSigsWidget p (_keyPair_publicKey <$> _srws_cwKeys srws) sigs sigData
-      SigBuilderTab_Details ->  sigBuilderDetailsUI p (SignatureList sigs) "" Nothing >>  ([] <$) <$> getPostBuild
+      SigBuilderTab_Details ->  sigBuilderDetailsUI p sigs "" Nothing >>  ([] <$) <$> getPostBuild
     switchHoldPromptly never eeSigList
   sigsOrKeys <- holdDyn [] sigsOrKeysE
   (back, sign) <- modalFooter $ (,)
@@ -762,7 +763,7 @@ transferAndStatus model (sender, cid) cmd nodeInfos = Workflow $ do
 sigBuilderDetailsUI
   :: MonadWidget t m
   => Payload PublicMeta Text
-  -> SignatureList
+  -> [(PublicKeyHex, Maybe UserSig)]
   -> Text
   -> Maybe Text
   -> m ()
@@ -848,11 +849,11 @@ pactRpcWidget (Continuation c) mCls = do
 
 signerWidget
   :: (MonadWidget t m)
-  => SignatureList
+  => [(PublicKeyHex, Maybe UserSig)]
   -> [Signer]
   -> Maybe Text
   -> m ()
-signerWidget (SignatureList sigList) signers mCls= do
+signerWidget sigList signers mCls= do
   dialogSectionHeading mempty "Signers"
   forM_ signers $ \s ->
     divClass (maybe "group segment" ("group segment " <>) mCls) $ do

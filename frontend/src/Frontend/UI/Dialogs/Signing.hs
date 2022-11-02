@@ -155,9 +155,9 @@ uiQuickSign
   -> Event t ()
   -> m (mConf, Event t ())
 uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> do
-  if _quickSignRequest_reqs qsr == []
+  if _quickSignRequest_csds qsr == []
      then sendResp =<< failWith "QuickSign request was empty" ""
-     else case partitionEithers $ fmap csdToSigData $ _quickSignRequest_reqs qsr of
+     else case partitionEithers $ fmap csdToSigData $ _quickSignRequest_csds qsr of
        ([], payloads) ->
          quickSignModal ideL sendResp payloads
        (es, _) -> sendResp =<<
@@ -166,7 +166,8 @@ uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> d
     csdToSigData (CommandSigData sl txt) =
       ffor (eitherDecodeStrict $ encodeUtf8 txt) $ \p ->
         let sd = payloadToSigData p txt
-         in flip PayloadSigningRequest p $ sd { _sigDataSigs = unSignatureList sl }
+            sdSigList = ffor (unSignatureList sl) $ (\(CSDSigner k mSig) -> (k, mSig))
+         in flip PayloadSigningRequest p $ sd { _sigDataSigs = sdSigList }
     sendResp = performEvent . fmap (liftJSM . writeSigningResponse)
 
 failWith :: MonadWidget t m => Text -> Text -> m (Event t (Either Text QuickSignResponse))
@@ -247,10 +248,15 @@ handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
     -- events can be used to update the loading screen with: "x / y signatures left"
     forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
   -- TODO: [SigData] -> QuickSignResponse conversion needs to be refactored to be cleaner
-  let quickSignRes' = ffor quickSignRes $ \qsList -> QuickSignResponse $ ffor qsList $
-        \(SigData _ sl (Just a)) -> CommandSigData (SignatureList sl) a
+  let quickSignRes' = ffor quickSignRes $ QSR_Response . fmap sdToCSDResp
   res <- writeSigningResponse $ Right <$> quickSignRes'
   pure (res, never)
+  where
+    sdSlToCSDSl = SignatureList . fmap (\(k, mSig) -> CSDSigner k mSig)
+    sdToCSDResp (SigData hash sl (Just a)) =
+      let csd = CommandSigData (sdSlToCSDSl sl) a
+          outcome = SO_Success hash
+       in CSDResponse csd outcome
 
 -- |Summary view for quicksign ui
 summarizeTransactions
@@ -330,9 +336,9 @@ quickSignTransactionDetails
   -> m ()
 quickSignTransactionDetails payloadReqs = do
   let payloadsAndMeta = ffor payloadReqs $ \(PayloadSigningRequest (SigData hash sigList _) p) ->
-        (hash, SignatureList sigList, p)
+        (hash, sigList, p)
   dialogSectionHeading mempty $ "QuickSign Payloads ( " <> (tshow $ length payloadReqs) <> " total )"
-  sequence_ $ ffor payloadsAndMeta $ \a -> txRow a True
+  sequence_ $ ffor payloadsAndMeta $ flip txRow True
   where
     txRow (txId, sigList, p) startExpanded = divClass "payload__row" $ do
       visible <- divClass "group payload__header" $ do
