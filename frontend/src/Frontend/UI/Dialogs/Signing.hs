@@ -151,17 +151,20 @@ uiQuickSign
     , HasLogger model t
     )
   => model -- ModalIde m key t
-  -> (QuickSignRequest, Either Text QuickSignResponse -> JSM ())
+  -> (QuickSignRequest, QuickSignResponse -> JSM ())
   -> Event t ()
   -> m (mConf, Event t ())
 uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> do
   if _quickSignRequest_csds qsr == []
-     then sendResp =<< failWith "QuickSign request was empty" ""
+     then sendResp =<< failWith QSE_EmptyList "QuickSign request was empty" "" -- QSR_Error QSE_EmptyList
+     -- TODO: Add an index to each elem in the list. Only display the ones that are sucessful. In
+     -- the summary show how many had parse errors
      else case partitionEithers $ fmap csdToSigData $ _quickSignRequest_csds qsr of
        ([], payloads) ->
          quickSignModal ideL sendResp payloads
        (es, _) -> sendResp =<<
          failWith ("QuickSign request contained invalid commands:\n" <> T.unlines (map T.pack es)) ""
+          -- QSR_Error
   where
     csdToSigData (CommandSigData sl txt) =
       ffor (eitherDecodeStrict $ encodeUtf8 txt) $ \p ->
@@ -170,15 +173,15 @@ uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> d
          in flip PayloadSigningRequest p $ sd { _sigDataSigs = sdSigList }
     sendResp = performEvent . fmap (liftJSM . writeSigningResponse)
 
-failWith :: MonadWidget t m => Text -> Text -> m (Event t (Either Text QuickSignResponse))
-failWith msgHeader msg = do
+failWith :: MonadWidget t m => QSError -> Text -> Text -> m (Event t QuickSignResponse)
+failWith errResp msgHeader msg = do
   onClose <- modalHeader $ text "QuickSign Failure"
   void $ modalMain $ do
     el "h3" $ text msgHeader
     text msg
   reject <- modalFooter $ confirmButton def "Done"
   pure $ ffor (leftmost [reject, onClose]) $
-    const $ Left msgHeader
+    const $ QSR_Error errResp
 
 quickSignModal
   :: forall key t m mConf model
@@ -188,7 +191,7 @@ quickSignModal
     , HasNetwork model t
     )
   => model
-  -> (Event t (Either Text QuickSignResponse) -> m (Event t ()))
+  -> (Event t QuickSignResponse -> m (Event t ()))
   -> [PayloadSigningRequest]
   -> m (Event t ())
 quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDyn $ workflow $ Workflow $ do
@@ -207,7 +210,7 @@ quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDy
       <$> cancelButton def "Reject"
       <*> confirmButton def "Sign All"
     let noResponseEv = ffor (leftmost [reject, onClose]) $
-          const $ Left "QuickSign response rejected"
+          const $ QSR_Error QSE_Reject
     res <- writeSigningResponse noResponseEv
     pure (res, handleSigning payloadRequests writeSigningResponse keysAndNet <$ sign)
   where
