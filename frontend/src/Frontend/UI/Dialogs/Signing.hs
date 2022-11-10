@@ -155,20 +155,23 @@ uiQuickSign
   -> Event t ()
   -> m (mConf, Event t ())
 uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> do
-  let sendResp = performEvent . fmap (liftJSM . writeSigningResponse . Right)
-      emptyReqResponse = sendResp =<< failWith QSE_EmptyList "QuickSign request was empty" ""
+  let sendResp = performEvent . fmap (liftJSM . writeSigningResponse . Right) -- We use Either for legacy reasons, but the quicksign protocol now allows for error handling in its response, so we just `const Right` now
+      emptyReqResponse = do
+        eClose <- failureModal "QuickSign request was empty" ""
+        sendResp $ QSR_Error QSE_EmptyList <$ eClose
   if _quickSignRequest_csds qsr == [] then emptyReqResponse
     else case partitionEithers $ fmap snd sdReqs of
        ([], reqs) -> quickSignModal ideL sendResp reqs
        otherwise -> do
-         pb <- getPostBuild
-         -- TODO: Display something
+         eClose <- failureModal
+           "Quicksign request was ill-formed"
+           "One or more of the CommandSigDatas do not contain valid Commands"
          let
            resps = ffor sdReqs $ \(orig, errOrSD) ->
              case errOrSD of
                Left e -> CSDResponse orig $ SO_Failure $ T.pack e
                Right _ -> CSDResponse orig SO_NoSig
-          in sendResp $ QSR_Response resps <$ pb
+         sendResp $ QSR_Response resps <$ eClose
   where
     csdToSigData (CommandSigData sl txt) =
       ffor (eitherDecodeStrict $ encodeUtf8 txt) $ \p ->
@@ -179,15 +182,14 @@ uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> d
     sdReqs = ffor (_quickSignRequest_csds qsr) $ \req ->
       (req, csdToSigData req)
 
-failWith :: MonadWidget t m => QSError -> Text -> Text -> m (Event t QuickSignResponse)
-failWith errResp msgHeader msg = do
+failureModal :: MonadWidget t m => Text -> Text -> m (Event t ())
+failureModal msgHeader msg = do
   onClose <- modalHeader $ text "QuickSign Failure"
   void $ modalMain $ do
     el "h3" $ text msgHeader
     text msg
   reject <- modalFooter $ confirmButton def "Done"
-  pure $ ffor (leftmost [reject, onClose]) $
-    const $ QSR_Error errResp
+  pure $ leftmost [reject, onClose]
 
 quickSignModal
   :: forall key t m mConf model
@@ -237,8 +239,8 @@ quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDy
              el "h3" $ text msgHeader
              text msg
            reject <- modalFooter $ confirmButton def "Done"
-           res <- writeSigningResponse $ ffor (leftmost [reject, onClose]) $
-             const $ QSR_Error $ QSE_Other "Requests for network do not match the current node chainweaver is pointed at"
+           res <- writeSigningResponse $ ffor (leftmost [reject, onClose]) $ const $
+             QSR_Error $ QSE_Other "Requests for network do not match the current node chainweaver is pointed at"
            pure (res, never)
          else qsWidget
 
@@ -257,15 +259,19 @@ handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
   quickSignRes <- performEvent $ ffor pb $ const $
     -- TODO: ForkIO and have an event for each payload in addition to the final event. The list of
     -- events can be used to update the loading screen with: "x / y signatures left"
-    forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
+    forM toSign $ \sd -> do
+      updatedSD <- addSigsToSigData sd (_srws_cwKeys keysAndNet) []
+      let calcSigs = length . catMaybes . fmap snd . _sigDataSigs
+          sigAdded = calcSigs updatedSD > calcSigs sd
+      pure (updatedSD, sigAdded)
   let quickSignRes' = ffor quickSignRes $ QSR_Response . fmap sdToCSDResp
   res <- writeSigningResponse quickSignRes'
   pure (res, never)
   where
     sdSlToCSDSl = SignatureList . fmap (\(k, mSig) -> CSDSigner k mSig)
-    sdToCSDResp (SigData hash sl (Just a)) =
+    sdToCSDResp ((SigData hash sl (Just a)), sigAdded) =
       let csd = CommandSigData (sdSlToCSDSl sl) a
-          outcome = SO_Success hash
+          outcome = if sigAdded then SO_Success hash else SO_NoSig
        in CSDResponse csd outcome
 
 -- |Summary view for quicksign ui
