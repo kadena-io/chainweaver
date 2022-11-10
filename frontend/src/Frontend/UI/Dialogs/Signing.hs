@@ -202,10 +202,9 @@ quickSignModal
   -> (Event t QuickSignResponse -> m (Event t ()))
   -> [PayloadSigningRequest]
   -> m (Event t ())
-quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDyn $ workflow $ Workflow $ do
+quickSignModal ideL writeSigningResponse payloads = fmap switchPromptlyDyn $ workflow $ Workflow $ do
   keysAndNet <- sample $ fetchKeysAndNetwork ideL
-  let payloads = payloadRequests
-  runQuickSignChecks payloadRequests (_srws_currentNetwork keysAndNet) $ do
+  runQuickSignChecks payloads (_srws_currentNetwork keysAndNet) $ do
     onClose <- modalHeader $ text "QuickSign Request"
     modalMain $ do
       qsTabDyn <- fst <$> sigBuilderTabs never
