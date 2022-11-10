@@ -151,27 +151,33 @@ uiQuickSign
     , HasLogger model t
     )
   => model -- ModalIde m key t
-  -> (QuickSignRequest, QuickSignResponse -> JSM ())
+  -> (QuickSignRequest, Either Text QuickSignResponse -> JSM ())
   -> Event t ()
   -> m (mConf, Event t ())
 uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> do
-  if _quickSignRequest_csds qsr == []
-     then sendResp =<< failWith QSE_EmptyList "QuickSign request was empty" "" -- QSR_Error QSE_EmptyList
-     -- TODO: Add an index to each elem in the list. Only display the ones that are sucessful. In
-     -- the summary show how many had parse errors
-     else case partitionEithers $ fmap csdToSigData $ _quickSignRequest_csds qsr of
-       ([], payloads) ->
-         quickSignModal ideL sendResp payloads
-       (es, _) -> sendResp =<<
-         failWith ("QuickSign request contained invalid commands:\n" <> T.unlines (map T.pack es)) ""
-          -- QSR_Error
+  let sendResp = performEvent . fmap (liftJSM . writeSigningResponse . Right)
+      emptyReqResponse = sendResp =<< failWith QSE_EmptyList "QuickSign request was empty" ""
+  if _quickSignRequest_csds qsr == [] then emptyReqResponse
+    else case partitionEithers $ fmap snd sdReqs of
+       ([], reqs) -> quickSignModal ideL sendResp reqs
+       otherwise -> do
+         pb <- getPostBuild
+         -- TODO: Display something
+         let
+           resps = ffor sdReqs $ \(orig, errOrSD) ->
+             case errOrSD of
+               Left e -> CSDResponse orig $ SO_Failure $ T.pack e
+               Right _ -> CSDResponse orig SO_NoSig
+          in sendResp $ QSR_Response resps <$ pb
   where
     csdToSigData (CommandSigData sl txt) =
       ffor (eitherDecodeStrict $ encodeUtf8 txt) $ \p ->
         let sd = payloadToSigData p txt
             sdSigList = ffor (unSignatureList sl) $ (\(CSDSigner k mSig) -> (k, mSig))
          in flip PayloadSigningRequest p $ sd { _sigDataSigs = sdSigList }
-    sendResp = performEvent . fmap (liftJSM . writeSigningResponse)
+
+    sdReqs = ffor (_quickSignRequest_csds qsr) $ \req ->
+      (req, csdToSigData req)
 
 failWith :: MonadWidget t m => QSError -> Text -> Text -> m (Event t QuickSignResponse)
 failWith errResp msgHeader msg = do
@@ -196,15 +202,16 @@ quickSignModal
   -> m (Event t ())
 quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDyn $ workflow $ Workflow $ do
   keysAndNet <- sample $ fetchKeysAndNetwork ideL
+  let payloads = payloadRequests
   runQuickSignChecks payloadRequests (_srws_currentNetwork keysAndNet) $ do
     onClose <- modalHeader $ text "QuickSign Request"
     modalMain $ do
       qsTabDyn <- fst <$> sigBuilderTabs never
       dyn_ $ ffor qsTabDyn $ \case
         SigBuilderTab_Summary ->
-          summarizeTransactions payloadRequests keysAndNet
+          summarizeTransactions payloads keysAndNet
         SigBuilderTab_Details ->
-          quickSignTransactionDetails payloadRequests
+          quickSignTransactionDetails payloads
       pure ()
     (reject, sign) <- modalFooter $ (,)
       <$> cancelButton def "Reject"
@@ -212,14 +219,15 @@ quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDy
     let noResponseEv = ffor (leftmost [reject, onClose]) $
           const $ QSR_Error QSE_Reject
     res <- writeSigningResponse noResponseEv
-    pure (res, handleSigning payloadRequests writeSigningResponse keysAndNet <$ sign)
+    pure (res, handleSigning payloads writeSigningResponse keysAndNet <$ sign)
   where
-    -- TODO: Will the network check make sense when using a pact-server instead of a node?
     runQuickSignChecks payloads cwNet qsWidget = do
+    -- Only contains single network check atm, but we can add more in the future
       let
         toNetworkName = mkNetworkName . view networkId
         netCheck = flip filter payloads $ \(PayloadSigningRequest _ p) ->
           maybe False (\reqNet -> (fmap (== toNetworkName reqNet) cwNet) == Just True) $ p^.pNetworkId
+      -- TODO: Will the network check make sense when using a pact-server instead of a node?
       if length netCheck /= length payloads
          then do
            let msgHeader = "Invalid NetworkID"
@@ -230,7 +238,7 @@ quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDy
              text msg
            reject <- modalFooter $ confirmButton def "Done"
            res <- writeSigningResponse $ ffor (leftmost [reject, onClose]) $
-             const $ Left msgHeader
+             const $ QSR_Error $ QSE_Other "Requests for network do not match the current node chainweaver is pointed at"
            pure (res, never)
          else qsWidget
 
@@ -238,7 +246,7 @@ quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDy
 handleSigning
   :: (MonadWidget t m, HasCrypto key (Performable m))
   => [PayloadSigningRequest]
-  -> (Event t (Either Text QuickSignResponse)-> m (Event t ()))
+  -> (Event t QuickSignResponse-> m (Event t ()))
   -> SigningRequestWalletState key
   -> Workflow t m (Event t ())
 handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
@@ -250,9 +258,8 @@ handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
     -- TODO: ForkIO and have an event for each payload in addition to the final event. The list of
     -- events can be used to update the loading screen with: "x / y signatures left"
     forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
-  -- TODO: [SigData] -> QuickSignResponse conversion needs to be refactored to be cleaner
   let quickSignRes' = ffor quickSignRes $ QSR_Response . fmap sdToCSDResp
-  res <- writeSigningResponse $ Right <$> quickSignRes'
+  res <- writeSigningResponse quickSignRes'
   pure (res, never)
   where
     sdSlToCSDSl = SignatureList . fmap (\(k, mSig) -> CSDSigner k mSig)
