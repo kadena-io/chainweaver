@@ -158,7 +158,7 @@ uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> d
   let sendResp = performEvent . fmap (liftJSM . writeSigningResponse . Right) -- We use Either for legacy reasons, but the quicksign protocol now allows for error handling in its response, so we just `const Right` now
       emptyReqResponse = do
         eClose <- failureModal "QuickSign request was empty" ""
-        sendResp $ QSR_Error QSE_EmptyList <$ eClose
+        sendResp $ QSR_Error QuicksignError_EmptyList <$ eClose
   if _quickSignRequest_csds qsr == [] then emptyReqResponse
     else case partitionEithers $ fmap snd sdReqs of
        ([], reqs) -> quickSignModal ideL sendResp reqs
@@ -218,7 +218,7 @@ quickSignModal ideL writeSigningResponse payloads = fmap switchPromptlyDyn $ wor
       <$> cancelButton def "Reject"
       <*> confirmButton def "Sign All"
     let noResponseEv = ffor (leftmost [reject, onClose]) $
-          const $ QSR_Error QSE_Reject
+          const $ QSR_Error QuicksignError_Reject
     res <- writeSigningResponse noResponseEv
     pure (res, handleSigning payloads writeSigningResponse keysAndNet <$ sign)
   where
@@ -239,7 +239,7 @@ quickSignModal ideL writeSigningResponse payloads = fmap switchPromptlyDyn $ wor
              text msg
            reject <- modalFooter $ confirmButton def "Done"
            res <- writeSigningResponse $ ffor (leftmost [reject, onClose]) $ const $
-             QSR_Error $ QSE_Other "Requests for network do not match the current node chainweaver is pointed at"
+             QSR_Error $ QuicksignError_Other "Requests for network do not match the current node chainweaver is pointed at"
            pure (res, never)
          else qsWidget
 
@@ -294,13 +294,13 @@ capListWidgetWithHash
   :: MonadWidget t m
   => [(Text, ChainId, [SigCapability], Maybe UserSig)]
   -> m ()
---TODO: This case should never return
 capListWidgetWithHash [] = text "Unscoped Signer"
 capListWidgetWithHash cl = do
   forM_ cl $ \(hash, cid, txCapList, mSig) -> do
     let capLines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] txCapList
         txt = if txCapList == [] then "Unscoped Signer" else T.init $ T.init $ T.unlines capLines
-        --TODO: This is pretty lazy -- clean it up before final version
+        --TODO: Guesses box size needs to always be 2x. It's a decent approx but should be
+        --refactored
         rows = tshow $ 2 * length capLines
     elClass "h4" "heading heading_type_h4" $ text $ "Tx ID: " <> hash
     case mSig of
