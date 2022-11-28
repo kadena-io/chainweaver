@@ -154,14 +154,15 @@ uiQuickSign
   -> (QuickSignRequest, Either Text QuickSignResponse -> JSM ())
   -> Event t ()
   -> m (mConf, Event t ())
-uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> do
+uiQuickSign ideL (qsr, writeSigningResponse) onCloseExternal = (mempty, ) <$> do
   let sendResp = performEvent . fmap (liftJSM . writeSigningResponse . Right) -- We use Either for legacy reasons, but the quicksign protocol now allows for error handling in its response, so we just `const Right` now
       emptyReqResponse = do
         eClose <- failureModal "QuickSign request was empty" ""
         sendResp $ QSR_Error QuicksignError_EmptyList <$ eClose
-  if _quickSignRequest_csds qsr == [] then emptyReqResponse
+  if _quickSignRequest_csds qsr == []
+    then emptyReqResponse
     else case partitionEithers $ fmap snd sdReqs of
-       ([], reqs) -> quickSignModal ideL sendResp reqs
+       ([], reqs) -> quickSignModal ideL sendResp reqs onCloseExternal
        otherwise -> do
          eClose <- failureModal
            "Quicksign request was ill-formed"
@@ -201,8 +202,9 @@ quickSignModal
   => model
   -> (Event t QuickSignResponse -> m (Event t ()))
   -> [PayloadSigningRequest]
+  -> Event t ()
   -> m (Event t ())
-quickSignModal ideL writeSigningResponse payloads = fmap switchPromptlyDyn $ workflow $ Workflow $ do
+quickSignModal ideL writeSigningResponse payloads externalClose = fmap switchPromptlyDyn $ workflow $ Workflow $ do
   keysAndNet <- sample $ fetchKeysAndNetwork ideL
   runQuickSignChecks payloads (_srws_currentNetwork keysAndNet) $ do
     onClose <- modalHeader $ text "QuickSign Request"
@@ -217,7 +219,7 @@ quickSignModal ideL writeSigningResponse payloads = fmap switchPromptlyDyn $ wor
     (reject, sign) <- modalFooter $ (,)
       <$> cancelButton def "Reject"
       <*> confirmButton def "Sign All"
-    let noResponseEv = ffor (leftmost [reject, onClose]) $
+    let noResponseEv = ffor (leftmost [reject, onClose, externalClose]) $
           const $ QSR_Error QuicksignError_Reject
     res <- writeSigningResponse noResponseEv
     pure (res, handleSigning payloads writeSigningResponse keysAndNet <$ sign)
@@ -392,7 +394,7 @@ impactSummary
   -> Set PublicKeyHex
   -> m ()
 impactSummary payloadReqs mNetId signerSet = do
-  let signingImpact = foldr scrapePayloadFold def $ _psr_payload <$> payloadReqs
+  let signingImpact = foldr scrapePayloadFold def payloadReqs
   dialogSectionHeading mempty "Impact Summary"
   divClass "group" $ do
     maybe blank (mkCategory "Network" . text . textNetworkName) mNetId
@@ -409,7 +411,7 @@ impactSummary payloadReqs mNetId signerSet = do
       0 -> blank
       price -> mkCategory "Max Gas Cost" $ text $ renderCompactText price <> " KDA"
     mkCategory "Number of Requests" $ text $ tshow $ length payloadReqs
-    mkCategory "Signatures Added" $ text $ tshow $ _qss_numSigs signingImpact
+    mkCategory "Number of Sigs Added" $ text $ tshow $ _qss_numSigs signingImpact
     let multipleChains = 1 < (Set.size $ _qss_chainsSigned signingImpact)
         chainHeader = bool "Via Chain" "Via Chains" multipleChains
     mkCategory chainHeader $ text $ T.intercalate ", " $ fmap renderCompactText $
@@ -421,13 +423,19 @@ impactSummary payloadReqs mNetId signerSet = do
     mkCategory header content =
       void $ mkLabeledClsInput True header $ const content
     isSigning = flip Set.member signerSet . PublicKeyHex . _siPubKey
-    scrapePayloadFold :: Payload PublicMeta Text -> QuickSignSummary -> QuickSignSummary
-    scrapePayloadFold p qss =
-      let signers = filter isSigning $ p^.pSigners
+    scrapePayloadFold :: PayloadSigningRequest -> QuickSignSummary -> QuickSignSummary
+    scrapePayloadFold (PayloadSigningRequest sd p) qss =
+      let
+          sigsRequired = Set.fromList $ fmap fst $ filter (\(_, mSig) -> isNothing mSig) $ _sigDataSigs sd
+          signers = filter isSigning $ p^.pSigners
+          signersPks = Set.fromList $ fmap (PublicKeyHex . _siPubKey) signers
+          -- We do NOT count sigs that have already been added
+          numSigsRequiredFromChainweaver = Set.size $ Set.intersection signersPks sigsRequired
           tokenMap = _qss_tokens qss
+          -- We still display this data if a signature from a chainweaver key has already been added
           (tokenMap', unscoped, potentiallyPaysGas) =
             foldr scrapeSigner (tokenMap, 0, False) signers
-          totalSigs = length signers + _qss_numSigs qss
+          totalSigs = numSigsRequiredFromChainweaver + _qss_numSigs qss
           totalUnscoped = unscoped + _qss_unscoped qss
           chains = Set.insert (p^.pMeta.pmChainId) $ _qss_chainsSigned qss
           gasCost = if potentiallyPaysGas then (fromIntegral (_pmGasLimit pm) * _pmGasPrice pm) else 0
