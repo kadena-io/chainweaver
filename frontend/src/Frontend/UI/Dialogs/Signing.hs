@@ -157,7 +157,7 @@ uiQuickSign
 uiQuickSign ideL (qsr, writeSigningResponse) onCloseExternal = (mempty, ) <$> do
   let sendResp = performEvent . fmap (liftJSM . writeSigningResponse . Right) -- We use Either for legacy reasons, but the quicksign protocol now allows for error handling in its response, so we just `const Right` now
       emptyReqResponse = do
-        eClose <- failureModal "QuickSign request was empty" ""
+        eClose <- failureModal "QuickSign request was empty" "" onCloseExternal
         sendResp $ QSR_Error QuicksignError_EmptyList <$ eClose
   if _quickSignRequest_csds qsr == []
     then emptyReqResponse
@@ -167,6 +167,8 @@ uiQuickSign ideL (qsr, writeSigningResponse) onCloseExternal = (mempty, ) <$> do
          eClose <- failureModal
            "Quicksign request was ill-formed"
            "One or more of the CommandSigDatas do not contain valid Commands"
+           onCloseExternal
+
          let
            resps = ffor sdReqs $ \(orig, errOrSD) ->
              case errOrSD of
@@ -183,14 +185,14 @@ uiQuickSign ideL (qsr, writeSigningResponse) onCloseExternal = (mempty, ) <$> do
     sdReqs = ffor (_quickSignRequest_csds qsr) $ \req ->
       (req, csdToSigData req)
 
-failureModal :: MonadWidget t m => Text -> Text -> m (Event t ())
-failureModal msgHeader msg = do
+failureModal :: MonadWidget t m => Text -> Text -> Event t () -> m (Event t ())
+failureModal msgHeader msg onCloseExternal = do
   onClose <- modalHeader $ text "QuickSign Failure"
   void $ modalMain $ do
     el "h3" $ text msgHeader
     text msg
-  reject <- modalFooter $ confirmButton def "Done"
-  pure $ leftmost [reject, onClose]
+  done <- modalFooter $ confirmButton def "Done"
+  pure $ leftmost [done, onClose, onCloseExternal]
 
 quickSignModal
   :: forall key t m mConf model
