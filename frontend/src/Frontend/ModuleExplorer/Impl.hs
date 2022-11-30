@@ -38,7 +38,7 @@ import           Data.Text                 (Text)
 import           Data.These.Lens           (_This, there)
 import           Data.Tuple                (swap)
 import           Reflex
-import           Reflex.Dom.Core           (HasJSContext, MonadHold, PostBuild)
+import           Reflex.Dom.Core           (MonadHold, PostBuild)
 import           Safe                      (tailSafe)
 ------------------------------------------------------------------------------
 import           Obelisk.Route.Frontend
@@ -80,7 +80,7 @@ type HasModuleExplorerModel model t =
 -- | Constraints needed by functions in this module.
 type ReflexConstraints t m =
   ( MonadHold t m, TriggerEvent t m, Reflex t, PerformEvent t m
-  , HasJSContext (Performable m) , MonadJSM (Performable m)
+  , MonadJSM (Performable m)
   , PostBuild t m, MonadFix m
   )
 
@@ -350,7 +350,7 @@ selectFile m onModRef onMayFileRef = mdo
 pushPopModule
   :: forall key m t mConf model
   . ( MonadHold t m, PerformEvent t m, MonadJSM (Performable m)
-    , HasJSContext (Performable m), TriggerEvent t m, MonadFix m, PostBuild t m
+    , TriggerEvent t m, MonadFix m, PostBuild t m
     , MonadSample t (Performable m), MonadIO m
     , HasMessagesCfg  mConf t, Monoid mConf
     , HasNetwork model t

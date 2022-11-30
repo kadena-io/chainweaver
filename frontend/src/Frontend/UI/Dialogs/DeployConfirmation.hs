@@ -112,8 +112,6 @@ type CanSubmitTransaction t m =
   , MonadRef (Performable m)
   , MonadRef m
   , HasDocument m
-  , HasJSContext (Performable m)
-  , HasJSContext m
   , PostBuild t m
   , TriggerEvent t m
   , MonadReflexCreateTrigger t m

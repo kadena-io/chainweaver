@@ -1,8 +1,8 @@
 {
-  "owner": "kadena-io",
+  "owner": "obsidiansystems",
   "repo": "signing-api",
-  "branch": "master",
+  "branch": "is/ghc8_10-mods",
   "private": false,
-  "rev": "0b454c020bbfa67366c9e8da29212e88af75a10b",
-  "sha256": "0w5nh4xrpfjdipi1n91x3b72ra8389qr6yybn3ifi6liyx61fqxb"
+  "rev": "6caf7221adf7862b05b5011888475e169256a12b",
+  "sha256": "1kcvghr98cnvcs4971r31lhgysfadbgwvmj7gfm9jds0472xvp61"
 }

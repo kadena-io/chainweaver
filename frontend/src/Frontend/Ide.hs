@@ -44,7 +44,6 @@ import           Data.Void                    (Void)
 import           Generics.Deriving.Monoid     (mappenddefault, memptydefault)
 import           GHC.Generics                 (Generic)
 import           Reflex
-import           Reflex.Dom.Core              (HasJSContext)
 ------------------------------------------------------------------------------
 import           Obelisk.Route.Frontend       (R, RouteToUrl (..), Routed (..),
                                                SetRoute (..))
@@ -130,7 +129,6 @@ makeIde
   :: forall key t m modal
   . ( MonadHold t m, PerformEvent t m, MonadFix m
     , MonadJSM (Performable m), MonadJSM m
-    , HasJSContext (Performable m)
     , MonadSample t (Performable m)
     , TriggerEvent t m, PostBuild t m
     , RouteToUrl (R FrontendRoute) m, Routed t (R FrontendRoute) m

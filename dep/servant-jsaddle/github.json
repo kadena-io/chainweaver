@@ -1,7 +1,8 @@
 {
-  "owner": "kadena-io",
+  "owner": "obsidiansystems",
   "repo": "servant-jsaddle",
-  "branch": "fix-encoding-error",
-  "rev": "2ccf13d185e26d4cb4a51622e748ec64336435f4",
-  "sha256": "066vr1rfq6bjn3xx9g52z2vgp1ibyz50z3hzwaqq3fzxnr2srpjs"
+  "branch": "is/ghc8_10-mods",
+  "private": false,
+  "rev": "4354e7a5dab0105b99ffc2c61e9dff1ac77eb6af",
+  "sha256": "0x2xmr52ld1ra2lfz6kkw41n2hji44n2bc9s7i6lnyrg8ns7ymhj"
 }

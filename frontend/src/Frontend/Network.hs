@@ -106,7 +106,6 @@ import           Data.These                        (These(..), these)
 import           Data.Time.Clock                   (getCurrentTime)
 import           Data.Time.Clock.POSIX             (getPOSIXTime)
 import           Data.Traversable                  (for)
-import           Foreign.JavaScript.TH             (HasJSContext)
 import           Language.Javascript.JSaddle.Monad (JSM, liftJSM)
 import qualified Network.HTTP.Types                as HTTP
 import           Reflex.Dom.Core                   (def, XhrRequest(..), XhrResponse(..), performRequestAsync)
@@ -279,7 +278,6 @@ makeNetwork
     , MonadSample t (Performable m)
     , HasNetworkModelCfg mConf t
     , HasConfigs m
-    , HasJSContext (Performable m)
     , HasStorage m, HasStorage (Performable m)
     , HasCrypto key (Performable m)
     , HasLogger model t
@@ -477,7 +475,7 @@ getNetworks
      , PerformEvent t m, TriggerEvent t m
      , MonadHold t m, MonadFix m
      , HasNetworkCfg cfg t, HasConfigs m
-     , PostBuild t m, HasJSContext (Performable m)
+     , PostBuild t m
      , HasStorage m, HasStorage (Performable m)
      )
   => cfg -> m (Dynamic t NetworkName, Dynamic t (Map NetworkName [NodeRef]))

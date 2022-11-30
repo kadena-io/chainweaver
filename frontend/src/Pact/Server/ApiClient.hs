@@ -199,7 +199,7 @@ newtype TransactionLoggerT m a = TransactionLoggerT
     ( Functor, Applicative, Monad, MonadTrans
     , MonadFix, MonadIO, MonadRef, MonadAtomicRef
     , DomBuilder t, NotReady t, MonadHold t, MonadSample t
-    , TriggerEvent t, PostBuild t, HasJS x
+    , TriggerEvent t, PostBuild t
     , MonadReflexCreateTrigger t, MonadQuery t q, Requester t
     , HasDocument
     , Routed t r, RouteToUrl r, SetRoute t r, EventWriter t w
@@ -220,9 +220,6 @@ instance PrimMonad m => PrimMonad (TransactionLoggerT m) where
   type PrimState (TransactionLoggerT m) = PrimState m
   primitive = lift . primitive
 
-instance HasJSContext m => HasJSContext (TransactionLoggerT m) where
-  type JSContextPhantom (TransactionLoggerT m) = JSContextPhantom m
-  askJSContext = TransactionLoggerT askJSContext
 #if !defined(ghcjs_HOST_OS)
 instance MonadJSM m => MonadJSM (TransactionLoggerT m)
 #endif
@@ -233,14 +230,14 @@ instance (Adjustable t m, MonadHold t m, MonadFix m) => Adjustable t (Transactio
   traverseDMapWithKeyWithAdjustWithMove f dm0 dm' = TransactionLoggerT $ traverseDMapWithKeyWithAdjustWithMove (coerce . f) dm0 dm'
   traverseIntMapWithKeyWithAdjust f im0 im' = TransactionLoggerT $ traverseIntMapWithKeyWithAdjust (coerce f) im0 im'
 
-instance (Prerender js t m, Reflex t, Monad m) => Prerender js t (TransactionLoggerT m) where
+instance (Prerender t m, Reflex t, Monad m) => Prerender t (TransactionLoggerT m) where
   type Client (TransactionLoggerT m) = TransactionLoggerT (Client m)
   prerender a b = do
     l <- askTransactionLogger
     lift $ prerender (runTransactionLoggerT a l) (runTransactionLoggerT b l)
 
 instance (Monad m, RunClient m) => RunClient (TransactionLoggerT m) where
-  runRequest = lift . runRequest
+  -- runRequest = lift . runRequest
   throwClientError = lift . throwClientError
 
 instance MonadReader r m => MonadReader r (TransactionLoggerT m) where

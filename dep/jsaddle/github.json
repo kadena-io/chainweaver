@@ -1,7 +1,8 @@
 {
   "owner": "obsidiansystems",
   "repo": "jsaddle",
-  "branch": "ae@bump-warp",
-  "rev": "86b166033186c1724d4d52eeaf0935f0f29fe1ca",
-  "sha256": "1m1xxy4l9ii91k1k504qkxh9k1ybprm1m66mkb9dqlwcpyhcccmv"
+  "branch": "is/ghc8_10-ae@bump-warp",
+  "private": false,
+  "rev": "60a7fe39908fafc8e641d5c1207fe63d982f0ddf",
+  "sha256": "0mrml13xjh7kb3lhqncpqy9jjw1zng46w67z5wk9dry9sspwv6p7"
 }
