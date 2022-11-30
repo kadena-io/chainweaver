@@ -54,9 +54,9 @@ in with obelisk;
           reflex-dom-contrib = hackGet ./dep/reflex-dom-contrib;
           dependent-sum-aeson-orphans = hackGet ./dep/dependent-sum-aeson-orphans;
           servant-github = hackGet ./dep/servant-github;
-          obelisk-oauth-common = hackGet ./dep/obelisk-oauth + /common;
-          obelisk-oauth-frontend = hackGet ./dep/obelisk-oauth + /frontend;
-          obelisk-oauth-backend = hackGet ./dep/obelisk-oauth + /backend;
+          obelisk-oauth-common = hackGet ./dep/obelisk-oauth + "/common";
+          obelisk-oauth-frontend = hackGet ./dep/obelisk-oauth + "/frontend";
+          obelisk-oauth-backend = hackGet ./dep/obelisk-oauth + "/backend";
           HsYAML-aeson = hackGet ./dep/HsYAML-aeson;
 
           # Needed for obelisk-oauth currently (ghcjs support mostly):
