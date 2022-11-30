@@ -50,8 +50,6 @@ import           Language.Javascript.JSaddle       (JSM, MonadJSM, askJSM,
 import qualified Language.Javascript.JSaddle       as JS
 import           Language.Javascript.JSaddle.Monad (JSContextRef)
 import           Obelisk.Configs
-import           Reflex.Dom.Class                  (HasJSContext (..),
-                                                    JSContextSingleton (..))
 import           Reflex.Dom.Contrib.CssClass
 import           Reflex.Dom.WebSocket              (forkJSM)
 import           Reflex.Extended
@@ -83,12 +81,6 @@ instance Reflex t => Monoid (LeftmostEv t a) where
 
 getBrowserProperty :: forall m. MonadJSM m => Text -> m Bool
 getBrowserProperty property = liftJSM $ fromMaybe False <$> JS.catch (JS.fromJSVal =<< JS.eval ("bowser." <> property)) (\(_ :: JS.JSException) -> pure Nothing)
-
--- TODO: upstream this?
-instance HasJSContext JSM where
-  type JSContextPhantom JSM = JSContextRef
-  askJSContext = JSContextSingleton <$> askJSM
-
 
 -- | Re-use data constructors more flexibly.
 type family ReflexValue (f :: * -> *) x where

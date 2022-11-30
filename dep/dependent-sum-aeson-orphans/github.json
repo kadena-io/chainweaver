@@ -2,6 +2,7 @@
   "owner": "obsidiansystems",
   "repo": "dependent-sum-aeson-orphans",
   "branch": "develop",
-  "rev": "4bc8e674edb37a304746de0e59e43c460d59e33f",
-  "sha256": "1a5yy8r1zyqzj7iqjd7py84p3c788cpkqi3b8k0kb7psyjwwcg9w"
+  "private": false,
+  "rev": "b11f0f5365334a4054044ef099dbc533c396af42",
+  "sha256": "11w68wvx745k0g4v6g2y8xpxpkxfyba8s813nfpw3gp26qamhz41"
 }

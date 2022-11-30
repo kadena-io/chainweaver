@@ -1,7 +1,8 @@
 {
   "owner": "obsidiansystems",
   "repo": "obelisk-oauth",
-  "branch": "ts-improvements",
-  "rev": "b7fd1f4f1b96ee14c5af4d90a3db3a6b38eb1995",
-  "sha256": "0pg3ibfas7piqcjr79444jp2i0c4yxgqd71yf1lkf1l1147yj6m1"
+  "branch": "is/ghc8_10-ts-improvements",
+  "private": false,
+  "rev": "3e51b4bb33ad6548d37e16d0d4aaa7faf7af847d",
+  "sha256": "0nkq1x6idm54wg5xbafg553gj8lmgclal7y9abx4m0wg1wk7mgvz"
 }

@@ -146,7 +146,7 @@ bipWallet
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
      , HasTransactionLogger m
-     , Prerender js t m
+     , Prerender t m
      )
   => FileFFI t m
   -> MVar SigningRequest

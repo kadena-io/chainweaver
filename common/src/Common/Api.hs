@@ -21,14 +21,14 @@ getVerificationServerUrl = do
   pure $ T.dropWhileEnd (== '/') . T.decodeUtf8With T.lenientDecode <$> mUri
 
 -- | Get "config/common/route" normalized.
-getConfigRoute :: HasConfigs m => m Text
+getConfigRoute :: (HasConfigs m) => m Text
 getConfigRoute =
   T.dropWhileEnd (== '/') <$> getMandatoryTextCfg "common/route"
 
-getTextCfg :: HasConfigs m => Text -> m (Maybe Text)
+getTextCfg :: (HasConfigs m) => Text -> m (Maybe Text)
 getTextCfg p = fmap (T.strip . T.decodeUtf8With T.lenientDecode) <$> getConfig p
 
-getMandatoryTextCfg :: HasConfigs m => Text -> m Text
+getMandatoryTextCfg :: (HasConfigs m) => Text -> m Text
 getMandatoryTextCfg p = getTextCfg p >>= \case
-  Nothing -> fail $ "Obelisk.ExecutableConfig, could not find: '" <> T.unpack p <> "'!"
+  Nothing -> error $ "Obelisk.ExecutableConfig, could not find: '" <> T.unpack p <> "'!"
   Just r -> pure r

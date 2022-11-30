@@ -52,7 +52,6 @@ import           Data.Text                       (Text)
 import           Reflex
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Text as T
-import           Reflex.Dom.Core                 (HasJSContext)
 import qualified Text.Megaparsec      as MP
 import Network.GitHub.Types.Gist.Core as G
 ------------------------------------------------------------------------------
@@ -139,7 +138,7 @@ textFileType = \case
 --   TODO: Handle error case (file could not be loaded) properly.
 fetchFile
   :: ( PerformEvent t m, TriggerEvent t m, MonadJSM (Performable m)
-     , HasJSContext JSM, MonadHold t m
+     , MonadHold t m
      , HasGistStore model t, HasGistStoreCfg mConf t, Monoid mConf
      )
   => model -> Event t FileRef -> m (mConf, Event t (FileRef, Code))

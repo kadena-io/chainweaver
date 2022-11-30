@@ -65,7 +65,6 @@ import qualified Data.Text                   as T
 import qualified Data.Text.Encoding          as T
 import           GHCJS.DOM.XMLHttpRequest    (setTimeout)
 import           Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
-import           Reflex.Dom.Class            (HasJSContext (..))
 import           Reflex.Dom.Xhr
 import           Safe                        (fromJustNote, maximumMay)
 import           Text.URI                    (URI (URI))
@@ -119,7 +118,7 @@ nodeVersion ni = case _nodeInfo_type ni of
   NodeType_Chainweb ci -> _chainwebInfo_networkVersion ci
 
 -- | Retrive the `NodeInfo` for a given host by quering its API.
-discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m, HasJSContext m) => NodeRef -> m (Either Text NodeInfo)
+discoverNode :: forall m. (MonadJSM m, MonadUnliftIO m) => NodeRef -> m (Either Text NodeInfo)
 discoverNode (NodeRef auth) = go ["Error in discoverNode:"] discoveryFuncs
   where
     discoveryFuncs =
@@ -193,7 +192,7 @@ getChainBasePath (ChainId chainId) = buildPath . \case
 
 
 -- | Find out whether the given host and scheme are either a Pact or a Chainweb node.
-discoverChainwebOrPact :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
+discoverChainwebOrPact :: (MonadJSM m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
 discoverChainwebOrPact uri = do
   (chainwebResp, pactResp) <- discoverChainwebNode uri  `concurrently` discoverPactNode uri
   -- pure $ chainwebResp <|> pactResp
@@ -204,7 +203,7 @@ discoverChainwebOrPact uri = do
 -- | Retrieve the `NodeInfo` for a given host by quering its API.
 --
 --   This function will only succeed for chainweb nodes.
-discoverChainwebNode :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
+discoverChainwebNode :: (MonadJSM m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
 discoverChainwebNode baseUri = runExceptT $ do
     req <- except $ mkSafeReq $ nodeToBaseUri baseUri & URI.uriPath .~ [ [URI.pathPiece|info|] ]
     resp <- ExceptT . fmap (left tshow) $ runReq req
@@ -227,7 +226,7 @@ discoverChainwebNode baseUri = runExceptT $ do
 --   WARNING: The check is pretty basic and could easily confuse a `pact -s` with a chainweb node, when
 --   chainweb or pact -s evolve a bit, therefore, always run
 --   `discoverChainwebNode` first, which is more reliable.
-discoverPactNode :: (MonadJSM m, HasJSContext m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
+discoverPactNode :: (MonadJSM m, MonadUnliftIO m) => NodeUri -> m (Either Text NodeInfo)
 discoverPactNode baseUri = runExceptT $ do
     req <- except $ mkSafeReq $ nodeToBaseUri baseUri & URI.uriPath .~ [ [URI.pathPiece|version|] ]
     resp <- ExceptT . fmap (left tshow) $ runReq req
@@ -269,7 +268,7 @@ sortChainIds ids = sortOn chainIdIndex ids
    isDigitText = T.all isDigit
 
 runReq
-  :: (HasJSContext m, MonadJSM m, MonadUnliftIO m, IsXhrPayload a)
+  :: (MonadJSM m, MonadUnliftIO m, IsXhrPayload a)
   => SafeXhrRequest a
   -> m (Either XhrException XhrResponse)
 runReq (SafeXhrRequest req) = do
@@ -285,7 +284,7 @@ runReq (SafeXhrRequest req) = do
 -- the error via the callback.
 newXMLHttpRequestWithErrorSane
     :: forall m a.
-      ( HasJSContext m, MonadJSM m, IsXhrPayload a, MonadUnliftIO m)
+      ( MonadJSM m, IsXhrPayload a, MonadUnliftIO m)
     => XhrRequest a
     -- ^ The request to make.
     -> (Either XhrException XhrResponse -> JSM ())

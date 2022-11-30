@@ -149,7 +149,7 @@ bipWalletBrowser
      , RouteToUrl (R FrontendRoute) m, SetRoute t (R FrontendRoute) m
      , HasConfigs m
      , HasStorage m, HasStorage (Performable m)
-     , Prerender js t m
+     , Prerender t m
      , HasTransactionLogger m
      , MonadJSM (Performable m)
      )

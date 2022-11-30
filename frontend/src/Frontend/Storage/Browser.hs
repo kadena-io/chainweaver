@@ -51,7 +51,7 @@ newtype BrowserStorageT m a = BrowserStorageT
     ( Functor, Applicative, Monad
     , MonadFix, MonadIO, MonadRef, MonadAtomicRef
     , DomBuilder t, NotReady t, MonadHold t, MonadSample t
-    , TriggerEvent t, PostBuild t, HasJS x
+    , TriggerEvent t, PostBuild t
     , MonadReflexCreateTrigger t, MonadQuery t q, Requester t
     , HasTransactionLogger
     )
@@ -70,9 +70,6 @@ instance MonadReader r m => MonadReader r (BrowserStorageT m) where
   local f = lift . local f . runBrowserStorageT
 
 instance HasDocument m => HasDocument (BrowserStorageT m)
-instance HasJSContext m => HasJSContext (BrowserStorageT m) where
-  type JSContextPhantom (BrowserStorageT m) = JSContextPhantom m
-  askJSContext = BrowserStorageT askJSContext
 #if !defined(ghcjs_HOST_OS)
 instance MonadJSM m => MonadJSM (BrowserStorageT m)
 #endif
@@ -100,7 +97,7 @@ instance (Adjustable t m, MonadHold t m, MonadFix m) => Adjustable t (BrowserSto
 
 deriving instance DomRenderHook t m => DomRenderHook t (BrowserStorageT m)
 
-instance (Prerender js t m, Reflex t) => Prerender js t (BrowserStorageT m) where
+instance (Prerender t m, Reflex t) => Prerender t (BrowserStorageT m) where
   type Client (BrowserStorageT m) = BrowserStorageT (Client m)
   prerender a b = BrowserStorageT $ prerender (unBrowserStorageT a) (unBrowserStorageT b)
 

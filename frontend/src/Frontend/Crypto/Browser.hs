@@ -34,7 +34,7 @@ newtype BrowserCryptoT t m a = BrowserCryptoT
     ( Functor, Applicative, Monad
     , MonadFix, MonadIO, MonadRef, MonadAtomicRef
     , DomBuilder t, NotReady t, MonadHold t, MonadSample t
-    , TriggerEvent t, PostBuild t, HasJS x
+    , TriggerEvent t, PostBuild t
     , MonadReflexCreateTrigger t, MonadQuery t q, Requester t
     , HasStorage, HasDocument
     , Routed t r, RouteToUrl r, SetRoute t r, EventWriter t w
@@ -77,9 +77,6 @@ instance PrimMonad m => PrimMonad (BrowserCryptoT t m) where
   type PrimState (BrowserCryptoT t m) = PrimState m
   primitive = lift . primitive
 
-instance HasJSContext m => HasJSContext (BrowserCryptoT t m) where
-  type JSContextPhantom (BrowserCryptoT t m) = JSContextPhantom m
-  askJSContext = BrowserCryptoT askJSContext
 #if !defined(ghcjs_HOST_OS)
 instance MonadJSM m => MonadJSM (BrowserCryptoT t m)
 #endif
@@ -93,7 +90,7 @@ instance (Adjustable t m, MonadHold t m, MonadFix m) => Adjustable t (BrowserCry
   traverseDMapWithKeyWithAdjustWithMove f dm0 dm' = BrowserCryptoT $ traverseDMapWithKeyWithAdjustWithMove (coerce . f) dm0 dm'
   traverseIntMapWithKeyWithAdjust f im0 im' = BrowserCryptoT $ traverseIntMapWithKeyWithAdjust (coerce f) im0 im'
 
-instance (Prerender js t m, Monad m, Reflex t) => Prerender js t (BrowserCryptoT t m) where
+instance (Prerender t m, Monad m, Reflex t) => Prerender t (BrowserCryptoT t m) where
   type Client (BrowserCryptoT t m) = BrowserCryptoT t (Client m)
   prerender a b = BrowserCryptoT $ prerender (unBrowserCryptoT a) (unBrowserCryptoT b)
 

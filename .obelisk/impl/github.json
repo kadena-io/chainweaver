@@ -1,8 +1,8 @@
 {
-  "owner": "kadena-io",
+  "owner": "hsloan",
   "repo": "obelisk",
-  "branch": "jam/add-externs",
+  "branch": "is/ghc8_10-with-jam-add-externs",
   "private": false,
-  "rev": "60748a31cbf3e779f910398f7c8980dd06b43ad8",
-  "sha256": "1i29pkv3vx1m9d50q23p9npi7abg2rxlvqs3ynw7pzvlq1vl16w6"
+  "rev": "70d1ddff93f4bfc4ae6d471df88233d996bc0edf",
+  "sha256": "0q0g4y0g2mrqjnb6ryy4scrdabc4r21gxmxk4814pvc4m2y8y8zh"
 }

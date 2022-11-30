@@ -1,7 +1,8 @@
 {
   "owner": "reflex-frp",
   "repo": "reflex-dom-contrib",
-  "branch": "master",
-  "rev": "11db20865fd275362be9ea099ef88ded425789e7",
-  "sha256": "1rmcqg97hr87blp1vl15rnvsxp836c2dh89lwpyb7lvh86d7jwaf"
+  "branch": "is/ghc8_10-mods",
+  "private": false,
+  "rev": "97b2e87ea410b1e1fd4a2821244cca85c27fdb05",
+  "sha256": "128zn47mzdzzsin9chacbgg70wx38h020wv46jl2kzyi2p6kafra"
 }

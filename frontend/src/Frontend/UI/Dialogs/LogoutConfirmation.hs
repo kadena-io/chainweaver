@@ -55,7 +55,7 @@ uiLogoutConfirmation _onClose = do
   modalMain $ do
       divClass "segment modal__filler" $ do
         divClass "modal__filler-horizontal-center-box" $
-          imgWithAltCls "modal__filler-img" (static @"img/Octocat.jpg") "GitHub logo" blank
+          imgWithAltCls "modal__filler-img" $(static "img/Octocat.jpg") "GitHub logo" blank
 
         dialogSectionHeading mempty "Really log this IDE out from GitHub?"
 

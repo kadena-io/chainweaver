@@ -101,6 +101,7 @@ library
     , universe
     , universe-base
     , universe-dependent-sum
+    , universe-some
     , unliftio
     , unliftio-core
     , unordered-containers
@@ -256,7 +257,7 @@ executable frontend
   if os(darwin)
      ghc-options: -dynamic
   if impl(ghcjs)
-    ghcjs-options: -dedupe
+    ghcjs-options: -dedupe +RTS -M20000M -N1 -K4000M -RTS
 
 test-suite tests
   type: exitcode-stdio-1.0

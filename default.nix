@@ -6,7 +6,7 @@ args@{ system ? builtins.currentSystem
 , kpkgs ? import ./dep/kpkgs { inherit system; }  # If you want a custom package set, pass it into
                                                   # kpkgs arg
 , obelisk ? (import ./.obelisk/impl { inherit system iosSdkVersion terms; inherit (kpkgs) reflex-platform-func;})
-, withHoogle ? false
+, withHoogle ? true
 }:
 with obelisk;
 let

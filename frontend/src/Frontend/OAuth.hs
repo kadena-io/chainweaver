@@ -35,7 +35,6 @@ import           Data.Default                       (def)
 import           Data.Map                           (Map)
 import qualified Data.Map                           as Map
 import           Data.Text                          (Text)
-import           Reflex.Dom.Class                   (HasJSContext)
 import           Reflex.Dom.Xhr                     (XhrRequestConfig (..),
                                                      decodeXhrResponse,
                                                      newXMLHttpRequest,
@@ -158,7 +157,7 @@ runOAuthRequester requester = mdo
 
 
 runOAuthCmds
-  :: (HasStorage m, MonadJSM m, HasJSContext m)
+  :: (HasStorage m, MonadJSM m)
   => (R BackendRoute -> Text)
   -> Command OAuthProvider a
   -> m a

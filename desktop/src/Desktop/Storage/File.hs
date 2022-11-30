@@ -71,7 +71,7 @@ newtype FileStorageT m a = FileStorageT
     ( Functor, Applicative, Monad
     , MonadFix, MonadIO, MonadRef, MonadAtomicRef
     , DomBuilder t, NotReady t, MonadHold t, MonadSample t
-    , TriggerEvent t, PostBuild t, HasJS x
+    , TriggerEvent t, PostBuild t
     , MonadReflexCreateTrigger t, MonadQuery t q, Requester t
     , HasTransactionLogger
     )
@@ -94,9 +94,6 @@ instance MonadReader r m => MonadReader r (FileStorageT m) where
   local f m = FileStorageT $ ask >>= lift . local f . flip runFileStorageT m
 
 instance HasDocument m => HasDocument (FileStorageT m)
-instance HasJSContext m => HasJSContext (FileStorageT m) where
-  type JSContextPhantom (FileStorageT m) = JSContextPhantom m
-  askJSContext = FileStorageT askJSContext
 #if !defined(ghcjs_HOST_OS)
 instance MonadJSM m => MonadJSM (FileStorageT m)
 #endif
@@ -124,7 +121,7 @@ instance (Adjustable t m, MonadHold t m, MonadFix m) => Adjustable t (FileStorag
 
 deriving instance DomRenderHook t m => DomRenderHook t (FileStorageT m)
 
-instance (Prerender js t m, Monad m, Reflex t) => Prerender js t (FileStorageT m) where
+instance (Prerender t m, Monad m, Reflex t) => Prerender t (FileStorageT m) where
   type Client (FileStorageT m) = FileStorageT (Client m)
   prerender a b = FileStorageT $ prerender (unFileStorageT a) (unFileStorageT b)
 
