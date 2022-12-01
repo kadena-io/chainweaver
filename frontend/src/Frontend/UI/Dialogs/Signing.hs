@@ -154,30 +154,44 @@ uiQuickSign
   -> (QuickSignRequest, Either Text QuickSignResponse -> JSM ())
   -> Event t ()
   -> m (mConf, Event t ())
-uiQuickSign ideL (qsr, writeSigningResponse) _onCloseExternal = (mempty, ) <$> do
-  if _quickSignRequest_commands qsr == []
-     then sendResp =<< failWith "QuickSign request was empty" ""
-     else case partitionEithers $ fmap csdToSigData $ _quickSignRequest_commands qsr of
-       ([], payloads) ->
-         quickSignModal ideL sendResp payloads
-       (es, _) -> sendResp =<<
-         failWith ("QuickSign request contained invalid commands:\n" <> T.unlines (map T.pack es)) ""
+uiQuickSign ideL (qsr, writeSigningResponse) onCloseExternal = (mempty, ) <$> do
+  let sendResp = performEvent . fmap (liftJSM . writeSigningResponse . Right) -- We use Either for legacy reasons, but the quicksign protocol now allows for error handling in its response, so we just `const Right` now
+      emptyReqResponse = do
+        eClose <- failureModal "QuickSign request was empty" "" onCloseExternal
+        sendResp $ QSR_Error QuicksignError_EmptyList <$ eClose
+  if _quickSignRequest_csds qsr == []
+    then emptyReqResponse
+    else case partitionEithers $ fmap snd sdReqs of
+       ([], reqs) -> quickSignModal ideL sendResp reqs onCloseExternal
+       _ -> do
+         eClose <- failureModal
+           "Quicksign request was ill-formed"
+           "One or more of the CommandSigDatas do not contain valid Commands"
+           onCloseExternal
+         let
+           resps = ffor sdReqs $ \(orig, errOrSD) ->
+             case errOrSD of
+               Left e -> CSDResponse orig $ SO_Failure $ T.pack e
+               Right _ -> CSDResponse orig SO_NoSig
+         sendResp $ QSR_Response resps <$ eClose
   where
     csdToSigData (CommandSigData sl txt) =
       ffor (eitherDecodeStrict $ encodeUtf8 txt) $ \p ->
         let sd = payloadToSigData p txt
-         in flip PayloadSigningRequest p $ sd { _sigDataSigs = unSignatureList sl }
-    sendResp = performEvent . fmap (liftJSM . writeSigningResponse)
+            sdSigList = ffor (unSignatureList sl) $ (\(CSDSigner k mSig) -> (k, mSig))
+         in flip PayloadSigningRequest p $ sd { _sigDataSigs = sdSigList }
 
-failWith :: MonadWidget t m => Text -> Text -> m (Event t (Either Text QuickSignResponse))
-failWith msgHeader msg = do
+    sdReqs = ffor (_quickSignRequest_csds qsr) $ \req ->
+      (req, csdToSigData req)
+
+failureModal :: MonadWidget t m => Text -> Text -> Event t () -> m (Event t ())
+failureModal msgHeader msg onCloseExternal = do
   onClose <- modalHeader $ text "QuickSign Failure"
   void $ modalMain $ do
     el "h3" $ text msgHeader
     text msg
-  reject <- modalFooter $ confirmButton def "Done"
-  pure $ ffor (leftmost [reject, onClose]) $
-    const $ Left msgHeader
+  done <- modalFooter $ confirmButton def "Done"
+  pure $ leftmost [done, onClose, onCloseExternal]
 
 quickSignModal
   :: forall key t m mConf model
@@ -187,35 +201,37 @@ quickSignModal
     , HasNetwork model t
     )
   => model
-  -> (Event t (Either Text QuickSignResponse) -> m (Event t ()))
+  -> (Event t QuickSignResponse -> m (Event t ()))
   -> [PayloadSigningRequest]
+  -> Event t ()
   -> m (Event t ())
-quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDyn $ workflow $ Workflow $ do
+quickSignModal ideL writeSigningResponse payloads externalClose = fmap switchPromptlyDyn $ workflow $ Workflow $ do
   keysAndNet <- sample $ fetchKeysAndNetwork ideL
-  runQuickSignChecks payloadRequests (_srws_currentNetwork keysAndNet) $ do
+  runQuickSignChecks payloads (_srws_currentNetwork keysAndNet) $ do
     onClose <- modalHeader $ text "QuickSign Request"
     modalMain $ do
       qsTabDyn <- fst <$> sigBuilderTabs never
       dyn_ $ ffor qsTabDyn $ \case
         SigBuilderTab_Summary ->
-          summarizeTransactions payloadRequests keysAndNet
+          summarizeTransactions payloads keysAndNet
         SigBuilderTab_Details ->
-          quickSignTransactionDetails payloadRequests
+          quickSignTransactionDetails payloads
       pure ()
     (reject, sign) <- modalFooter $ (,)
       <$> cancelButton def "Reject"
       <*> confirmButton def "Sign All"
-    let noResponseEv = ffor (leftmost [reject, onClose]) $
-          const $ Left "QuickSign response rejected"
+    let noResponseEv = ffor (leftmost [reject, onClose, externalClose]) $
+          const $ QSR_Error QuicksignError_Reject
     res <- writeSigningResponse noResponseEv
-    pure (res, handleSigning payloadRequests writeSigningResponse keysAndNet <$ sign)
+    pure (res, handleSigning payloads writeSigningResponse keysAndNet <$ sign)
   where
-    -- TODO: Will the network check make sense when using a pact-server instead of a node?
     runQuickSignChecks payloads cwNet qsWidget = do
+    -- Only contains single network check atm, but we can add more in the future
       let
         toNetworkName = mkNetworkName . view networkId
         netCheck = flip filter payloads $ \(PayloadSigningRequest _ p) ->
           maybe False (\reqNet -> (fmap (== toNetworkName reqNet) cwNet) == Just True) $ p^.pNetworkId
+      -- TODO: Will the network check make sense when using a pact-server instead of a node?
       if length netCheck /= length payloads
          then do
            let msgHeader = "Invalid NetworkID"
@@ -225,8 +241,8 @@ quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDy
              el "h3" $ text msgHeader
              text msg
            reject <- modalFooter $ confirmButton def "Done"
-           res <- writeSigningResponse $ ffor (leftmost [reject, onClose]) $
-             const $ Left msgHeader
+           res <- writeSigningResponse $ ffor (leftmost [reject, onClose]) $ const $
+             QSR_Error $ QuicksignError_Other "Requests for network do not match the current node chainweaver is pointed at"
            pure (res, never)
          else qsWidget
 
@@ -234,7 +250,7 @@ quickSignModal ideL writeSigningResponse payloadRequests = fmap switchPromptlyDy
 handleSigning
   :: (MonadWidget t m, HasCrypto key (Performable m))
   => [PayloadSigningRequest]
-  -> (Event t (Either Text QuickSignResponse)-> m (Event t ()))
+  -> (Event t QuickSignResponse-> m (Event t ()))
   -> SigningRequestWalletState key
   -> Workflow t m (Event t ())
 handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
@@ -245,12 +261,20 @@ handleSigning payloadRequests writeSigningResponse keysAndNet = Workflow $ do
   quickSignRes <- performEvent $ ffor pb $ const $
     -- TODO: ForkIO and have an event for each payload in addition to the final event. The list of
     -- events can be used to update the loading screen with: "x / y signatures left"
-    forM toSign $ \sd -> addSigsToSigData sd (_srws_cwKeys keysAndNet) []
-  -- TODO: [SigData] -> QuickSignResponse conversion needs to be refactored to be cleaner
-  let quickSignRes' = ffor quickSignRes $ \qsList -> QuickSignResponse $ ffor qsList $
-        \(SigData _ sl (Just a)) -> CommandSigData (SignatureList sl) a
-  res <- writeSigningResponse $ Right <$> quickSignRes'
+    forM toSign $ \sd -> do
+      updatedSD <- addSigsToSigData sd (_srws_cwKeys keysAndNet) []
+      let calcSigs = length . catMaybes . fmap snd . _sigDataSigs
+          sigAdded = calcSigs updatedSD > calcSigs sd
+      pure (updatedSD, sigAdded)
+  let quickSignRes' = ffor quickSignRes $ QSR_Response . fmap sdToCSDResp
+  res <- writeSigningResponse quickSignRes'
   pure (res, never)
+  where
+    sdSlToCSDSl = SignatureList . fmap (\(k, mSig) -> CSDSigner k mSig)
+    sdToCSDResp ((SigData hash sl (Just a)), sigAdded) =
+      let csd = CommandSigData (sdSlToCSDSl sl) a
+          outcome = if sigAdded then SO_Success hash else SO_NoSig
+       in CSDResponse csd outcome
 
 -- |Summary view for quicksign ui
 summarizeTransactions
@@ -273,13 +297,13 @@ capListWidgetWithHash
   :: MonadWidget t m
   => [(Text, ChainId, [SigCapability], Maybe UserSig)]
   -> m ()
---TODO: This case should never return
 capListWidgetWithHash [] = text "Unscoped Signer"
 capListWidgetWithHash cl = do
   forM_ cl $ \(hash, cid, txCapList, mSig) -> do
     let capLines = foldl (\acc cap -> (renderCompactText cap):"":acc) [] txCapList
         txt = if txCapList == [] then "Unscoped Signer" else T.init $ T.init $ T.unlines capLines
-        --TODO: This is pretty lazy -- clean it up before final version
+        --TODO: Guesses box size needs to always be 2x. It's a decent approx but should be
+        --refactored
         rows = tshow $ 2 * length capLines
     elClass "h4" "heading heading_type_h4" $ text $ "Tx ID: " <> hash
     case mSig of
@@ -330,9 +354,9 @@ quickSignTransactionDetails
   -> m ()
 quickSignTransactionDetails payloadReqs = do
   let payloadsAndMeta = ffor payloadReqs $ \(PayloadSigningRequest (SigData hash sigList _) p) ->
-        (hash, SignatureList sigList, p)
+        (hash, sigList, p)
   dialogSectionHeading mempty $ "QuickSign Payloads ( " <> (tshow $ length payloadReqs) <> " total )"
-  sequence_ $ ffor payloadsAndMeta $ \a -> txRow a True
+  sequence_ $ ffor payloadsAndMeta $ flip txRow True
   where
     txRow (txId, sigList, p) startExpanded = divClass "payload__row" $ do
       visible <- divClass "group payload__header" $ do
@@ -371,7 +395,7 @@ impactSummary
   -> Set PublicKeyHex
   -> m ()
 impactSummary payloadReqs mNetId signerSet = do
-  let signingImpact = foldr scrapePayloadFold def $ _psr_payload <$> payloadReqs
+  let signingImpact = foldr scrapePayloadFold def payloadReqs
   dialogSectionHeading mempty "Impact Summary"
   divClass "group" $ do
     maybe blank (mkCategory "Network" . text . textNetworkName) mNetId
@@ -388,7 +412,7 @@ impactSummary payloadReqs mNetId signerSet = do
       0 -> blank
       price -> mkCategory "Max Gas Cost" $ text $ renderCompactText price <> " KDA"
     mkCategory "Number of Requests" $ text $ tshow $ length payloadReqs
-    mkCategory "Signatures Added" $ text $ tshow $ _qss_numSigs signingImpact
+    mkCategory "Number of Sigs Added" $ text $ tshow $ _qss_numSigs signingImpact
     let multipleChains = 1 < (Set.size $ _qss_chainsSigned signingImpact)
         chainHeader = bool "Via Chain" "Via Chains" multipleChains
     mkCategory chainHeader $ text $ T.intercalate ", " $ fmap renderCompactText $
@@ -400,13 +424,19 @@ impactSummary payloadReqs mNetId signerSet = do
     mkCategory header content =
       void $ mkLabeledClsInput True header $ const content
     isSigning = flip Set.member signerSet . PublicKeyHex . _siPubKey
-    scrapePayloadFold :: Payload PublicMeta Text -> QuickSignSummary -> QuickSignSummary
-    scrapePayloadFold p qss =
-      let signers = filter isSigning $ p^.pSigners
+    scrapePayloadFold :: PayloadSigningRequest -> QuickSignSummary -> QuickSignSummary
+    scrapePayloadFold (PayloadSigningRequest sd p) qss =
+      let
+          sigsRequired = Set.fromList $ fmap fst $ filter (\(_, mSig) -> isNothing mSig) $ _sigDataSigs sd
+          signers = filter isSigning $ p^.pSigners
+          signersPks = Set.fromList $ fmap (PublicKeyHex . _siPubKey) signers
+          -- We do NOT count sigs that have already been added
+          numSigsRequiredFromChainweaver = Set.size $ Set.intersection signersPks sigsRequired
           tokenMap = _qss_tokens qss
+          -- We still display this data if a signature from a chainweaver key has already been added
           (tokenMap', unscoped, potentiallyPaysGas) =
             foldr scrapeSigner (tokenMap, 0, False) signers
-          totalSigs = length signers + _qss_numSigs qss
+          totalSigs = numSigsRequiredFromChainweaver + _qss_numSigs qss
           totalUnscoped = unscoped + _qss_unscoped qss
           chains = Set.insert (p^.pMeta.pmChainId) $ _qss_chainsSigned qss
           gasCost = if potentiallyPaysGas then (fromIntegral (_pmGasLimit pm) * _pmGasPrice pm) else 0

@@ -16,11 +16,13 @@ import           Control.Error hiding (bool, mapMaybe)
 import           Control.Lens
 import           Control.Monad (forM)
 import qualified Data.Aeson as A
+import qualified Data.Aeson.Types as A
 import           Data.Decimal (Decimal)
 import           Data.Aeson.Parser.Internal (jsonEOF')
 import           Data.Attoparsec.ByteString
 import           Data.Bifunctor (first)
 import qualified Data.ByteString.Lazy as LB
+import           Data.Either (fromRight)
 import           Data.Functor (void)
 import           Data.List (partition)
 import           Data.Text (Text)
@@ -173,31 +175,46 @@ parseInputToSigDataWidget mInit =
       first (const "Invalid cmd field inside SigData.") $
         A.eitherDecodeStrict (T.encodeUtf8 cmdText)
 
+    csdToSd :: CommandSigData -> SigData Text
+    csdToSd (CommandSigData (SignatureList sl) payload) =
+      let cmdHash = hash $ T.encodeUtf8 payload
+          sdSigList = ffor sl $ \(CSDSigner k mSig) -> (k, mSig)
+       in SigData cmdHash sdSigList $ Just payload
+
     parseAndAttachPayload sd =
       case parsePayload =<< (justErr "Payload missing" $ _sigDataCmd sd) of
         Left e -> DTB_ErrorString e
         Right p -> DTB_SigData (sd, p)
 
+    parseSigDataJson = fmap parseAndAttachPayload . A.parseJSON
+    parseCommandSigData = fmap (parseAndAttachPayload . csdToSd) . A.parseJSON
+    parsePayloadJson bytes val =
+      let payload = parseAndAttachPayload . flip payloadToSigData (encodeAsText $ LB.fromStrict bytes)
+       in fmap payload $ A.parseJSON @(Payload PublicMeta Text) val
+    parseEmbeddedPayloadJson val = do
+      t <- A.parseJSON @Text val
+      let f = fmap (parseAndAttachPayload . flip payloadToSigData t) . A.parseJSON
+      A.withEmbeddedJSON "Nested JSON Payload" f val
+
+    sigBuilderJsonInputParsers rawBytes = mconcat
+      [ parseSigDataJson
+      , parsePayloadJson rawBytes
+      , parseEmbeddedPayloadJson
+      , parseCommandSigData
+      ]
+
     parseBytes "" = DTB_EmptyString
     parseBytes bytes =
-      -- Parse the JSON, and consume all the input
-      case parseOnly jsonEOF' bytes of
-        Right val -> case A.fromJSON val of
-          A.Success sigData -> parseAndAttachPayload sigData
-          A.Error _ ->
-            case A.fromJSON @(Payload PublicMeta Text) val of
-              A.Success p -> parseAndAttachPayload $ payloadToSigData p $ encodeAsText $ LB.fromStrict bytes
-              A.Error _ ->  case A.fromJSON @Text val of
-                A.Success t ->
-                  case (A.eitherDecode $ LB.fromStrict $ T.encodeUtf8 t) of
-                    Left e -> DTB_ErrorString e
-                    Right payload -> parseAndAttachPayload $ payloadToSigData payload t
-                A.Error errorStr -> DTB_ErrorString errorStr
+      case Y.decode1Strict bytes of
+        Right sigData -> parseAndAttachPayload sigData
 
-        -- We did not receive JSON, try parsing it as YAML
-        Left _ -> case Y.decode1Strict bytes of
-          Right sigData -> parseAndAttachPayload sigData
-          Left (pos, errorStr) -> DTB_ErrorString $ prettyPosWithSource pos (LB.fromStrict bytes) errorStr
+        -- Didn't receive yaml, try json
+        -- Parse the JSON, and consume all the input
+        Left _ -> case parseOnly jsonEOF' bytes of
+          Right val ->
+            let errStr = DTB_ErrorString "Failed to detect SigData, CommandSigData, Payload, or Embedded Payload"
+             in fromRight errStr $ A.parseEither (sigBuilderJsonInputParsers bytes) val
+          Left _ -> DTB_ErrorString "Failed to detect SigData, CommandSigData, Payload, or Embedded Payload"
     validInput DTB_EmptyString = Nothing
     validInput (DTB_ErrorString _) = Nothing
     validInput (DTB_SigData info) = Just info
@@ -320,7 +337,7 @@ approveSigDialog model srws psr = Workflow $ do
       SigBuilderTab_Summary ->
         updated . sequence <$>
           showSigsWidget p (_keyPair_publicKey <$> _srws_cwKeys srws) sigs sigData
-      SigBuilderTab_Details ->  sigBuilderDetailsUI p (SignatureList sigs) "" Nothing >>  ([] <$) <$> getPostBuild
+      SigBuilderTab_Details ->  sigBuilderDetailsUI p sigs "" Nothing >>  ([] <$) <$> getPostBuild
     switchHoldPromptly never eeSigList
   sigsOrKeys <- holdDyn [] sigsOrKeysE
   (back, sign) <- modalFooter $ (,)
@@ -746,7 +763,7 @@ transferAndStatus model (sender, cid) cmd nodeInfos = Workflow $ do
 sigBuilderDetailsUI
   :: MonadWidget t m
   => Payload PublicMeta Text
-  -> SignatureList
+  -> [(PublicKeyHex, Maybe UserSig)]
   -> Text
   -> Maybe Text
   -> m ()
@@ -832,11 +849,11 @@ pactRpcWidget (Continuation c) mCls = do
 
 signerWidget
   :: (MonadWidget t m)
-  => SignatureList
+  => [(PublicKeyHex, Maybe UserSig)]
   -> [Signer]
   -> Maybe Text
   -> m ()
-signerWidget (SignatureList sigList) signers mCls= do
+signerWidget sigList signers mCls= do
   dialogSectionHeading mempty "Signers"
   forM_ signers $ \s ->
     divClass (maybe "group segment" ("group segment " <>) mCls) $ do
