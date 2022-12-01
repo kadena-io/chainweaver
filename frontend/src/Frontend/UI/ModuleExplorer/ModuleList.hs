@@ -95,10 +95,8 @@ uiDeployedModuleList m mList = mdo
                           & setValue .~ onNetworkName
 
       d <- uiDropdown Nothing opts filterCfg
+      onNewSearch <- debounce 0.2 $ _inputElement_input ti
       let
-        onNewSearch :: Event t Text
-        onNewSearch = _inputElement_input ti
-
         onChainIdL :: Event t (Maybe ChainId)
         onChainIdL = _dropdown_change d
 
