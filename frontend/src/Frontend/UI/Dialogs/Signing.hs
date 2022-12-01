@@ -163,12 +163,11 @@ uiQuickSign ideL (qsr, writeSigningResponse) onCloseExternal = (mempty, ) <$> do
     then emptyReqResponse
     else case partitionEithers $ fmap snd sdReqs of
        ([], reqs) -> quickSignModal ideL sendResp reqs onCloseExternal
-       otherwise -> do
+       _ -> do
          eClose <- failureModal
            "Quicksign request was ill-formed"
            "One or more of the CommandSigDatas do not contain valid Commands"
            onCloseExternal
-
          let
            resps = ffor sdReqs $ \(orig, errOrSD) ->
              case errOrSD of
