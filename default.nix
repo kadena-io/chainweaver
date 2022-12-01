@@ -13,7 +13,7 @@ let
   pkgs = obelisk.reflex-platform.nixpkgs;
   # All the versions that the user cares about are here so that they can
   # be changed in one place
-  chainweaverVersion = "2.2.2";
+  chainweaverVersion = "2.2.3";
   appName = "Kadena Chainweaver";
   macReleaseNumber = "0";
   linuxReleaseNumber = "0";

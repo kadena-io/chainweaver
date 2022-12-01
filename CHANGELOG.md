@@ -1,5 +1,12 @@
 # Chainweaver Changelog
 
+## 2.2.3 (2022-12-01)
+* Add quicksign support based on KIP-0015 for desktop
+* Add better gas defaults for transfer/xchain operations
+* Fix bugs related to contract deployment simulations with /local
+* Fix slow/laggy module search in module explorer
+* Modernize pact sample-contracts in contract tab
+
 ## 2.2.2 (2022-05-10)
 * Add TRANSFER\_XCHAIN interface support
 * Fix MacOS build for BigSur/Monterrey
