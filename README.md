@@ -20,6 +20,13 @@ A linux webkitgtk version of chainweaver can be built and run in a number of dif
 - Run `nix-build -A chainweaverVM default.nix` to build a virtualbox ova file that runs chainweaver
 - Run `WEBKIT_DISABLE_COMPOSITING_MODE=1 $(nix-build -A nixosExe)/bin/kadena-chainweaver` to run the linux app in nixos.
 
+NOTE: You must build the OVA on NixOS with the `kvm` system-feature enabled. You
+can set this by putting the following in `$HOME/.config/nix/nix.conf`.
+
+```
+system-features = kvm benchmark big-parallel nixos-test
+```
+
 ### OVA Release
 
 The OVA includes an upgrade script inside the VM that allows the user to upgrade the nixos configuration without redownloading the whole OVA.
