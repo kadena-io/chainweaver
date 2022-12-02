@@ -162,7 +162,7 @@ parseInputToSigDataWidget
 parseInputToSigDataWidget mInit =
   divClass "group" $ do
     txt <- fmap value
-      $ mkLabeledClsInput False "Paste SigData or Payload" $ \cls ->
+      $ mkLabeledClsInput False "Paste SigData, CommandSigData, or Payload" $ \cls ->
           uiTxSigner mInit cls def
     let parsedBytes = parseBytes . T.encodeUtf8 <$> txt
     dyn_ $ ffor parsedBytes $ \case
@@ -187,7 +187,7 @@ parseInputToSigDataWidget mInit =
         Right p -> DTB_SigData (sd, p)
 
     parseSigDataJson = fmap parseAndAttachPayload . A.parseJSON
-    parseCommandSigData = fmap (parseAndAttachPayload . csdToSd) . A.parseJSON
+    parseCommandSigDataJson = fmap (parseAndAttachPayload . csdToSd) . A.parseJSON
     parsePayloadJson bytes val =
       let payload = parseAndAttachPayload . flip payloadToSigData (encodeAsText $ LB.fromStrict bytes)
        in fmap payload $ A.parseJSON @(Payload PublicMeta Text) val
@@ -200,17 +200,23 @@ parseInputToSigDataWidget mInit =
       [ parseSigDataJson
       , parsePayloadJson rawBytes
       , parseEmbeddedPayloadJson
-      , parseCommandSigData
+      , parseCommandSigDataJson
       ]
+
+    parseYaml b = case Y.decode1Strict b of
+      Right sigData -> Just sigData
+      Left _ ->
+        case Y.decode1Strict b of
+          Right csd -> Just $ csdToSd csd
+          Left _ -> Nothing
 
     parseBytes "" = DTB_EmptyString
     parseBytes bytes =
-      case Y.decode1Strict bytes of
-        Right sigData -> parseAndAttachPayload sigData
-
+      case parseYaml bytes of
+        Just sd -> parseAndAttachPayload sd
         -- Didn't receive yaml, try json
         -- Parse the JSON, and consume all the input
-        Left _ -> case parseOnly jsonEOF' bytes of
+        Nothing -> case parseOnly jsonEOF' bytes of
           Right val ->
             let errStr = DTB_ErrorString "Failed to detect SigData, CommandSigData, Payload, or Embedded Payload"
              in fromRight errStr $ A.parseEither (sigBuilderJsonInputParsers bytes) val
@@ -614,13 +620,25 @@ showTransactionSummary dSummary p = do
 --------------------------------------------------------------------------------
 -- Signature and Submission
 --------------------------------------------------------------------------------
-data SigDetails = SigDetails_Yaml | SigDetails_Json | SigDetails_Command
+data SigDetails = SD_SigData_Yaml
+                | SD_SigData_Json
+                | SD_CommandSigData_Json
+                | SD_CommandSigData_Yaml
+                | SD_Command
   deriving (Eq,Ord,Show,Read,Enum,Bounded)
 
 showSigDetailsTabName :: SigDetails -> Text
-showSigDetailsTabName SigDetails_Json = "JSON"
-showSigDetailsTabName SigDetails_Yaml = "YAML"
-showSigDetailsTabName SigDetails_Command = "Command JSON"
+showSigDetailsTabName SD_SigData_Json = "SigData JSON"
+showSigDetailsTabName SD_SigData_Yaml = "SigData YAML"
+showSigDetailsTabName SD_CommandSigData_Json = "CommandSigData JSON"
+showSigDetailsTabName SD_CommandSigData_Yaml = "CommandSigData YAML"
+showSigDetailsTabName SD_Command = "Command JSON"
+
+sdToCsd :: SigData Text-> Maybe CommandSigData
+sdToCsd (SigData _ sigs Nothing) = Nothing
+sdToCsd (SigData _ sigs (Just cmdTxt) ) =
+  let csdSigs = ffor sigs $ \(pkh, mSig) -> CSDSigner pkh mSig
+   in Just $ CommandSigData (SignatureList csdSigs) cmdTxt
 
 signatureDetails
   :: (MonadWidget t m)
@@ -630,24 +648,30 @@ signatureDetails sd = do
   hashWidget $ toUntypedHash $ _sigDataHash sd
   let canMakeCmd = (length $ _sigDataSigs sd) == (length $ catMaybes $ snd <$> _sigDataSigs sd)
   divClass "tabset" $ mdo
-    curSelection <- holdDyn (if canMakeCmd then SigDetails_Command else SigDetails_Yaml) onTabClick
+    curSelection <- holdDyn (if canMakeCmd then SD_Command else SD_SigData_Yaml) onTabClick
     (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-      { _tabBarCfg_tabs = if canMakeCmd then [minBound .. maxBound] else [SigDetails_Yaml, SigDetails_Json]
+      { _tabBarCfg_tabs = if canMakeCmd then [minBound .. maxBound] else init [minBound .. maxBound]
       , _tabBarCfg_mkLabel = const $ text . showSigDetailsTabName
       , _tabBarCfg_selectedTab = Just <$> curSelection
       , _tabBarCfg_classes = mempty
       , _tabBarCfg_type = TabBarType_Primary
       }
 
-    tabPane mempty curSelection SigDetails_Yaml $ do
+    tabPane mempty curSelection SD_SigData_Yaml $ do
       let sigDataText = T.decodeUtf8 $ Y.encode1Strict sd
       void $ uiSignatureResult sigDataText
-    tabPane mempty curSelection SigDetails_Json $ do
+    tabPane mempty curSelection SD_SigData_Json $ do
       let sigDataText = T.decodeUtf8 $ LB.toStrict $ A.encode $ A.toJSON sd
       void $ uiSignatureResult sigDataText
+    tabPane mempty curSelection SD_CommandSigData_Yaml $ do
+      let csdText = maybe "" (T.decodeUtf8 . Y.encode1Strict) $ sdToCsd sd
+      void $ uiSignatureResult csdText
+    tabPane mempty curSelection SD_CommandSigData_Json $ do
+      let csdText = maybe "" (T.decodeUtf8 . LB.toStrict . A.encode . A.toJSON) $ sdToCsd sd
+      void $ uiSignatureResult csdText
     if canMakeCmd
        then
-         tabPane mempty curSelection SigDetails_Command $ do
+         tabPane mempty curSelection SD_Command $ do
             let cmdText = either (const "Command not available")
                                 (T.decodeUtf8 . LB.toStrict . A.encode . A.toJSON)
                                 $ sigDataToCommand sd
@@ -673,7 +697,7 @@ signAndShowSigDialog
   -> [(PublicKeyHex, UserSig)] -- User-supplied Sigs
   -> Workflow t m (Event t ())
 signAndShowSigDialog model srws psr backW externalKeySigs = Workflow $ mdo
-  onClose <- modalHeader $ text "Sig Data"
+  onClose <- modalHeader $ text "SigData / CommandSigData"
   -- This allows a "loading" page to render before we attempt to do the really computationally
   -- expensive sigs
   pb <- delay 0.1 =<< getPostBuild
