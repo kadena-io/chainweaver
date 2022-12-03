@@ -887,7 +887,7 @@ signerWidget sigList signers mCls= do
         Nothing -> blank
         Just (Nothing) -> blank
         Just (Just (UserSig sig)) ->
-          mkLabeledClsInput True "Siganture:" $ \_ ->
+          mkLabeledClsInput True "Signature:" $ \_ ->
             void $ uiTextAreaElement $ def
               & textAreaElementConfig_initialValue .~ sig
               & initialAttributes .~ fold
