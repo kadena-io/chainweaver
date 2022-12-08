@@ -220,7 +220,7 @@ quickSignModal ideL writeSigningResponse payloads externalClose = fmap switchPro
     (reject, sign) <- modalFooter $ (,)
       <$> cancelButton def "Reject"
       <*> confirmButton def "Sign All"
-    let noResponseEv = ffor (leftmost [reject, onClose, externalClose]) $
+    let noResponseEv = ffor (leftmost [onClose, reject, externalClose]) $
           const $ QSR_Error QuicksignError_Reject
     res <- writeSigningResponse noResponseEv
     pure (res, handleSigning payloads writeSigningResponse keysAndNet <$ sign)
