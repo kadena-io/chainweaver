@@ -180,7 +180,7 @@ uiAccountsTable model dStartOpen = do
     Nothing -> uiEmptyState (static @"img/menu/wallet.svg") "No Accounts Found" $ do
       el "p" $ do
         text "Create new Accounts or interact with existing Accounts by selecting the "
-        el "strong" $ text "+ Add Account"
+        el "strong" $ text "+ Watch Account"
         text " button."
       pure mempty
     Just m -> divClass "wallet__keys-list" $ uiAccountItems model m dStartOpen
