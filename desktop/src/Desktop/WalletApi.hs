@@ -50,15 +50,14 @@ walletServer moveToForeground moveToBackground = do
   -- accountsHandler <- liftIO newMVarHandler
   let
     runSign obj = mkServantHandler <=< liftIO $ bracket_ (p "signing bracket putMVar signingLock" >> putMVar signingLock ()) (p "signing bracket takeMVar signingLock" >> takeMVar signingLock) $ do
-        p "runSign putMVar"
+        p "runSign putMVar signingRequestMVar"
         putMVar signingRequestMVar obj -- handoff to app
         p "runSign bracket takeMVar signingResponseMVar"
         bracket moveToForeground (const $ moveToBackground) (\_ -> p "runSign bracket finalizer takeMVar signingResponseMVar" >> takeMVar signingResponseMVar)
-    runQuickSign obj = mkServantHandler <=< liftIO $ bracket_ (p "quickSign bracket putMVar signingLock" >> putMVar signingLock ()) (p "quickSign bracket takeVMar signingLock" >> takeMVar signingLock) $ do
-        p "runQuickSign putMVar"
+    runQuickSign obj = mkServantHandler <=< liftIO $ bracket_ (p "SIGNING_LOCK quickSign bracketAcq PUT" >> putMVar signingLock ()) (p "SIGNING_LOCK quickSign bracketCleanup TAKE" >> takeMVar signingLock) $ do
+        p "QUICK_SIGN_RESPONSE_MVAR handler PUT"
         putMVar quickSignRequestMVar obj -- handoff to app
-        p "runQuickSign bracket takeMVar quickSignResponseMVar"
-        bracket moveToForeground (const $ moveToBackground) (\_ -> takeMVar quickSignResponseMVar)
+        bracket (p "move to foreground" >> moveToForeground) (\_ -> p "move to background" >> moveToBackground) (\_ -> p "QUICK_SIGN_RESPONSE_MVAR handler TAKE" >> takeMVar quickSignResponseMVar)
     -- runMVarHandler (MVarHandler req resp) = do
     --   mkServantHandler <=< liftIO $ do
     --     putMVar req ()
