@@ -134,6 +134,8 @@ uiSigning ideL (signingRequest, writeSigningResponse) onCloseExternal = do
         }
 
 -- | Ask user for confirmation before deleting "something".
+--   TODO: This comment seems wrong.
+--   What is the output event?
 --
 -- At the moment "something" is only keys, so we skip making "something"
 -- configurable for now.
@@ -220,7 +222,7 @@ quickSignModal ideL writeSigningResponse payloads externalClose = fmap switchPro
     (reject, sign) <- modalFooter $ (,)
       <$> cancelButton def "Reject"
       <*> confirmButton def "Sign All"
-    let noResponseEv = ffor (leftmost [reject, onClose, externalClose]) $
+    noResponseEv <- headE $ ffor (leftmost [reject, onClose, externalClose]) $
           const $ QSR_Error QuicksignError_Reject
     res <- writeSigningResponse noResponseEv
     pure (res, handleSigning payloads writeSigningResponse keysAndNet <$ sign)
