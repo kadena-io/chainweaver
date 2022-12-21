@@ -20,7 +20,7 @@
 --   Ide contains all the state that is relevant to the application, IdeCfg
 --   provides the means to manipulate it, e.g. through user interactions.
 --
--- Copyright   :  (C) 2020 Kadena
+-- Copyright   :  (C) 2020-2022 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 

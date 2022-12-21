@@ -11,7 +11,7 @@
 
 -- | List of `Modules` UI component.
 --
--- Copyright   :  (C) 2020 Kadena
+-- Copyright   :  (C) 2020-2022 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 

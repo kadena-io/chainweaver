@@ -4,7 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 -- |
--- Copyright   :  (C) 2020 Kadena
+-- Copyright   :  (C) 2020-2022 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 module Frontend.UI.Settings where

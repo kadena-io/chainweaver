@@ -16,7 +16,7 @@
 --   The user gets an editor for entering arbitrary data, in additon a widget
 --   for adding keysets based on the available keys is offered.
 --
---   Copyright   :  (C) 2020 Kadena
+--   Copyright   :  (C) 2020-2022 Kadena
 --   License     :  BSD-style (see the file LICENSE)
 --
 module Frontend.UI.JsonData

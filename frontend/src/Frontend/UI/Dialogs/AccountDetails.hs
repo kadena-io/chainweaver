@@ -2,7 +2,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RecursiveDo #-}
 -- | Dialog for viewing the details of an account.
--- Copyright   :  (C) 2020 Kadena
+-- Copyright   :  (C) 2020-2022 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.AccountDetails
   ( uiAccountDetailsOnChain

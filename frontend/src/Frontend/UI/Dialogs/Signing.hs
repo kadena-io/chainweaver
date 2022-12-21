@@ -11,7 +11,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 
 -- | Dialog presented for generating responses to signing API requests.
--- Copyright   :  (C) 2020 Kadena
+-- Copyright   :  (C) 2020-2022 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 module Frontend.UI.Dialogs.Signing
   ( uiSigning
