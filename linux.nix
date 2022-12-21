@@ -252,7 +252,7 @@
     Source: https://github.com/kadena-io/chainweaver
 
     Files: *
-    Copyright: 2020 Kadena
+    Copyright: 2020-2022 Kadena
     License: MIT
       Permission is hereby granted, free of charge, to any person obtaining a copy
       of this software and associated documentation files (the "Software"), to deal
