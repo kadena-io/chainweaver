@@ -13,7 +13,7 @@
 --   This module takes care of triggering actions on route updates and keeping
 --   routes and internal state in sync.
 --
--- Copyright   :  (C) 2020 Kadena
+-- Copyright   :  (C) 2020-2022 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 

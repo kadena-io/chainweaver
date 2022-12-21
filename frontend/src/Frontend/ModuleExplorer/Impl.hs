@@ -14,7 +14,7 @@
 
 -- | Implementation of the Frontend.ModuleExplorer interface.
 --
--- Copyright   :  (C) 2020 Kadena
+-- Copyright   :  (C) 2020-2022 Kadena
 -- License     :  BSD-style (see the file LICENSE)
 --
 
