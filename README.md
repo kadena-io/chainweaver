@@ -207,6 +207,12 @@ Follow the same process for updating chainweaver. The package manager will detec
 
 The .deb has been tested on Ubuntu 18.04. It should work on other debian based linuxes and Ubuntus, but Ubuntu 18.04 is the only supported disribution at the moment.
 
+Chainweaver does not support wayland. To run it on Ubuntu 20.04 or 22.04, override `GDK_BACKEND`:
+
+```
+GDK_BACKEND=x11 kadena-chainweaver
+```
+
 ## OVA (if the Ubuntu Package or Mac App doesn't work for you)
 
 First, you will need Virtualbox: https://www.virtualbox.org/wiki/Downloads . If you are using this on a linux machine, it is highly recommended to use virtualbox from your system's package manager as the virtualbox installer often leaves off important components.
