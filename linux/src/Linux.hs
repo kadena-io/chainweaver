@@ -175,4 +175,4 @@ resizeWindow _ _ = do
   pure ()
 
 getHomeDirectory :: IO String
-getHomeDirectory = PU.getLoginName >>= fmap PU.homeDirectory . PU.getUserEntryForName
+getHomeDirectory = PU.getEffectiveUserName >>= fmap PU.homeDirectory . PU.getUserEntryForName
