@@ -518,7 +518,7 @@ runUnfinishedCrossChainTransfer
   -> Event t Pact.RequestKey
   -- ^ The request key to follow up on
   -> PublicMeta
-  -> m (Event t (), Event t Text, Event t ())
+  -> m (Event t (), Event t Text, Event t (), Event t Pact.RequestKey)
 runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mtoGasPayer requestKey publicMeta = mdo
   let nodeInfos = _sharedNetInfo_nodes netInfo
       networkName = _sharedNetInfo_network netInfo
@@ -536,11 +536,11 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mtoGasPayer 
     , Status_Done <$ contOk
     ]
 
-  es@(resultOk, resultErr, retry) <- case mtoGasPayer of
+  es@(resultOk, resultErr, retry, eContReqKey) <- case mtoGasPayer of
     Nothing -> do
       dialogSectionHeading mempty "Notice: Cannot finish cross-chain transfer"
       divClass "group" $ text "No gas payer specified on destination chain"
-      return (() <$ contResponse, never, never)
+      return (() <$ contResponse, never, never, never)
     Just toGasPayer -> do
       -- Get the proof
       spvResponse <- getSPVProof logL nodeInfos fromChain toChain contOk
@@ -592,6 +592,7 @@ runUnfinishedCrossChainTransfer logL netInfo keys fromChain toChain mtoGasPayer 
       pure ( resultOk
            , leftmost [contError, spvError, continueError, resultError]
            , retry
+           , snd <$> continueOk
            )
   pure es
 
@@ -877,7 +878,6 @@ continueCrossChainTransfer logL networkName envs publicMeta keys toChain gasPaye
   performEventAsync $ ffor spvOk $ \(pe, proof) cb -> do
     let
       sender = unAccountName $ fst gasPayer
-
       pm = publicMeta
         { _pmChainId = toChain
         , _pmSender = sender
