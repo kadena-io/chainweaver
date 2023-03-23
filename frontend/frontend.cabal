@@ -170,6 +170,7 @@ library
                  , Frontend.UI.Dialogs.Send
                  , Frontend.UI.Dialogs.Send.ManualTxBuilder
                  , Frontend.UI.Dialogs.Signing
+                 , Frontend.UI.Dialogs.Signing.Common
                  , Frontend.UI.Dialogs.SigBuilder
                  , Frontend.UI.Dialogs.AccountDetails
                  , Frontend.UI.Dialogs.KeyDetails

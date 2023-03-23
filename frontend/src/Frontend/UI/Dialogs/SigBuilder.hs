@@ -59,6 +59,7 @@ import           Frontend.Foundation
 import           Frontend.Log
 import           Frontend.Network
 import           Frontend.UI.Dialogs.DeployConfirmation
+import           Frontend.UI.Dialogs.Signing.Common
 import           Frontend.UI.Modal
 import           Frontend.UI.TabBar
 import           Frontend.UI.Transfer

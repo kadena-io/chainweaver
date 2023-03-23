@@ -89,6 +89,7 @@ uiSigning
     , HasUISigningModelCfg mConf key t
     , HasCrypto key (Performable m)
     , HasTransactionLogger m
+    , HasCrypto key m
     )
   => ModalIde m key t
   -> (SigningRequest, Either Text SigningResponse -> JSM ())

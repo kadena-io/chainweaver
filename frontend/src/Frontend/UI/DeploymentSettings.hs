@@ -29,7 +29,7 @@ module Frontend.UI.DeploymentSettings
     -- * Helpers
   , TxnSenderTitle (..)
   , getTxnSenderTitle
-  , buildDeploymentSettingsResult
+  , buildPayload
   , defaultGASCapability
 
     -- * Tab Helpers
@@ -110,11 +110,13 @@ import Frontend.Log
 import Frontend.Network
 import Frontend.UI.FormWidget
 import Frontend.UI.JsonData
+import Frontend.UI.KeysetWidget
 import Frontend.UI.Modal
 import Frontend.UI.TabBar
 import Frontend.UI.Widgets
 import Frontend.UI.Widgets.Helpers (preventUpAndDownArrow, preventScrollWheel, dialogSectionHeading)
 import Frontend.Wallet
+import Frontend.UI.Dialogs.Signing.Common (uiSignatures)
 
 -- | Config for the deployment settings widget.
 data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
@@ -150,10 +152,10 @@ data DeploymentSettingsConfig t m model a = DeploymentSettingsConfig
     -- ^ Whether or not to show the preview tab on the deployment dialog.
   }
 
-data CapabilityInputRow t key = CapabilityInputRow
+data CapabilityInputRow t = CapabilityInputRow
   { _capabilityInputRow_empty :: Dynamic t Bool
-  , _capabilityInputRow_value :: Dynamic t (Maybe ((KeyPair key), SigCapability))
-  , _capabilityInputRow_keyPair :: Dynamic t (Maybe (KeyPair key))
+  , _capabilityInputRow_value :: Dynamic t (Maybe (PublicKey, SigCapability))
+  , _capabilityInputRow_pubKey :: Dynamic t (Maybe PublicKey)
   , _capabilityInputRow_cap :: Dynamic t (Either String SigCapability)
   }
 
@@ -162,6 +164,7 @@ data DeploymentSettingsView
   = DeploymentSettingsView_Custom Text -- ^ An optional additonal tab.
   | DeploymentSettingsView_Cfg -- ^ Actual settings like gas price/limit, ...
   | DeploymentSettingsView_Keys -- ^ Select keys for signing the transaction.
+  | DeploymentSettingsView_Signing -- ^ Provide a singature or private key for each external public key
   | DeploymentSettingsView_Preview -- ^ Attempt to preview this deployments affect on the chain
   deriving (Eq,Ord)
 
@@ -169,23 +172,39 @@ showSettingsTabName :: DeploymentSettingsView -> Text
 showSettingsTabName (DeploymentSettingsView_Custom n) = n
 showSettingsTabName DeploymentSettingsView_Keys       = "Sign"
 showSettingsTabName DeploymentSettingsView_Preview    = "Preview"
+showSettingsTabName DeploymentSettingsView_Signing    = "External Signatures"
 showSettingsTabName DeploymentSettingsView_Cfg        = "Configuration"
 
+tabsToShow :: Maybe DeploymentSettingsView -> Bool -> Bool -> [DeploymentSettingsView]
+tabsToShow mUserTabName includePreview includeExternalSignatures
+  = (maybeToList mUserTabName)
+  <> stdTabs
+  <> (if includeExternalSignatures then [DeploymentSettingsView_Signing] else [])
+  <> (if includePreview then [DeploymentSettingsView_Preview] else [])
+
+  where
+    stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
+
 -- | Get the previous view, taking into account the custom user tab.
-prevView :: Maybe DeploymentSettingsView -> DeploymentSettingsView -> Maybe DeploymentSettingsView
-prevView custom = \case
+prevView :: Maybe DeploymentSettingsView -> Bool -> DeploymentSettingsView -> Maybe DeploymentSettingsView
+prevView custom showingSigningTab = \case
   DeploymentSettingsView_Custom _ -> Nothing
   DeploymentSettingsView_Cfg -> custom
   DeploymentSettingsView_Keys -> Just DeploymentSettingsView_Cfg
-  DeploymentSettingsView_Preview -> Just DeploymentSettingsView_Keys
+  DeploymentSettingsView_Signing -> Just DeploymentSettingsView_Keys
+  DeploymentSettingsView_Preview | showingSigningTab -> Just DeploymentSettingsView_Signing
+                                 | otherwise -> Just DeploymentSettingsView_Keys
 
 -- | Get the next view.
-nextView :: Bool -> DeploymentSettingsView -> Maybe DeploymentSettingsView
-nextView includePreviewTab = \case
+nextView :: Bool -> Bool -> DeploymentSettingsView -> Maybe DeploymentSettingsView
+nextView includePreviewTab showingSigningTab = \case
   DeploymentSettingsView_Custom _ -> Just DeploymentSettingsView_Cfg
   DeploymentSettingsView_Cfg -> Just DeploymentSettingsView_Keys
-  DeploymentSettingsView_Keys | includePreviewTab -> Just DeploymentSettingsView_Preview
+  DeploymentSettingsView_Keys | showingSigningTab -> Just DeploymentSettingsView_Signing
+                              | includePreviewTab -> Just DeploymentSettingsView_Preview
                               | otherwise -> Nothing
+  DeploymentSettingsView_Signing | includePreviewTab -> Just DeploymentSettingsView_Preview
+                                 | otherwise -> Nothing
   DeploymentSettingsView_Preview -> Nothing
 
 data DeploymentSettingsResult key = DeploymentSettingsResult
@@ -206,6 +225,7 @@ data DeploymentSettingsResultError
   | DeploymentSettingsResultError_InvalidJsonData JsonError
   | DeploymentSettingsResultError_NoAccountsOnNetwork
   | DeploymentSettingsResultError_InsufficientFundsOnGasPayer
+  | DeploymentSettingsResultError_NoPayloadYet
   deriving Eq
 
 renderDeploymentSettingsResultError :: DeploymentSettingsResultError -> Text
@@ -217,8 +237,9 @@ renderDeploymentSettingsResultError = \case
   DeploymentSettingsResultError_InvalidJsonData err -> "JSON error: " <> showJsonError err
   DeploymentSettingsResultError_NoAccountsOnNetwork -> "No accounts on network"
   DeploymentSettingsResultError_InsufficientFundsOnGasPayer -> "Gas payer does not have sufficient funds"
+  DeploymentSettingsResultError_NoPayloadYet -> "Payload has not been built yet"
 
-buildDeploymentSettingsResult
+buildPayload
   :: ( HasNetwork model t
      , HasJsonData model t
      , HasWallet model key t
@@ -229,15 +250,15 @@ buildDeploymentSettingsResult
      )
   => model
   -> Dynamic t (Maybe AccountName)
-  -> Dynamic t (Set (KeyPair key))
+  -> Dynamic t (Set PublicKey)
   -> Dynamic t (Maybe ChainId)
-  -> Dynamic t (Map (KeyPair key) [SigCapability])
+  -> Dynamic t (Map PublicKey [SigCapability])
   -> Dynamic t TTLSeconds
   -> Dynamic t GasLimit
   -> Dynamic t Text
   -> DeploymentSettingsConfig t m model a
-  -> Dynamic t (Either DeploymentSettingsResultError (Performable m (DeploymentSettingsResult key)))
-buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
+  -> Dynamic t (Either DeploymentSettingsResultError (Performable m (Pact.Payload PublicMeta Text)))
+buildPayload m mSender signers cChainId capabilities ttl gasLimit code settings = runExceptT $ do
   selNodes <- lift $ m ^. network_selectedNodes
   networkName <- lift $ m ^. network_selectedNetwork
   fungible <- lift $ m^. wallet_fungible
@@ -259,9 +280,7 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
   allAccounts <- failWithM DeploymentSettingsResultError_NoAccountsOnNetwork
     $ Map.lookup networkName . unAccountData <$> m ^. wallet_accounts
 
-  let signingKeypairs = Map.keys caps <> Set.toList signs
-      publicKeyCapabilities = disregardPrivateKey caps
-      deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
+  let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       publicMeta = lastPublicMeta
         { _pmChainId = chainId
         , _pmGasLimit = limit
@@ -288,17 +307,22 @@ buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLim
         in unless (unAccountBalance b > fromIntegral lim * price) $
              throwError DeploymentSettingsResultError_InsufficientFundsOnGasPayer
 
-  pure $ do
-    cmd <- buildCmd
-      (_deploymentSettingsConfig_nonce settings)
-      networkId publicMeta signingKeypairs
-      (_deploymentSettingsConfig_extraSigners settings)
-      code' (HM.union jsonData' deploySettingsJsonData) publicKeyCapabilities
-    pure $ DeploymentSettingsResult
-      { _deploymentSettingsResult_sender = sender
-      , _deploymentSettingsResult_chainId = chainId
-      , _deploymentSettingsResult_command = cmd
-      }
+  let
+    allPublicKeys = Map.keysSet caps <> signs
+
+  return $ buildExecPayload
+    (_deploymentSettingsConfig_nonce settings)
+    networkId publicMeta
+    (Set.toList allPublicKeys <> _deploymentSettingsConfig_extraSigners settings)
+    code' (HM.union jsonData' deploySettingsJsonData) caps
+
+-- TODO: are we worried about multiple private keys with the same pubkey key?
+splitKeysInAndOutOfStore :: KeyStorage key -> Set PublicKey -> ([KeyPair key], Set PublicKey)
+splitKeysInAndOutOfStore keyStore pubKeys = (pubKeysWithPrivateKeys, pubKeysWithoutPrivateKeys)
+  where
+    kpInWalletMap = Map.fromList . fmap ((\pk -> (_keyPair_publicKey pk, pk)) . _key_pair) . IM.elems $ keyStore
+    pubKeysWithPrivateKeys =  Map.elems $ Map.restrictKeys kpInWalletMap pubKeys
+    pubKeysWithoutPrivateKeys = pubKeys Set.\\ Map.keysSet kpInWalletMap
 
 buildDeployTabs
   :: ( DomBuilder t m
@@ -308,12 +332,13 @@ buildDeployTabs
      )
   => Maybe DeploymentSettingsView
   -> Bool
+  -> Dynamic t Bool
   -> Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView)
   -> m ( Dynamic t DeploymentSettingsView
        , Event t ()
        , Event t DeploymentSettingsView
        )
-buildDeployTabs mUserTabName includePreviewTab controls = mdo
+buildDeployTabs mUserTabName includePreviewTab dShowExternalSignature controls = mdo
   let initTab = fromMaybe DeploymentSettingsView_Cfg mUserTabName
       f thisView g = case g thisView of
         Just view' -> (Just view', Nothing)
@@ -322,22 +347,18 @@ buildDeployTabs mUserTabName includePreviewTab controls = mdo
     [ const . Just <$> onTabClick
     , controls
     ]
-  (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-    { _tabBarCfg_tabs = availableTabs
-    , _tabBarCfg_mkLabel = const $ text . showSettingsTabName
-    , _tabBarCfg_selectedTab = Just <$> curSelection
-    , _tabBarCfg_classes = mempty
-    , _tabBarCfg_type = TabBarType_Secondary
+  (TabBar onTabClick) <- makeTabBarDyn $ TabBarDynCfg
+    { _tabBarDynCfg_tabs = tabsToShow mUserTabName includePreviewTab <$> dShowExternalSignature
+    , _tabBarDynCfg_mkLabel = const $ text . showSettingsTabName
+    , _tabBarDynCfg_selectedTab = Just <$> curSelection
+    , _tabBarDynCfg_classes = mempty
+    , _tabBarDynCfg_type = TabBarType_Secondary
     }
   pure (curSelection, done, onTabClick)
-  where
-    userTabs = maybeToList mUserTabName
-    stdTabs = [DeploymentSettingsView_Cfg, DeploymentSettingsView_Keys]
-    withPreview = if includePreviewTab then [DeploymentSettingsView_Preview] else []
-    availableTabs = userTabs <> stdTabs <> withPreview
 
 defaultTabViewProgressButtonLabel :: DeploymentSettingsView -> Text
 defaultTabViewProgressButtonLabel DeploymentSettingsView_Preview = "Submit"
+defaultTabViewProgressButtonLabel DeploymentSettingsView_Signing = "Sign"
 defaultTabViewProgressButtonLabel _ = "Next"
 
 buildDeployTabFooterControls
@@ -346,11 +367,12 @@ buildDeployTabFooterControls
      )
   => Maybe DeploymentSettingsView
   -> Bool
+  -> Behavior t Bool
   -> Dynamic t DeploymentSettingsView
   -> (DeploymentSettingsView -> Text)
   -> Dynamic t Bool
   -> m (Event t (DeploymentSettingsView -> Maybe DeploymentSettingsView))
-buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn hasResult = do
+buildDeployTabFooterControls mUserTabName includePreviewTab bShowExternalSignature curSelection nextBtnTextForTab hasResult = do
   let backConfig = btnCfgTertiary & uiButtonCfg_class .~ ffor curSelection
         (\s -> if s == fromMaybe DeploymentSettingsView_Cfg mUserTabName then "hidden" else "")
 
@@ -364,16 +386,12 @@ buildDeployTabFooterControls mUserTabName includePreviewTab curSelection stepFn 
   back <- cancelButton backConfig "Back"
   next <- uiButtonDyn
     (def & uiButtonCfg_class .~ "button_type_confirm" & uiButtonCfg_disabled .~ isDisabled)
-    $ dynText (stepFn <$> curSelection)
+    $ dynText (nextBtnTextForTab <$> curSelection)
 
   pure $ leftmost
-    [ nextView includePreviewTab <$ next
-    , prevView mUserTabName <$ back
+    [ nextView includePreviewTab <$> bShowExternalSignature <@ next
+    , prevView mUserTabName <$> bShowExternalSignature <@ back
     ]
-
---TODO: are we worried about multiple private keys with the same public key?
-disregardPrivateKey :: Map (KeyPair key) a -> Map PublicKey a
-disregardPrivateKey = Map.mapKeys _keyPair_publicKey
 
 -- | Show settings related to deployments to the user.
 --
@@ -386,14 +404,15 @@ uiDeploymentSettings
     , HasJsonDataCfg mConf t, Flattenable mConf t, HasJsonData model t
     , HasCrypto key (Performable m), HasLogger model t
     , HasTransactionLogger m
+    , HasCrypto key m
     )
   => model
   -> DeploymentSettingsConfig t m model a
   -> m (mConf, Event t (DeploymentSettingsResult key), Maybe a)
 uiDeploymentSettings m settings = mdo
     let code = _deploymentSettingsConfig_code settings
-    (curSelection, done, _) <- buildDeployTabs mUserTabName (_deploymentSettingsConfig_includePreviewTab settings) controls
-    (conf, result, ma) <- elClass "div" "modal__main transaction_details" $ do
+    (curSelection, done, _) <- buildDeployTabs mUserTabName (_deploymentSettingsConfig_includePreviewTab settings) showSigning controls
+    (conf, result, ma, showSigning) <- elClass "div" "modal__main transaction_details" $ do
 
       mRes <- traverse (uncurry $ tabPane mempty curSelection) mUserTabCfg
 
@@ -410,7 +429,38 @@ uiDeploymentSettings m settings = mdo
       (signers, capabilities) <- tabPane mempty curSelection DeploymentSettingsView_Keys $ do
         uiSenderCapabilities m (_deploymentSettingsConfig_caps settings)
 
-      let res = buildDeploymentSettingsResult m mSender signers cChainId capabilities ttl gasLimit code settings
+      let dErrorOrPayload = buildPayload m mSender signers cChainId capabilities ttl gasLimit code settings
+
+      ePayload <- performEvent . snd . fanEither $ updated dErrorOrPayload
+
+      let
+        publicKeys = signers <> (Map.keysSet <$> capabilities)
+        eUpdatedSignaturesUi = current (uiSignatures <$> (m ^.wallet_keys) <*> (fmap Set.toList publicKeys)) <@> ePayload
+        payloadContainsExternalKeys = fmap (not . Set.null . snd) $ splitKeysInAndOutOfStore <$> (m ^. wallet_keys) <*> publicKeys
+
+      res <- tabPane mempty curSelection DeploymentSettingsView_Signing $ do
+        -- TODO initial condition seems like an error that should not exist.
+        dErrorOrCommand <- fmap join . networkHold
+          (return . constDyn $ Left DeploymentSettingsResultError_NoPayloadYet)
+          $ (fmap . fmap . fmap) Right eUpdatedSignaturesUi
+
+        -- Doing these checks again seems wrong, we have another runExceptT in buildPayload with these same checks.
+        return . runExceptT $ do
+          -- Only doing this becuase we need to bring over the errors from buildPayload
+          -- Might not have to if this code was in buildPayload
+          erorrOrPayload <- lift dErrorOrPayload
+          case erorrOrPayload of
+            Left e -> throwError e
+            Right _ -> return ()
+
+          v <- ExceptT $ dErrorOrCommand
+          chainId <- cChainId !? DeploymentSettingsResultError_NoChainIdSelected
+          sender <- lift $ fromMaybe (AccountName "") <$> mSender
+          return $ DeploymentSettingsResult
+            { _deploymentSettingsResult_sender = sender
+            , _deploymentSettingsResult_chainId = chainId
+            , _deploymentSettingsResult_command = v
+            }
 
       when (_deploymentSettingsConfig_includePreviewTab settings) $ tabPane mempty curSelection DeploymentSettingsView_Preview $ do
         let currentNode = headMay . rights <$> (m ^. network_selectedNodes)
@@ -424,7 +474,8 @@ uiDeploymentSettings m settings = mdo
             aChainId = (<|>) <$> cChainId <*> mHeadChain
 
             uiPreviewPane = uiDeployPreview m settings
-              <$> signers
+              <$> (m ^. wallet_keys)
+              <*> signers
               <*> gasLimit
               <*> ttl
               <*> code
@@ -444,12 +495,14 @@ uiDeploymentSettings m settings = mdo
         ( cfg & networkCfg_setSender .~ fmapMaybe (fmap unAccountName) (updated mSender)
         , res
         , mRes
+        , payloadContainsExternalKeys
         )
-
-    command <- performEvent $ tagMaybe (current $ fmap hush result) done
+    let
+      command = tagMaybe (current $ fmap hush result) done
     controls <- modalFooter $ buildDeployTabFooterControls
       mUserTabName
       (_deploymentSettingsConfig_includePreviewTab settings)
+      (current showSigning)
       curSelection
       defaultTabViewProgressButtonLabel
       (isLeft <$> result)
@@ -863,30 +916,34 @@ uiMetaData m mTTL mGasLimit = do
 
 -- | Let the user pick signers
 uiSignerList
-  :: ( Adjustable t m, PostBuild t m, DomBuilder t m
-     , MonadHold t m
-     , HasWallet model key t
-     , MonadFix m
-     )
+  :: (MonadWidget t m, HasWallet model key t)
   => model
-  -> Dynamic t (Map (KeyPair key) [SigCapability])
-  -> m (Dynamic t (Set (KeyPair key)))
+  -> Dynamic t (Map PublicKey [SigCapability])
+  -> m (Dynamic t (Set PublicKey))
 uiSignerList m dCapMap = do
   dialogSectionHeading mempty "Unrestricted Signing Keys"
   divClass "group signing-ui-signers" $ do
-    let dKeys = ffor2 dCapMap (m ^. wallet_keys) $ \capMap keyIndices ->
-          let caps = Map.map (not . null) capMap
-              keys = Map.fromList $ (, False) . _key_pair <$> IM.elems keyIndices
-           in Map.unionWith (||) caps keys
-    results <- listWithKey dKeys $ \pair hasCap' -> do
-      hasCap <- holdUniqDyn hasCap'
-      let conf = def
-            & checkboxConfig_attributes .~ ffor hasCap (\s -> if s then "disabled" =: "disabled" else mempty)
-            -- Uncheck the checkbox when this item gains a capability
-            & checkboxConfig_setValue .~ (False <$ ffilter id (updated hasCap))
-      fmap value $ uiCheckbox "signing-ui-signers__signer" False conf $
-        text $ keyToText $ _keyPair_publicKey pair
-    pure $ Map.keysSet . Map.filter id <$> joinDynThroughMap results
+    let
+      dKeysWithCaps = ffor dCapMap $ \capMap -> Map.keysSet . Map.filter (not . null) $ capMap
+
+      selectMsgKey = PublicKeyText ""
+      doAddDel yesno = fmap (yesno selectMsgKey) . updated
+
+      pkt2kp (PublicKeyText "") = Nothing
+      pkt2kp (PublicKeyText keyText) = textToKey keyText
+
+      -- TODO: Dont use keys that have capabilities, indicate that those keys cant/wont be used or signers
+    dKeyInputMap <- growingList
+      (const $ pubKeyFormWidget (m ^. wallet_keys))
+      (AllowAddNewRow $ doAddDel (/=) . _formWidget_value)
+      (AllowDeleteRow $ doAddDel (==) . _formWidget_value)
+      selectMsgKey
+      never
+      (mkCfg mempty)
+    let
+      keys = Set.fromList . IM.elems . IM.mapMaybe pkt2kp <$> joinDynThroughIntMap (value <$$> dKeyInputMap)
+    return $ Set.difference <$> keys <*> dKeysWithCaps
+    -- pure $ Map.keysSet . Map.filter id <$> joinDynThroughMap results
 
 parseSigCapability :: Text -> Either String SigCapability
 parseSigCapability txt = parsed >>= compiled >>= parseApp
@@ -903,11 +960,11 @@ parseSigCapability txt = parsed >>= compiled >>= parseApp
 -- | Display a single row for the user to enter a custom capability and
 -- account to attach
 capabilityInputRow
-  :: forall t m key
+  :: forall t m
      . MonadWidget t m
   => Maybe DappCap
-  -> m (Dynamic t (Maybe (KeyPair key)))
-  -> m (CapabilityInputRow t key)
+  -> m (Dynamic t (Maybe PublicKey))
+  -> m (CapabilityInputRow t)
 capabilityInputRow mCap keyPairSelector = elClass "tr" "table__row" $ do
   let
     uiCapInput cfg0 = do
@@ -952,23 +1009,23 @@ capabilityInputRow mCap keyPairSelector = elClass "tr" "table__row" $ do
         kp <- MaybeT dkp
         p <- MaybeT $ either (const Nothing) pure <$> parsed
         pure (kp, p)
-    , _capabilityInputRow_keyPair = dkp
+    , _capabilityInputRow_pubKey = dkp
     , _capabilityInputRow_cap = parsed
     }
 
 -- | Display a dynamic number of rows for the user to enter custom capabilities
 capabilityInputRows
-  :: forall t m key. MonadWidget t m
+  :: forall t m. MonadWidget t m
   => Event t ()  -- Add new row
-  -> m (Dynamic t (Maybe (KeyPair key)))
-  -> m (Dynamic t (Map (KeyPair key) [SigCapability]), Dynamic t Int)
+  -> m (Dynamic t (Maybe PublicKey))
+  -> m (Dynamic t (Map PublicKey [SigCapability]), Dynamic t Int)
 capabilityInputRows addNew keysSelector = do
   rec
     (im0, im') <- traverseIntMapWithKeyWithAdjust (\_ _ -> capabilityInputRow Nothing keysSelector) IM.empty $ leftmost
       [ -- Add a new row when all rows are used
         attachWith (\i _ -> PatchIntMap (IM.singleton i (Just ()))) nextKeyToUse addNew
       ]
-    results :: Dynamic t (IntMap (CapabilityInputRow t key))
+    results :: Dynamic t (IntMap (CapabilityInputRow t))
       <- foldDyn applyAlways im0 im'
     let nextKeyToUse = maybe 0 (succ . fst) . IM.lookupMax <$> current results
         mkSingleton = fmap $ maybe Map.empty $ \(a,b) -> a =: [b]
@@ -982,9 +1039,25 @@ uiSenderCapabilities
   :: forall key t m model. (MonadWidget t m, HasWallet model key t)
   => model
   -> Maybe [DappCap]
-  -> m (Dynamic t (Set (KeyPair key)), Dynamic t (Map (KeyPair key) [SigCapability]))
+  -> m (Dynamic t (Set PublicKey), Dynamic t (Map PublicKey [SigCapability]))
 uiSenderCapabilities m mCaps = do
-  let keyPairDropdown ev = uiKeyPairDropdown m $ def & dropdownConfig_setValue .~ fmap Just ev
+  let
+      -- TODO: With the uiKeyPairDropdown it the user can select an empty item.
+      -- Now no empty item shows, but the user can delete all the text instead.
+      -- Also, once item is selected the others dont show becuase its a combobox thing, might be ok idk
+      pubKeyInput :: Event t PublicKey -> m (Dynamic t (Maybe PublicKey))
+      pubKeyInput ev = do
+        let
+          pkt2kp (PublicKeyText "") = Nothing
+          pkt2kp (PublicKeyText keyText) = textToKey keyText
+
+          cfg = (mkCfg $ PublicKeyText "")
+            & formWidgetConfig_setValue .~ Just ((PublicKeyText . keyToText) <$> ev)
+
+        wgt <- pubKeyFormWidget (m ^. wallet_keys) cfg
+
+        return $ pkt2kp <$> _formWidget_value wgt
+
       staticCapabilityRow dd cap = do
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ _dappCap_role cap
         elClass "td" "grant-capabilities-static-row__wrapped-cell" $ text $ renderCompactText $ _dappCap_cap cap
@@ -992,7 +1065,7 @@ uiSenderCapabilities m mCaps = do
         pure $ CapabilityInputRow
           { _capabilityInputRow_empty = pure False
           , _capabilityInputRow_value = fmap (\kp -> (kp, _dappCap_cap cap)) <$> dkp
-          , _capabilityInputRow_keyPair = dkp
+          , _capabilityInputRow_pubKey = dkp
           , _capabilityInputRow_cap = pure $ Right $ _dappCap_cap cap
           }
 
@@ -1019,9 +1092,9 @@ uiSenderCapabilities m mCaps = do
           elClass "th" "table__heading table__cell_padded" $ text "Capability"
           elClass "th" "table__heading table__cell_padded" $ text "Signing Key"
         el "tbody" $ do
-          gas <- capabilityInputRow (Just defaultGASCapability) (keyPairDropdown never)
-          (rest, restCount) <- capabilityInputRows eAddCap (keyPairDropdown eApplyToAll)
-          pure ( _capabilityInputRow_keyPair gas
+          gas <- capabilityInputRow (Just defaultGASCapability) (pubKeyInput never)
+          (rest, restCount) <- capabilityInputRows eAddCap (pubKeyInput eApplyToAll)
+          pure ( _capabilityInputRow_pubKey gas
                , combineMaps [(mkSingleton $ _capabilityInputRow_value gas), rest]
                , fmap (1+) restCount
                )
@@ -1031,9 +1104,9 @@ uiSenderCapabilities m mCaps = do
           elAttr "th" ("class" =: "table__heading") $ text "Capability"
           elAttr "th" ("class" =: "table__heading" <> "width" =: "30%") $ text "Public Key"
         el "tbody" $ do
-          gas <- staticCapabilityRow (keyPairDropdown never) defaultGASCapability
-          rest <- staticCapabilityRows (keyPairDropdown eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
-          pure ( _capabilityInputRow_keyPair gas
+          gas <- staticCapabilityRow (pubKeyInput never) defaultGASCapability
+          rest <- staticCapabilityRows (pubKeyInput eApplyToAll) $ filter (not . isGas . _dappCap_cap) caps
+          pure ( _capabilityInputRow_pubKey gas
                , combineMaps [(mkSingleton $ _capabilityInputRow_value gas),rest]
                , constDyn (1 {- Gas payer -} + length caps)
                )
@@ -1090,28 +1163,29 @@ uiDeployPreview
      )
   => model
   -> DeploymentSettingsConfig t m model a
-  -> Set (KeyPair key)
+  -> KeyStorage key
+  -> Set PublicKey
   -> GasLimit
   -> TTLSeconds
   -> Text
   -> PublicMeta
-  -> Map (KeyPair key) [SigCapability]
+  -> Map PublicKey [SigCapability]
   -> Either JsonError Aeson.Object
   -> Maybe DeploymentSettingsResultError
   -> Maybe NetworkName
   -> Maybe ChainId
   -> Maybe AccountName
   -> m ()
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
-uiDeployPreview _ _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
-uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabilities jData resultError (Just networkId) (Just chainId) (Just sender) = do
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ _ Nothing = text "No valid GAS payer accounts in Wallet."
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ _ Nothing _ = text "Please select a Chain."
+uiDeployPreview _ _ _ _ _ _ _ _ _ _ _ Nothing _ _ = text "No network nodes configured."
+uiDeployPreview model settings keyStore signers gasLimit ttl code lastPublicMeta capabilities jData resultError (Just networkId) (Just chainId) (Just sender) = do
   pb <- getPostBuild
 
   let deploySettingsJsonData = fromMaybe mempty $ _deploymentSettingsConfig_data settings
       jsonData0 = fromMaybe mempty $ hush jData
-      signingPairs = Map.keys capabilities <> Set.toList signers
-      publicKeyCapabilities = disregardPrivateKey capabilities
+      -- TODO: If we have PublicKeys that are not in the keyStore then signingPairs does not contain all the keys in the Paylaod!
+      signingPairs = fst $ splitKeysInAndOutOfStore keyStore (Map.keysSet capabilities <> signers)
 
       isChainwebNode (NodeType_Pact _) = False
       isChainwebNode (NodeType_Chainweb _) = True
@@ -1132,7 +1206,7 @@ uiDeployPreview model settings signers gasLimit ttl code lastPublicMeta capabili
 
   let
     mkBuildCmd code0 = buildCmd nonce networkId publicMeta signingPairs
-      extraSigners code0 jsondata publicKeyCapabilities
+      extraSigners code0 jsondata capabilities
 
   eCmd <- performEvent $ mkBuildCmd code <$ pb
   void $ runWithReplace

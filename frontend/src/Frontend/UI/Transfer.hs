@@ -51,22 +51,13 @@ import qualified Data.List.NonEmpty as NEL
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import           Data.String
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Data.Text.Lazy as LT
 import           Data.These (These(This))
 import           Data.Traversable
 import           Data.Time.Clock.POSIX
 
-#if !defined(ghcjs_HOST_OS)
-import qualified Codec.QRCode as QR
-import qualified Codec.QRCode.JuicyPixels as QR
-#endif
-import qualified Data.YAML.Aeson as Y
-
-import           Pact.Types.SigData
 import           Kadena.SigningTypes (AccountName(..))
 import           Pact.Parse
 import qualified Pact.Server.ApiClient as Api
@@ -84,7 +75,6 @@ import           Pact.Types.Names
 import           Pact.Types.PactValue
 import           Pact.Types.Pretty
 import           Pact.Types.RPC
-import           Pact.Types.Scheme
 import qualified Pact.Types.Term as Pact
 import           Reflex.Dom.Core
 import qualified Servant.Client.JSaddle as S
@@ -95,8 +85,6 @@ import qualified Text.URI as URI
 import           Common.Foundation
 import           Common.Wallet
 import           Frontend.Crypto.Class
-import           Frontend.Crypto.Ed25519
-import           Frontend.Crypto.Signature
 import           Frontend.Foundation
 import           Frontend.JsonData
 import           Frontend.Log
@@ -107,6 +95,7 @@ import           Frontend.UI.Button
 import           Frontend.UI.DeploymentSettings
 import           Frontend.UI.Dialogs.DeployConfirmation
 import           Frontend.UI.Dialogs.Send
+import           Frontend.UI.Dialogs.Signing.Common
 import           Frontend.UI.Dialogs.AccountDetails
 import           Frontend.UI.Form.Common
 import           Frontend.UI.FormWidget
@@ -168,7 +157,7 @@ uiChainAccount model cfg = do
   return (runMaybeT $ ChainAccount <$> lift cd <*> MaybeT a, onPaste)
 
 toFormWidget
-  :: (MonadWidget t m, HasNetwork model t)
+  :: (MonadWidget t m, HasNetwork model t, HasWallet model key t)
   => model
   -> FormWidgetConfig t (Maybe ChainAccount, Maybe UserKeyset)
   -> m (FormWidget t (Maybe ChainAccount), Dynamic t (Maybe UserKeyset))
@@ -192,7 +181,7 @@ toFormWidget model cfg = mdo
     , const True <$ pastedBuilder
     ]
   (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty (accordionHeaderBtn "Owner Keyset") $ do
-    keysetFormWidget $ (snd <$> cfg)
+    keysetFormWidget (model ^. wallet_keys) $ (snd <$> cfg)
       & setValue %~ modSetValue (Just (fmap userFromPactKeyset . _txBuilder_keyset <$> pastedBuilder))
 
   return (tca,k)
@@ -863,13 +852,14 @@ transferDialog model netInfo ti ty fks tks unused = Workflow $ do
         transferMetadata model netInfo fks tks ti ty
       let payload = buildUnsignedCmd netInfo ti ty <$> meta
       ddSigned <- tabPane mempty currentTab TransferTab_Signatures $ do
-        let signingData = current $ (,,)
+        let pkt2pk = fromPactPublicKey . Pact.PublicKey . T.encodeUtf8
+            signingData = current $ (,,)
               <$> (model ^. wallet_keys)
               <*> payload
-              <*> (_transferMeta_sourceChainSigners <$> meta)
+              <*> ((fmap $ pkt2pk . _siPubKey) <$> (_transferMeta_sourceChainSigners <$> meta))
             produceSigsIfSigTab ((cwKeys, payload, meta), tab) =
               case tab of
-                TransferTab_Signatures -> Just <$$> transferSigs cwKeys payload meta
+                TransferTab_Signatures -> Just <$$> uiSignatures cwKeys meta payload
                 TransferTab_Metadata -> pure $ constDyn Nothing
         networkHold (pure $ constDyn Nothing)
           $ produceSigsIfSigTab
@@ -981,12 +971,6 @@ previewDialog model _netInfo ti payload cmd backW nextW = Workflow $ do
     fromAccount = _ca_account $ _ti_fromAccount ti
     toChain = _ca_chain $ _ti_toAccount ti
     toAccount = _ca_account $ _ti_toAccount ti
-
-uiPreviewItem :: DomBuilder t m => Text -> m a -> m a
-uiPreviewItem label val =
-  divClass "segment segment_type_tertiary labeled-input-inline" $ do
-    divClass "label labeled-input__label-inline" (text label)
-    divClass "labeled-preview" val
 
 sameChainTransferAndStatus
   :: (MonadWidget t m, Monoid mConf, HasLogger model t, HasTransactionLogger m)
@@ -1115,12 +1099,6 @@ submitTransactionAndListen model cmd sender chain nodeInfos = do
           liftIO $ cb key
     (listenStatus, message, setMessage) <- pollForRequestKey clientEnvs $ Just <$> onRequestKey
   pure $ TransactionSubmitFeedback sendStatus listenStatus message
-
-payloadToCommand :: Payload PublicMeta Text -> Command Text
-payloadToCommand p =
-    Pact.Command payloadText [] (hash $ T.encodeUtf8 payloadText)
-  where
-    payloadText = encodeAsText $ encode p
 
 safeTransferEpsilon :: Decimal
 safeTransferEpsilon = 0.000000000001
@@ -1647,222 +1625,6 @@ data AdvancedDetails
   = DetailsJson
   | DetailsYaml
   deriving (Eq,Ord,Show,Read,Enum)
-
-transferSigs
-  :: ( MonadWidget t m
-     , HasCrypto key m
-     )
-  => (KeyStorage key)
-  -> Payload PublicMeta Text
-  -> [Signer]
-  -> m (Dynamic t (Command Text))
-transferSigs keyStorage payload signers = do
-  -- Incomplete pattern match should be fine here because all the possible
-  -- commands are statically generated by Chainweaver.
-  let Right sd = commandToSigData $ payloadToCommand payload
-  let hash = toUntypedHash $ _sigDataHash sd
-  _ <- divClass "group" $ do
-    uiPreviewItem "Request Key" $ el "code" $ text (hashToText hash)
-
-  let mkKeyTuple (KeyPair pub priv) = (pub, priv)
-  let cwKeyMap = Map.fromList . map (mkKeyTuple . _key_pair) . IntMap.elems $ keyStorage
-      pkt2pk = fromPactPublicKey . Pact.PublicKey . T.encodeUtf8
-      sigsNeeded = length $ filter (\s -> not $ isJust $ join $ Map.lookup (pkt2pk $ _siPubKey s) cwKeyMap) signers
-
-  dialogSectionHeading mempty $ if sigsNeeded > 0 then "External Signatures" else "No external signatures needed"
-
-  let sig s = do
-        let pubKeyText = _siPubKey s
-            pubKey = pkt2pk pubKeyText
-        case Map.lookup pubKey cwKeyMap of
-          Just (Just priv) -> do
-            s <- cryptoSign (unHash hash) priv
-            pb <- getPostBuild
-            let ju = (fromString $ T.unpack pubKeyText, Just $ UserSig $ keyToText s)
-            holdDyn ju (ju <$ pb)
-          _ -> do
-            el "div" $ text pubKeyText
-            uiSigningInput hash pubKey
-      wrapper sigSection = if sigsNeeded > 0
-        then divClass "group signing-ui-signers" sigSection
-        else sigSection
-  ddsigs <- wrapper $ do
-    forM signers $ \s -> do
-      sig s
-
-  let sigs = distributeListOverDynPure ddsigs
-  let addSigs ss = sd { _sigDataSigs = ss }
-  let signedCmd = addSigs <$> sigs
-
-  rec
-    keysetOpen <- toggle False clk
-    (clk,(_,k)) <- controlledAccordionItem keysetOpen mempty
-      (accordionHeaderBtn "Advanced Details and Signing Data") $ do
-        transferDetails signedCmd
-
-  return (either error id . sigDataToCommand <$> signedCmd)
-
-data TransferDetails
-  = TransferDetails_Yaml
-  | TransferDetails_Json
-  | TransferDetails_HashQR
-  | TransferDetails_FullQR
-  deriving (Eq,Ord,Show,Read,Enum,Bounded)
-
-showTransferDetailsTabName :: TransferDetails -> Text
-showTransferDetailsTabName = \case
-  TransferDetails_Json -> "JSON"
-  TransferDetails_Yaml -> "YAML"
-  TransferDetails_HashQR -> "Hash QR Code"
-  TransferDetails_FullQR -> "Full Tx QR Code"
-
-transferDetails
-  :: (DomBuilder t m, MonadHold t m, PostBuild t m, MonadFix m)
-  => Dynamic t (SigData Text)
-  -> m ()
-transferDetails signedCmd = do
-    divClass "tabset" $ mdo
-      curSelection <- holdDyn TransferDetails_Json onTabClick
-      (TabBar onTabClick) <- makeTabBar $ TabBarCfg
-        { _tabBarCfg_tabs = [minBound .. maxBound]
-        , _tabBarCfg_mkLabel = const $ text . showTransferDetailsTabName
-        , _tabBarCfg_selectedTab = Just <$> curSelection
-        , _tabBarCfg_classes = mempty
-        , _tabBarCfg_type = TabBarType_Primary
-        }
-
-      tabPane mempty curSelection TransferDetails_Yaml $ do
-        let preview = T.decodeUtf8 . Y.encode1Strict <$> signedCmd
-        iv <- sample (current preview)
-        uiTextAreaElement $ def
-          & textAreaElementConfig_initialValue .~ iv
-          & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
-          & textAreaElementConfig_setValue .~ updated preview
-
-      tabPane mempty curSelection TransferDetails_Json $ do
-        let preview = T.decodeUtf8 . LB.toStrict . encode . toJSON <$> signedCmd
-        iv <- sample (current preview)
-        uiTextAreaElement $ def
-          & textAreaElementConfig_initialValue .~ iv
-          & initialAttributes %~ (<> "disabled" =: "" <> "style" =: "width: 100%; height: 18em;")
-          & textAreaElementConfig_setValue .~ updated preview
-
-#if !defined(ghcjs_HOST_OS)
-      tabPane mempty curSelection TransferDetails_HashQR $ do
-        let hashText = hashToText . toUntypedHash . _sigDataHash <$> signedCmd
-            qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> hashText
-            img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 6) <$> qrImage
-        el "div" $ text $ T.unwords
-          [ "This QR code contains only the request key."
-          , "It doesn't give any transaction information, so some wallets may not accept it."
-          , "This is useful when you are signing your own transactions and don't want to transmit as much data."
-          ]
-        el "br" blank
-        elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
-      tabPane mempty curSelection TransferDetails_FullQR $ do
-        let yamlText = T.decodeUtf8 . Y.encode1Strict <$> signedCmd
-            qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> yamlText
-            img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 4) <$> qrImage
-        elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
-#else
-      let notAvailMsg = el "ul" $ text "This feature is not currently available in the browser"
-      tabPane mempty curSelection TransferDetails_HashQR notAvailMsg
-      tabPane mempty curSelection TransferDetails_FullQR notAvailMsg
-#endif
-
-      pure ()
-
-uiSigningInput
-  :: ( MonadWidget t m
-     , HasCrypto key m
-     )
-  => Hash
-  -> PublicKey
-  -> m (Dynamic t (PublicKeyHex, Maybe UserSig))
-uiSigningInput hash pubKey = do
-  let hashBytes = unHash hash
-  let
-    inp cfg = do
-      ie <- mkLabeledInput False mempty uiInputElement cfg
-
-      sigDyn <- networkHold (pure $ Left "") (checkSigOrKey hash pubKey <$> updated (value ie))
-      pure (ie
-           , ( sigDyn
-             , updated sigDyn
-             )
-           )
-
-    inputCfg = def
-      & initialAttributes .~ ("placeholder" =: "Signature or Private Key" <>
-                              "class" =: "signature-input" <>
-                              "type" =: "password")
-                              --"rows" =: "2")
-
-    -- Don't show the error popover if nothing has been entered
-    -- See checkSigOrKey for where this is generated.
-    mkErr e = if T.null e
-                then PopoverState_Disabled
-                else PopoverState_Error e -- "Must be a signature or private key"
-    showPopover (_, (_, onInput)) = pure $
-      either mkErr (const PopoverState_Disabled) <$> onInput
-
-  (inputE, (dE, onE)) <- uiInputWithPopover
-    inp
-    (_inputElement_raw . fst)
-    showPopover
-    inputCfg
-
-  pure $ (PublicKeyHex $ keyToText pubKey,) . hush <$> dE
-
-checkSigOrKey
-  :: forall key m t.
-     ( MonadJSM m
-     , HasCrypto key m
-     )
-  => Hash
-  -> PublicKey
-  -> Text
-  -> m (Either Text UserSig)
-checkSigOrKey hash pubKey userInput = do
-    let hashBytes = unHash hash
-    let tryAsKey t = do
-          -- Expects input to be 64 hex characters
-          case textToKey t of
-            Nothing -> do
-              pure $ Left "Couldn't parse as key"
-            Just (PrivateKey privKey) -> do
-              let pactKey = PactKey ED25519 pubKey privKey
-              cryptoSignWithPactKeyEither hashBytes pactKey >>= \case
-                Left e -> pure $ Left $ "Wrong key"
-                Right sig -> do
-                  valid <- cryptoVerify hashBytes sig pubKey
-                  if valid
-                    then pure $ Right sig
-                    else pure $ Left $ "Key does not generate a valid signature"
-        tryAsSig t = do
-          case parseSignature t of
-            Left e -> do
-              pure $ Left $ "Error parsing signature"
-            Right sig -> do
-              --pure $ Right sig
-              valid <- cryptoVerify hashBytes sig pubKey
-              pure $ if valid
-                then Right sig
-                else Left "Signature not valid"
-
-    res <- case T.length userInput of
-      128 -> if T.drop 64 userInput == keyToText pubKey
-               then tryAsKey $ T.take 64 userInput
-               else tryAsSig userInput
-      64 -> tryAsKey userInput
-
-      -- This is kind of a janky way to prevent the error popup from displaying
-      -- when the form first opens but it's good enough for now.
-      0 -> pure $ Left ""
-      _ -> pure $ Left genericErr
-    pure $ UserSig . keyToText <$> res
-  where
-    genericErr = "Must specify a key or signature"
 
 data TransferTab
   = TransferTab_Metadata
