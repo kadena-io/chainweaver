@@ -132,7 +132,7 @@ receiveToNonexistentAccount model account chain mdetails = do
       , "After you add keys, a Tx Builder will appear."
       ]
     para2 = el "p" $ text $ T.unwords
-      [ "To receive funds, copy the the Tx Builder."
+      [ "To receive funds, copy the text from the Tx Builder."
       , "It contains the information necessary to send Kadena coins to this account."
       , "Paste it into the To field in Chainweaver's Transfer section"
       , "or send it someone else so they can use it to transfer."
