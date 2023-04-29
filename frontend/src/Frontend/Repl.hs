@@ -337,13 +337,8 @@ runVerify impl onMod =
 
     doTypeCheckAndVerify m = do
       -- Success output of typecheck is mostly not parseable:
-#ifdef  ghcjs_HOST_OS
-      --TODO: This means we don't get formal verification on web chainweaver until the server exception gets fixed
-      pactEvalRepl' $ buildTypecheck m
-#else
       void $ pactEvalRepl' $ buildTypecheck m
       pactEvalRepl' $ buildVerify m
-#endif
 
     buildVerify m = "(verify " <> quotedFullName m <> ")"
     buildTypecheck m = "(typecheck " <> quotedFullName m <> ")"

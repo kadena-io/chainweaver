@@ -116,9 +116,24 @@ This file must exist, so chainweaver won't start up in development mode (launchi
 
 The first entry in the file will be chosen as the current network, unless the user picked a different one. The user will also be able to modify networks at runtime. The above configuration will be the default and the one that gets applied, when the user presses "Restore Defaults".
 
-### Provide remote verification server
+### Remote verification server
 
-chainweaver supports verification of Pact modules, unfortunately the prover used is z3 which is implemented in C++ and is therefore not available on ghcjs. To make it still work, we use a remote verification server for verifying contracts. Please provide a file `config/common/verification-server` containing the base url of some `pact -s` server, e.g.:
+chainweaver supports verification of Pact modules, unfortunately the prover used is z3 which is implemented in C++ and is therefore not available on ghcjs. To make it still work, we use a remote verification server for verifying contracts.
+
+In order to deploy the remote verification server along with the chainweaver deployment copy the file `pact-server/module.nix` to the `deploydir`.
+Based on the deployment target please edit the imports in this file to use either `mkBaceEc2` or `virtualbox-image.nix`.
+
+The other optional configurable parameter in this file is the `location`, which is the nginx virtualhost's path.
+Its default value is `/pact/`, but it could be modified to some other value.
+
+Finally make sure the `config/common/verification-server` file matches the location value specified in the `module.nix`.
+
+For the default location of `/pact/`, the contents of this file would be `<URI>/pact`, for example:
+```
+https://my-chainweaver.io/pact
+```
+
+In case the pact server is not deployed with the chainweaver, please provide a file `config/common/verification-server` containing the base url of some other `pact -s` server, e.g.:
 
 ```
 https://pact01.kadena.io
