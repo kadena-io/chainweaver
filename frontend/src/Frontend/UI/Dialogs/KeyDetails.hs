@@ -11,10 +11,8 @@ module Frontend.UI.Dialogs.KeyDetails
   ) where
 
 ------------------------------------------------------------------------------
-#if !defined(ghcjs_HOST_OS)
 import qualified Codec.QRCode as QR
 import qualified Codec.QRCode.JuicyPixels as QR
-#endif
 import           Control.Error
 import           Control.Lens
 import           Control.Monad (join)
@@ -245,12 +243,10 @@ uiKeyDetails _keyIndex key _onCloseExternal = mdo
           Nothing -> blank
           Just sig' -> do
             uiDetailsCopyButton $ current sig'
-#if !defined(ghcjs_HOST_OS)
             let qrImage = QR.encodeText (QR.defaultQRCodeOptions QR.L) QR.Iso8859_1OrUtf8WithECI <$> sig'
-                img = maybe "Error creating QR code" (QR.toPngDataUrlT 4 6) <$> qrImage
+                img = maybe "Error creating QR code" (QR.toBmpDataUrlT 4 6) <$> qrImage
             el "br" blank
             elDynAttr "img" (("src" =:) . LT.toStrict <$> img) blank
-#endif
 
   modalFooter $ do
     onDone <- confirmButton def "Done"
