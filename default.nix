@@ -37,7 +37,7 @@ let
 in obApp // rec {
   inherit sass;
   inherit (macApp) mac deployMac;
-  inherit (linuxApp) nixosExe deb chainweaverVM chainweaverVMSystem;
+  inherit (linuxApp) nixosExe nixosWrapper deb chainweaverVM chainweaverVMSystem;
 
   server = { hostName, adminEmail, routeHost, enableHttps, version, module ? obelisk.serverModules.mkBaseEc2 }@args:
     let
